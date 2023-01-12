@@ -32,20 +32,21 @@ else:
 #%%
 def get_args():
     argparser = argparse.ArgumentParser(description='Collect hidden states')
-    argparser.add_argument(
-        "--seed",
-        type=int,
-        help="MultiBERTs seed for tokenizer and model"
-    )
-    argparser.add_argument(
-        "--chkpt",
-        type=str,
-        choices=["0k", "20k", "40k", "60k", "80k", "100k", "120k", "140k", 
-            "160k", "180k", "200k", "300k", "400k", "500k", "600k", "700k", 
-            "800k", "900k", "1000k", "1100k", "1200k", "1300k", "1400k", 
-            "1500k", "1600k", "1700k", "1800k", "1900k", "2000k", "none"],
-        help="MultiBERTs checkpoint for tokenizer and model"
-    )
+    #argparser.add_argument(
+    #    "--seed",
+    #    type=int,
+    #    help="MultiBERTs seed for tokenizer and model"
+    #)
+    #argparser.add_argument(
+    #    "--chkpt",
+    #    type=str,
+    #    choices=["0k", "20k", "40k", "60k", "80k", "100k", "120k", "140k", 
+    #        "160k", "180k", "200k", "300k", "400k", "500k", "600k", "700k", 
+    #        "800k", "900k", "1000k", "1100k", "1200k", "1300k", "1400k", 
+    #        "1500k", "1600k", "1700k", "1800k", "1900k", "2000k", "none"],
+    #    help="MultiBERTs checkpoint for tokenizer and model"
+    #)
+    
     argparser.add_argument(
         "--h_nsamples",
         type=int,
