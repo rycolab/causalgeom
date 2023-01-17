@@ -20,7 +20,8 @@ from sklearn.model_selection import train_test_split
 from sklearn.linear_model import SGDClassifier
 #from transformers import BertTokenizerFast, BertForMaskedLM
 
-from rlace import solve_adv_game, solve_adv_game_param_free, init_classifier, get_majority_acc
+from rlace import solve_adv_game, solve_adv_game_param_free, \
+    init_classifier, get_majority_acc, solve_adv_game_param_free_twoPs
 #from algorithms.inlp.debias import get_debiasing_projection
 import algorithms.inlp.debias
 from classifiers.classifiers import BinaryParamFreeClf
@@ -63,27 +64,33 @@ def get_args():
     )
     return argparser.parse_args()
 
-args = get_args()
-logging.info(args)
+#args = get_args()
+#logging.info(args)
 
-RANK = args.k
-#RANK = 1
-RLACE_NITER = args.niter
-#RLACE_NITER = 100
-NRUNS = args.nruns
-SEED = args.seed
+#RANK = args.k
+RANK = 1
+#RLACE_NITER = args.niter
+RLACE_NITER = 1000
+#NRUNS = args.nruns
+NRUNS = 1
+#SEED = args.seed
+SEED = 0
+DIRECTORY = "testruns"
 
 #%% 
 MODEL_NAME = "bert-base-uncased"
 DATASET_NAME = "linzen"
 DATASET = f"/cluster/work/cotterell/cguerner/usagebasedprobing/datasets/processed/{DATASET_NAME}_{MODEL_NAME}.pkl"
-OUTPUT_DIR = "/cluster/work/cotterell/cguerner/usagebasedprobing/out/realruns/"
+OUTPUT_DIR = f"/cluster/work/cotterell/cguerner/usagebasedprobing/out/{DIRECTORY}/"
 
 assert os.path.exists(OUTPUT_DIR), \
     f"Output dir doesn't exist: {OUTPUT_DIR}"
 
+DIAG_RLACE_U_OUTDIR = os.path.join(OUTPUT_DIR, "diag_rlace_u")
+os.mkdir(DIAG_RLACE_U_OUTDIR)
+
 logging.info(
-    f"Running: {RANK}, {RLACE_NITER}"
+    f"Running: rank {RANK}"
 )
 
 TRAIN_OBS = 30000
@@ -136,14 +143,36 @@ for i in trange(NRUNS):
     dim = X_train.shape[1]
 
     #%%
+    #logging.info(f"Training RLACE with usage data two Ps")
+    #start = time.time()
+    #functional_rlace_twoPs_output = solve_adv_game_param_free_twoPs(
+    #    X_train, U_train, y_train, X_val, U_val, y_val, 
+    #    rank=RANK, device=device, 
+    #    out_iters=RLACE_NITER, optimizer_class=rlace_optimizer_class, 
+    #    optimizer_params_P =rlace_optimizer_params_P, 
+    #    epsilon=rlace_epsilon,batch_size=rlace_batch_size
+    #)
+    #end = time.time()
+    #functional_rlace_twoPs_results = full_eval(
+    #    functional_rlace_twoPs_output, 
+    #    X_train, U_train, y_train, 
+    #    X_test, U_test, y_test,
+    #    end - start
+    #)
+
+    #%%
     logging.info("Training RLACE with diagnostic data")
     start = time.time()
+    
+    diag_rlace_u_outfile = os.path.join(DIAG_RLACE_U_OUTDIR, f"rk_{RANK}_niter_{RLACE_NITER}_{i}.pt")
+    
     diag_rlace_output = solve_adv_game(
         X_train, y_train, X_val, y_val, rank=RANK, device=device, 
         out_iters=RLACE_NITER, optimizer_class=rlace_optimizer_class, 
         optimizer_params_P =rlace_optimizer_params_P, 
         optimizer_params_predictor=rlace_optimizer_params_predictor, 
-        epsilon=rlace_epsilon,batch_size=rlace_batch_size
+        epsilon=rlace_epsilon,batch_size=rlace_batch_size,
+        torch_outfile=diag_rlace_u_outfile
     )
     end = time.time()
     diag_rlace_results = full_eval(diag_rlace_output, 
@@ -205,17 +234,20 @@ for i in trange(NRUNS):
         run_args = run_args,
         diag_rlace = diag_rlace_results,
         functional_rlace = functional_rlace_results,
+        #functional_rlace_twoPs = functional_rlace_twoPs_results,
         inlp = inlp_results,
         maj_acc_test = get_majority_acc(y_test),
         maj_acc_val = get_majority_acc(y_val),
         maj_acc_train = get_majority_acc(y_train)
     )
-
+    
     #%%
     outfile_path = os.path.join(OUTPUT_DIR, f"run_k_{RANK}_n_{RLACE_NITER}_{i}_{NRUNS}.pkl")
 
     with open(outfile_path, 'wb') as f:
         pickle.dump(full_results, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+    logging.info(f"Exported {outfile_path}")
 
 
 logging.info("Done")

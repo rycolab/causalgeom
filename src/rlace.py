@@ -14,6 +14,7 @@ import coloredlogs
 from torch.utils.data import DataLoader, Dataset
 from abc import ABC
 
+from classifiers.classifiers import BinaryParamFreeClf, BinaryParamFreeClfTwoPs
 
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
@@ -49,7 +50,8 @@ def get_score(X_train, y_train, X_dev, y_dev, P, rank):
 
 def get_score_param_free(X_dev, U_dev, y_dev, P, rank, device):
     P_svd = torch.Tensor(get_projection(P, rank)).to(device)
-    
+    clf = BinaryParamFreeClf(X_dev, U_dev, y_dev, P_svd, device)
+
     #loss_vals = []
     #accs = []
     
@@ -61,7 +63,9 @@ def get_score_param_free(X_dev, U_dev, y_dev, P, rank, device):
     #    loss_vals.append(loss)
     #    accs.append(clf.score(X_dev@P_svd, y_dev))
     #ipdb.set_trace()
-    clf = torch.nn.Sigmoid()
+    
+    #new but old
+    #clf = torch.nn.Sigmoid()
 
     # batching of logits
     #val_size = X_dev.shape[0]
@@ -76,18 +80,26 @@ def get_score_param_free(X_dev, U_dev, y_dev, P, rank, device):
     #    logits_list.append(logits)
     #torch.stack(logits_list, dim=0)
 
-    logits = ((X_dev @ P_svd) * U_dev).sum(-1).cpu()
-    y_pred_1 = clf(logits).numpy()
+    #logits = ((X_dev @ P_svd) * U_dev).sum(-1).cpu()
+    #y_pred_1 = clf(logits).numpy()
     
-    loss = sklearn.metrics.log_loss(y_dev, y_pred_1)
+    #loss = sklearn.metrics.log_loss(y_dev, y_pred_1)
     # for multiclass
     #loss = sklearn.metrics.log_loss(y_dev, y_pred_probs)
     
     # getting prediction
-    y_pred_class = (y_pred_1>0.5).astype(float)
-    acc =  1 - (np.sum(np.not_equal(y_pred_class, y_dev)) / y_dev.shape[0])
+    #y_pred_class = (y_pred_1>0.5).astype(float)
+    #acc =  1 - (np.sum(np.not_equal(y_pred_class, y_dev)) / y_dev.shape[0])
 
-    return loss, acc
+    return clf.loss_P(), clf.score_P()
+
+def get_score_param_free_twoPs(X_dev, U_dev, y_dev, Pu, Ph, rank, device):
+    Pu_svd = torch.Tensor(get_projection(Pu, rank)).to(device)
+    Ph_svd = torch.Tensor(get_projection(Ph, rank)).to(device)
+    
+    clf = BinaryParamFreeClfTwoPs(X_dev, U_dev, y_dev, Pu_svd, Ph_svd, device)
+
+    return clf.loss_P(), clf.score_P()
 
 def solve_constraint(lambdas, d=1):
     def f(theta):
@@ -156,6 +168,17 @@ def prepare_output(P, rank, best_score, best_loss):
     P_final = get_projection(P, rank)
     return {"best_score": best_score, "best_loss": best_loss, "P_before_svd": np.eye(P.shape[0]) - P, "P": P_final}
 
+def prepare_output_twoPs(Pu, Ph, rank, best_score, best_loss):
+    Pu_final = get_projection(Pu, rank)
+    Ph_final = get_projection(Ph, rank)
+    return {"best_score": best_score, 
+            "best_loss": best_loss, 
+            "Pu_before_svd": np.eye(Pu.shape[0]) - Pu, 
+            "Pu": Pu_final, 
+            "P_before_svd": np.eye(Ph.shape[0]) - Ph, 
+            "P": Ph_final}
+
+
 def get_default_predictor(X_train, y_train, device):
     #TODO: change this to just X shape and num_labels
     num_labels = len(set(y_train.tolist()))
@@ -167,7 +190,7 @@ def get_default_predictor(X_train, y_train, device):
 def solve_adv_game(X_train, y_train, X_dev, y_dev, predictor=None, rank=1, device="cpu", out_iters=75000, 
     in_iters_adv=1, in_iters_clf=1, epsilon=0.0015, batch_size=128, evaluate_every=1000, 
     optimizer_class=SGD,  optimizer_params_P={"lr": 0.005, "weight_decay": 1e-4}, 
-    optimizer_params_predictor={"lr": 0.005, "weight_decay": 1e-4}):
+    optimizer_params_predictor={"lr": 0.005, "weight_decay": 1e-4}, torch_outfile=None):
     """
 
     :param X: The input (np array)
@@ -216,7 +239,7 @@ def solve_adv_game(X_train, y_train, X_dev, y_dev, predictor=None, rank=1, devic
     optimizer_predictor = optimizer_class(predictor.parameters(), **optimizer_params_predictor)
     optimizer_P = optimizer_class([P],**optimizer_params_P)
 
-    maj, label_entropy = get_majority_acc_entropy(y_train[:50000])
+    maj, label_entropy = get_majority_acc_entropy(y_train)
     pbar = tqdm.tqdm(range(out_iters), total = out_iters, ascii=True)
     count_examples = 0
     best_P, best_score, best_loss = None, 1, -1
@@ -276,6 +299,12 @@ def solve_adv_game(X_train, y_train, X_dev, y_dev, predictor=None, rank=1, devic
         #if i > 1 and np.abs(best_loss - label_entropy) < epsilon:
                     break
     output = prepare_output(best_P,rank,best_score,best_loss)
+    if torch_outfile is not None:
+        torch.save(
+            {"model_state_dict": predictor.state_dict(), 
+            "optimizer_state_dict": optimizer_predictor.state_dict()}, 
+            torch_outfile
+        )
     return output
 
 def solve_adv_game_param_free(X_train, U_train, y_train, X_dev, U_dev, y_dev, 
@@ -305,7 +334,8 @@ def solve_adv_game_param_free(X_train, U_train, y_train, X_dev, U_dev, y_dev,
         #TODO: did NOT include torch.nn.Sigmoid here because binary clf
         # NOTE: seems like the param version outputs predictor() and those values look
         # like after applying nn.Sigmoid
-        pred = torch.sum(torch.mm(X @ (I-P),torch.t(U)), dim = 1)
+        #pred = torch.sum(torch.mm(X @ (I-P),torch.t(U)), dim = 1)
+        pred = ((X @ P) * (U)).sum(-1)
         bce = bce_loss_fn(pred, y)
         if optimize_P:
             bce = -bce
@@ -399,6 +429,142 @@ def solve_adv_game_param_free(X_train, U_train, y_train, X_dev, U_dev, y_dev,
                     break
     output = prepare_output(best_P,rank,best_score,best_loss)
     return output
+
+def solve_adv_game_param_free_twoPs(X_train, U_train, y_train, X_dev, U_dev, y_dev, 
+    rank=1, device="cpu", out_iters=75000, in_iters_adv=1, in_iters_clf=1, 
+    epsilon=0.0015, batch_size=128, evaluate_every=1000, 
+    optimizer_class=SGD,  optimizer_params_P={"lr": 0.005, "weight_decay": 1e-4}):
+    """
+    :param X: The input (np array)
+    :param Y: the lables (np array)
+    :param X_dev: Dev set (np array)
+    :param Y_dev: Dev labels (np array)
+    :param rank: Number of dimensions to neutralize from the input.
+    :param device:
+    :param out_iters: Number of batches to run
+    :param in_iters_adv: number of iterations for adversary's optimization
+    :param in_iters_clf: number of iterations from the predictor's optimization
+    :param epsilon: stopping criterion .Stops if abs(acc - majority) < epsilon.
+    :param batch_size:
+    :param evaluate_every: After how many batches to evaluate the current adversary.
+    :param optimizer_class: SGD/Adam etc.
+    :param optimizer_params: the optimizer's params (as a dict)
+    :return:
+    """
+
+    def get_loss_fn(X, U, y, Pu, Ph, bce_loss_fn, optimize_Ph=False):
+        I = torch.eye(X_train.shape[1]).to(device)
+        pred = ((X @ Ph) * (U @ Pu)).sum(-1)
+        bce = bce_loss_fn(pred, y)
+        if optimize_Ph:
+            bce = -bce
+        return bce
+
+    logging.info("Loading data to GPU")
+    X_train = torch.from_numpy(X_train).float()
+    U_train = torch.from_numpy(U_train).float()
+    y_train = torch.from_numpy(y_train).float()
+    X_dev = torch.from_numpy(X_dev).float().to(device)
+    U_dev = torch.from_numpy(U_dev).float().to(device)
+    #y_dev = torch.tensor(y_dev).float()
+
+    num_labels = len(set(y_train.tolist()))
+    if num_labels == 2:
+        #predictor = torch.nn.Linear(X_train.shape[1], 1).to(device)
+        bce_loss_fn = torch.nn.BCEWithLogitsLoss()
+        #y_train = y_train
+        #y_dev = y_dev
+    else:
+        #predictor = torch.nn.Linear(X_train.shape[1], num_labels).to(device)
+        bce_loss_fn = torch.nn.CrossEntropyLoss()
+        #y_train = y_train
+        #y_dev = y_dev
+
+    Pu = 1e-1*torch.randn(X_train.shape[1], X_train.shape[1]).to(device)
+    Ph = 1e-1*torch.randn(X_train.shape[1], X_train.shape[1]).to(device)
+    Pu.requires_grad = True
+    Ph.requires_grad = True
+
+    #optimizer_predictor = optimizer_class(predictor.parameters(), **optimizer_params_predictor)
+    optimizer_Pu = optimizer_class([Pu],**optimizer_params_P)
+    optimizer_Ph = optimizer_class([Ph],**optimizer_params_P)
+    
+    maj, label_entropy = get_majority_acc_entropy(y_train)
+    pbar = tqdm.tqdm(range(out_iters), total = out_iters, ascii=True)
+    count_examples = 0
+    best_P, best_score, best_loss = None, 1, -1
+
+    for i in pbar:
+
+        for j in range(in_iters_adv):
+            Pu = symmetric(Pu)
+            Ph = symmetric(Ph)
+            optimizer_Pu.zero_grad()
+            optimizer_Ph.zero_grad()
+
+
+            idx = np.arange(0, X_train.shape[0])
+            np.random.shuffle(idx)
+            X_batch, U_batch, y_batch = X_train[idx[:batch_size]].to(device), U_train[idx[:batch_size]].to(device), y_train[idx[:batch_size]].to(device)
+
+            loss_P = get_loss_fn(X_batch, U_batch, y_batch, symmetric(Pu), symmetric(Ph), bce_loss_fn, optimize_Ph=True)
+            loss_P.backward()
+            optimizer_Ph.step()
+
+            # project
+
+            with torch.no_grad():
+                D, U = torch.linalg.eigh(symmetric(Ph).detach().cpu())
+                D = D.detach().cpu().numpy()
+                D_plus_diag = solve_constraint(D, d=rank)
+                D = torch.tensor(np.diag(D_plus_diag).real).float().to(device)
+                U = U.to(device)
+                Ph.data = U @ D @ U.T
+
+        for j in range(in_iters_clf):
+            Pu = symmetric(Pu)
+            Ph = symmetric(Ph)
+            optimizer_Pu.zero_grad()
+            optimizer_Ph.zero_grad()
+
+            loss_P = get_loss_fn(X_batch, U_batch, y_batch, symmetric(Pu), symmetric(Ph), bce_loss_fn, optimize_Ph=False)
+            loss_P.backward()
+            optimizer_Pu.step()
+
+            # project
+
+            with torch.no_grad():
+                Du, Uu = torch.linalg.eigh(symmetric(Pu).detach().cpu())
+                Du = Du.detach().cpu().numpy()
+                Du_plus_diag = solve_constraint(Du, d=rank)
+                Du = torch.tensor(np.diag(Du_plus_diag).real).float().to(device)
+                Uu = Uu.to(device)
+                Pu.data = Uu @ Du @ Uu.T
+            
+            count_examples += batch_size
+
+        if i % evaluate_every == 0:
+            #pbar.set_description("Evaluating current adversary...")
+            loss_val, score = get_score_param_free_twoPs(X_dev, U_dev, y_dev, Pu.detach().cpu(), Ph.detach().cpu(), rank, device)
+            if loss_val > best_loss:#if np.abs(score - maj) < np.abs(best_score - maj):
+                best_Pu, best_Ph, best_loss = symmetric(Pu).detach().cpu().numpy().copy(), symmetric(Ph).detach().cpu().numpy().copy(), loss_val
+            if np.abs(score - maj) < np.abs(best_score - maj):
+                best_score = score
+                
+            # update progress bar
+            
+            best_so_far = best_score if np.abs(best_score-maj) < np.abs(score-maj) else score
+            
+            pbar.set_description("{:.0f}/{:.0f}. Acc post-projection: {:.3f}%; best so-far: {:.3f}%; Maj: {:.3f}%; Gap: {:.3f}%; best loss: {:.4f}; current loss: {:.4f}".format(i, out_iters, score * 100, best_so_far * 100, maj * 100, np.abs(best_so_far - maj) * 100, best_loss, loss_val))
+            pbar.refresh()  # to show immediately the update
+            time.sleep(0.01)
+
+        if i > 1 and np.abs(best_score - maj) < epsilon:
+        #if i > 1 and np.abs(best_loss - label_entropy) < epsilon:
+                    break
+    output = prepare_output_twoPs(best_Pu, best_Ph, rank, best_score, best_loss)
+    return output
+
 
 if __name__ == "__main__":
     
