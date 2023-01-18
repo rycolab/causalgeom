@@ -64,18 +64,18 @@ def get_args():
     )
     return argparser.parse_args()
 
-#args = get_args()
-#logging.info(args)
+args = get_args()
+logging.info(args)
 
-#RANK = args.k
-RANK = 1
-#RLACE_NITER = args.niter
-RLACE_NITER = 1000
+RANK = args.k
+#RANK = 1
+RLACE_NITER = args.niter
+#RLACE_NITER = 1000
 #NRUNS = args.nruns
-NRUNS = 1
-#SEED = args.seed
-SEED = 0
-DIRECTORY = "testruns"
+NRUNS = 5
+SEED = args.seed
+#SEED = 0
+DIRECTORY = "real_runs"
 
 #%% 
 MODEL_NAME = "bert-base-uncased"
@@ -87,7 +87,9 @@ assert os.path.exists(OUTPUT_DIR), \
     f"Output dir doesn't exist: {OUTPUT_DIR}"
 
 DIAG_RLACE_U_OUTDIR = os.path.join(OUTPUT_DIR, "diag_rlace_u")
-os.mkdir(DIAG_RLACE_U_OUTDIR)
+
+assert os.path.exists(DIAG_RLACE_U_OUTDIR), \
+    f"Torch output dir doesn't exist: {DIAG_RLACE_U_OUTDIR}"
 
 logging.info(
     f"Running: rank {RANK}"
@@ -141,24 +143,6 @@ for i in trange(NRUNS):
     rlace_epsilon = 0.001 # stop 0.1% from majority acc
     rlace_batch_size = 256
     dim = X_train.shape[1]
-
-    #%%
-    #logging.info(f"Training RLACE with usage data two Ps")
-    #start = time.time()
-    #functional_rlace_twoPs_output = solve_adv_game_param_free_twoPs(
-    #    X_train, U_train, y_train, X_val, U_val, y_val, 
-    #    rank=RANK, device=device, 
-    #    out_iters=RLACE_NITER, optimizer_class=rlace_optimizer_class, 
-    #    optimizer_params_P =rlace_optimizer_params_P, 
-    #    epsilon=rlace_epsilon,batch_size=rlace_batch_size
-    #)
-    #end = time.time()
-    #functional_rlace_twoPs_results = full_eval(
-    #    functional_rlace_twoPs_output, 
-    #    X_train, U_train, y_train, 
-    #    X_test, U_test, y_test,
-    #    end - start
-    #)
 
     #%%
     logging.info("Training RLACE with diagnostic data")
@@ -234,7 +218,6 @@ for i in trange(NRUNS):
         run_args = run_args,
         diag_rlace = diag_rlace_results,
         functional_rlace = functional_rlace_results,
-        #functional_rlace_twoPs = functional_rlace_twoPs_results,
         inlp = inlp_results,
         maj_acc_test = get_majority_acc(y_test),
         maj_acc_val = get_majority_acc(y_val),

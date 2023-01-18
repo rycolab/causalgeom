@@ -4,11 +4,13 @@ import pandas as pd
 import os
 import pickle
 
-jsondir = "/cluster/work/cotterell/cguerner/usagebasedprobing/out/realruns"
+jsondir = "/cluster/work/cotterell/cguerner/usagebasedprobing/out/real_runs"
 jsonlist = os.listdir(jsondir)
 jsondictlist = []
 
 for json in jsonlist:
+    if not json.endswith(".pkl"):
+        continue
     with open(os.path.join(jsondir, json), "rb") as f:
         data = pickle.load(f)
         base = {
@@ -58,7 +60,7 @@ for i in range(base.shape[0]):
 #              "lm_acc_original","lm_acc_projected_test","lm_acc_projected_train",
 #              "lm_acc_comp_projected_train","lm_acc_comp_projected_test"]
 #)
-res = data.groupby(["rank","method", "rlace_niter"]).agg(
+acc_res = data.groupby(["rank","method", "rlace_niter"]).agg(
     {
         "run": "count", 
         "maj_acc_test": "mean",
@@ -66,9 +68,34 @@ res = data.groupby(["rank","method", "rlace_niter"]).agg(
         "diag_acc_original":"mean", 
         "diag_acc_projected_test":"mean",
         "diag_acc_projected_train":"mean",
+        "diag_acc_comp_projected_train":"mean",
+        "diag_acc_comp_projected_test":"mean",
         "lm_acc_original":"mean",
         "lm_acc_projected_test":"mean",
-        "lm_acc_projected_train":"mean"
+        "lm_acc_projected_train":"mean",
+        "lm_acc_comp_projected_train":"mean",
+        "lm_acc_comp_projected_test":"mean"
     }
 )
-res.to_csv("../../out/results.csv")
+acc_res.to_csv("../../out/results_acc.csv")
+
+data["optim_best_loss"].fillna(value=0, inplace=True)
+loss_res = data.groupby(["rank","method", "rlace_niter"]).agg(
+    {
+        "run": "count", 
+        "maj_acc_test": "mean",
+        "optim_best_loss":"mean", 
+        "diag_loss_original":"mean", 
+        "diag_loss_projected_test":"mean",
+        "diag_loss_projected_train":"mean",
+        "diag_loss_comp_projected_train":"mean",
+        "diag_loss_comp_projected_test":"mean",
+        "lm_loss_original":"mean",
+        "lm_loss_projected_test":"mean",
+        "lm_loss_projected_train":"mean",
+        "lm_loss_comp_projected_train":"mean",
+        "lm_loss_comp_projected_test":"mean"
+    }
+)
+loss_res.to_csv("../../out/results_loss.csv")
+# %%
