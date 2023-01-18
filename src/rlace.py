@@ -15,6 +15,7 @@ from torch.utils.data import DataLoader, Dataset
 from abc import ABC
 
 from classifiers.classifiers import BinaryParamFreeClf, BinaryParamFreeClfTwoPs
+import functionals
 
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
@@ -24,8 +25,15 @@ NUM_CLFS_IN_EVAL = 3 # change to 1 for large dataset / high dimensionality
 
 def init_classifier():
 
-    return SGDClassifier(loss=EVAL_CLF_PARAMS["loss"], fit_intercept=True, max_iter=EVAL_CLF_PARAMS["max_iter"], tol=EVAL_CLF_PARAMS["tol"], n_iter_no_change=EVAL_CLF_PARAMS["iters_no_change"],
-                        n_jobs=32, alpha=EVAL_CLF_PARAMS["alpha"])
+    return SGDClassifier(
+        loss=EVAL_CLF_PARAMS["loss"], 
+        fit_intercept=True, 
+        max_iter=EVAL_CLF_PARAMS["max_iter"], 
+        tol=EVAL_CLF_PARAMS["tol"], 
+        n_iter_no_change=EVAL_CLF_PARAMS["iters_no_change"],
+        n_jobs=32, 
+        alpha=EVAL_CLF_PARAMS["alpha"]
+    )
                         
 def symmetric(X):
     X.data = 0.5 * (X.data + X.data.T)
@@ -164,9 +172,18 @@ def get_projection(P, rank):
     P_final = np.eye(P.shape[0]) - W.T @ W
     return P_final
 
-def prepare_output(P, rank, best_score, best_loss):
-    P_final = get_projection(P, rank)
-    return {"best_score": best_score, "best_loss": best_loss, "P_before_svd": np.eye(P.shape[0]) - P, "P": P_final}
+def prepare_output(P_loss, P_score, rank, best_score, best_loss, val_results):
+    P_loss_svd = get_projection(P_loss, rank)
+    P_score_svd = get_projection(P_score, rank)
+    return {
+        "best_score": best_score, 
+        "best_loss": best_loss, 
+        "P_before_svd": np.eye(P_loss.shape[0]) - P_loss, 
+        "P": P_loss_svd, 
+        "P_score_before_svd": np.eye(P_score.shape[0]) - P_score, 
+        "P_score": P_score_svd, 
+        "val_results": val_results
+    }
 
 def prepare_output_twoPs(Pu, Ph, rank, best_score, best_loss):
     Pu_final = get_projection(Pu, rank)
@@ -244,6 +261,7 @@ def solve_adv_game(X_train, y_train, X_dev, y_dev, predictor=None, rank=1, devic
     count_examples = 0
     best_P, best_score, best_loss = None, 1, -1
 
+    val_results = []
     for i in pbar:
 
         for j in range(in_iters_adv):
@@ -282,10 +300,12 @@ def solve_adv_game(X_train, y_train, X_dev, y_dev, predictor=None, rank=1, devic
         if i % evaluate_every == 0:
             #pbar.set_description("Evaluating current adversary...")
             loss_val, score = get_score(X_train, y_train, X_dev, y_dev, P.detach().cpu().numpy(), rank)
+            val_results.append((loss_val, score))
+            #TODO: probably want to pick best_score and best_loss in the same if statement (evaluate on one)
             if loss_val > best_loss:#if np.abs(score - maj) < np.abs(best_score - maj):
                 best_P, best_loss = symmetric(P).detach().cpu().numpy().copy(), loss_val
             if np.abs(score - maj) < np.abs(best_score - maj):
-                best_score = score
+                best_P_score, best_score = symmetric(P).detach().cpu().numpy().copy(), score
                 
             # update progress bar
             
@@ -295,10 +315,10 @@ def solve_adv_game(X_train, y_train, X_dev, y_dev, predictor=None, rank=1, devic
             pbar.refresh()  # to show immediately the update
             time.sleep(0.01)
 
-        if i > 1 and np.abs(best_score - maj) < epsilon:
+        #if i > 1 and np.abs(best_score - maj) < epsilon:
         #if i > 1 and np.abs(best_loss - label_entropy) < epsilon:
-                    break
-    output = prepare_output(best_P,rank,best_score,best_loss)
+        #    break
+    output = prepare_output(best_P,best_P_score,rank,best_score,best_loss,val_results)
     if torch_outfile is not None:
         torch.save(
             {"model_state_dict": predictor.state_dict(), 
@@ -307,7 +327,7 @@ def solve_adv_game(X_train, y_train, X_dev, y_dev, predictor=None, rank=1, devic
         )
     return output
 
-def solve_adv_game_param_free(X_train, U_train, y_train, X_dev, U_dev, y_dev, 
+def solve_adv_game_param_free(X_train, U_train, y_train, X_dev, U_dev, y_dev, version,
     rank=1, device="cpu", out_iters=75000, in_iters_adv=1, in_iters_clf=1, 
     epsilon=0.0015, batch_size=128, evaluate_every=1000, 
     optimizer_class=SGD,  optimizer_params_P={"lr": 0.005, "weight_decay": 1e-4}):
@@ -335,11 +355,26 @@ def solve_adv_game_param_free(X_train, U_train, y_train, X_dev, U_dev, y_dev,
         # NOTE: seems like the param version outputs predictor() and those values look
         # like after applying nn.Sigmoid
         #pred = torch.sum(torch.mm(X @ (I-P),torch.t(U)), dim = 1)
-        pred = ((X @ P) * (U)).sum(-1)
+        pred = ((X @ (I-P)) * (U)).sum(-1)
         bce = bce_loss_fn(pred, y)
         if optimize_P:
             bce = -bce
         return bce
+
+    if version == 'positively_functional':
+        functional = functionals.PositivelyFunctional(
+            get_loss_fn, get_score_param_free
+        )
+    elif version == 'negatively_functional':
+        functional = functionals.NegativelyFunctional(
+            get_loss_fn, get_score_param_free
+        )
+    elif version == 'original':
+        functional = functionals.OriginalFunctional(
+            get_loss_fn, get_score_param_free
+        )
+    else:
+        ValueError(f'Received an invalid version ({version}) of functional RLACE')
 
     logging.info("Loading data to GPU")
     X_train = torch.from_numpy(X_train).float()
@@ -372,6 +407,7 @@ def solve_adv_game_param_free(X_train, U_train, y_train, X_dev, U_dev, y_dev,
     count_examples = 0
     best_P, best_score, best_loss = None, 1, -1
 
+    val_results = []
     for i in pbar:
 
         for j in range(in_iters_adv):
@@ -382,7 +418,12 @@ def solve_adv_game_param_free(X_train, U_train, y_train, X_dev, U_dev, y_dev,
             np.random.shuffle(idx)
             X_batch, U_batch, y_batch = X_train[idx[:batch_size]].to(device), U_train[idx[:batch_size]].to(device), y_train[idx[:batch_size]].to(device)
 
-            loss_P = get_loss_fn(X_batch, U_batch, y_batch, symmetric(P), bce_loss_fn, optimize_P=True)
+            loss_P = functional.get_loss(
+                X_batch, U_batch, y_batch, 
+                symmetric(P), bce_loss_fn,
+                device
+            )
+
             loss_P.backward()
             optimizer_P.step()
 
@@ -410,24 +451,30 @@ def solve_adv_game_param_free(X_train, U_train, y_train, X_dev, U_dev, y_dev,
 
         if i % evaluate_every == 0:
             #pbar.set_description("Evaluating current adversary...")
-            loss_val, score = get_score_param_free(X_dev, U_dev, y_dev, P.detach().cpu(), rank, device)
-            if loss_val > best_loss:#if np.abs(score - maj) < np.abs(best_score - maj):
+            #loss_val, score = get_score_param_free(X_dev, U_dev, y_dev, P.detach().cpu(), rank, device)
+            loss_val, score = functional.get_loss_and_score(
+                X_dev, U_dev, y_dev, P, rank, device
+            )
+            val_results.append((loss_val, score))
+            if functional.is_best_loss(loss_val):#if np.abs(score - maj) < np.abs(best_score - maj):
                 best_P, best_loss = symmetric(P).detach().cpu().numpy().copy(), loss_val
-            if np.abs(score - maj) < np.abs(best_score - maj):
-                best_score = score
+            #if np.abs(score - maj) < np.abs(best_score - maj):
+            if functional.is_best_acc(score):
+                best_P_score, best_score = symmetric(P).detach().cpu().numpy().copy(), score
                 
             # update progress bar
             
-            best_so_far = best_score if np.abs(best_score-maj) < np.abs(score-maj) else score
-            
-            pbar.set_description("{:.0f}/{:.0f}. Acc post-projection: {:.3f}%; best so-far: {:.3f}%; Maj: {:.3f}%; Gap: {:.3f}%; best loss: {:.4f}; current loss: {:.4f}".format(i, out_iters, score * 100, best_so_far * 100, maj * 100, np.abs(best_so_far - maj) * 100, best_loss, loss_val))
+            pbar.set_description(
+                "{:.0f}/{:.0f}. Acc post-projection: {:.3f}%; best so-far: {:.3f}%; Maj: {:.3f}%; Gap: {:.3f}%; best loss: {:.4f}; current loss: {:.4f}".format(
+                    i, out_iters, score * 100, best_score * 100, 
+                    maj * 100, np.abs(best_score - maj) * 100, best_loss, loss_val))
             pbar.refresh()  # to show immediately the update
             time.sleep(0.01)
 
-        if i > 1 and np.abs(best_score - maj) < epsilon:
+        #if i > 1 and np.abs(best_score - maj) < epsilon:
         #if i > 1 and np.abs(best_loss - label_entropy) < epsilon:
-                    break
-    output = prepare_output(best_P,rank,best_score,best_loss)
+        #            break
+    output = prepare_output(best_P,best_P_score,rank,best_score,best_loss,val_results)
     return output
 
 def solve_adv_game_param_free_twoPs(X_train, U_train, y_train, X_dev, U_dev, y_dev, 
@@ -454,7 +501,7 @@ def solve_adv_game_param_free_twoPs(X_train, U_train, y_train, X_dev, U_dev, y_d
 
     def get_loss_fn(X, U, y, Pu, Ph, bce_loss_fn, optimize_Ph=False):
         I = torch.eye(X_train.shape[1]).to(device)
-        pred = ((X @ Ph) * (U @ Pu)).sum(-1)
+        pred = ((X @ (I-Ph)) * (U @ (I-Pu))).sum(-1)
         bce = bce_loss_fn(pred, y)
         if optimize_Ph:
             bce = -bce

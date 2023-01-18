@@ -75,7 +75,7 @@ RLACE_NITER = args.niter
 NRUNS = 5
 SEED = args.seed
 #SEED = 0
-DIRECTORY = "real_runs"
+DIRECTORY = "real_runs_18"
 
 #%% 
 MODEL_NAME = "bert-base-uncased"
@@ -92,7 +92,7 @@ assert os.path.exists(DIAG_RLACE_U_OUTDIR), \
     f"Torch output dir doesn't exist: {DIAG_RLACE_U_OUTDIR}"
 
 logging.info(
-    f"Running: rank {RANK}"
+    f"Running: rank {RANK} niter {RLACE_NITER}"
 )
 
 TRAIN_OBS = 30000
@@ -161,27 +161,33 @@ for i in trange(NRUNS):
     end = time.time()
     diag_rlace_results = full_eval(diag_rlace_output, 
                         X_train, U_train, y_train, 
+                        X_val, U_val, y_val,
                         X_test, U_test, y_test, end-start)
 
     #%%
-    logging.info(f"Training RLACE with usage data")
-    start = time.time()
-    functional_rlace_output = solve_adv_game_param_free(
-        X_train, U_train, y_train, X_val, U_val, y_val, 
-        rank=RANK, device=device, 
-        out_iters=RLACE_NITER, optimizer_class=rlace_optimizer_class, 
-        optimizer_params_P =rlace_optimizer_params_P, 
-        epsilon=rlace_epsilon,batch_size=rlace_batch_size
-    )
-    end = time.time()
-    functional_rlace_results = full_eval(
-        functional_rlace_output, 
-        X_train, U_train, y_train, 
-        X_test, U_test, y_test,
-        end - start
-    )
+    versions = ["original", "positively_functional", "negatively_functional"]
+    functional_rlace_results = {}
+    for version in versions:
+        logging.info(f"Training functional RLACE version: {version} ")
+        start = time.time()
+        functional_rlace_output = solve_adv_game_param_free(
+            X_train, U_train, y_train, X_val, U_val, y_val, version,
+            rank=RANK, device=device, 
+            out_iters=RLACE_NITER, optimizer_class=rlace_optimizer_class, 
+            optimizer_params_P =rlace_optimizer_params_P, 
+            epsilon=rlace_epsilon,batch_size=rlace_batch_size
+        )
+        end = time.time()
+        functional_rlace_results[version] = full_eval(
+            functional_rlace_output, 
+            X_train, U_train, y_train, 
+            X_val, U_val, y_val,
+            X_test, U_test, y_test,
+            end - start
+        )
 
     #%%
+    """
     logging.info("Training INLP with diagnostic data")
     num_classifiers = RANK
     classifier_class = SGDClassifier #Perceptron
@@ -210,7 +216,7 @@ for i in trange(NRUNS):
 
     #    P_Nwi = I - P_Rwi
     #    P_by_product = P_Nwi.dot(P_by_product)
-
+    """
 
     #%%
     full_results = dict(
@@ -218,7 +224,7 @@ for i in trange(NRUNS):
         run_args = run_args,
         diag_rlace = diag_rlace_results,
         functional_rlace = functional_rlace_results,
-        inlp = inlp_results,
+        #inlp = inlp_results,
         maj_acc_test = get_majority_acc(y_test),
         maj_acc_val = get_majority_acc(y_val),
         maj_acc_train = get_majority_acc(y_train)

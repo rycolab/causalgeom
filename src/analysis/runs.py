@@ -25,13 +25,13 @@ for json in jsonlist:
         diag_rlace_dict = data["diag_rlace"]
         diag_rlace_dict["method"] = "diag_rlace"
         functional_rlace_dict = data["functional_rlace"]
-        functional_rlace_dict["method"] = "functional_rlace"
-        jsondict = {
-            "base": base,
-            "inlp": inlp_dict,
-            "diag_rlace": diag_rlace_dict,
-            "functional_rlace": functional_rlace_dict
-        }
+        #functional_rlace_dict["method"] = "functional_rlace"
+        #jsondict = {
+        #    "base": base,
+        #    "inlp": inlp_dict,
+        #    "diag_rlace": diag_rlace_dict,
+        #    "functional_rlace": functional_rlace_dict
+        #}
         jsondictlist.append(jsondict)
 
 data = pd.DataFrame.from_records(jsondictlist)
