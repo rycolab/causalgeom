@@ -22,7 +22,7 @@ with open(LINZEN_RAW,'r') as f:
         orig = record['orig_sentence']
         n_i  = record['n_intervening']
         n_di = record['n_diff_intervening']
-        vpos= record['verb_pos']
+        vpos = record['verb_pos']
         vindex = int(record['verb_index'])-1
         #if n_i != n_di: continue
         #if n_di in cases_we_care_about:
@@ -33,7 +33,7 @@ with open(LINZEN_RAW,'r') as f:
         sorig[vindex] = "[MASK]"
         masked = " ".join(sorig)
         #print("\t".join([n_di,orig,masked,verb,iverb]))
-        data.append([n_di,orig,masked,verb,iverb,vpos])
+        data.append([n_di,orig,masked,verb,iverb,vpos,vindex])
 
 # %% Count is/are
 #count = 0 
@@ -46,3 +46,4 @@ with open(LINZEN_PREPROCESSED, "w", newline="") as outfile:
     writer = csv.writer(outfile, delimiter = '\t', lineterminator='\n')
     for record in tqdm(data):
         writer.writerow(record)
+# %%

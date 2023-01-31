@@ -20,7 +20,13 @@ import functionals
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
 
-EVAL_CLF_PARAMS = {"loss": "log_loss", "tol": 1e-4, "iters_no_change": 15, "alpha": 1e-4, "max_iter": 25000}
+EVAL_CLF_PARAMS = {
+    "loss": "log_loss", 
+    "tol": 1e-4, 
+    "iters_no_change": 15, 
+    "alpha": 1e-4, 
+    "max_iter": 25000
+}
 NUM_CLFS_IN_EVAL = 3 # change to 1 for large dataset / high dimensionality
 
 def init_classifier():
@@ -39,7 +45,7 @@ def symmetric(X):
     X.data = 0.5 * (X.data + X.data.T)
     return X
 
-def get_score(X_train, y_train, X_dev, y_dev, P, rank):
+def run_validation(X_train, y_train, X_dev, y_dev, P, rank):
     P_svd = get_projection(P, rank)
     
     loss_vals = []
@@ -59,45 +65,6 @@ def get_score(X_train, y_train, X_dev, y_dev, P, rank):
 def get_score_param_free(X_dev, U_dev, y_dev, P, rank, device):
     P_svd = torch.Tensor(get_projection(P, rank)).to(device)
     clf = BinaryParamFreeClf(X_dev, U_dev, y_dev, P_svd, device)
-
-    #loss_vals = []
-    #accs = []
-    
-    #for i in range(NUM_CLFS_IN_EVAL):
-    #    clf = init_classifier()
-    #    clf.fit(X_train@P_svd, y_train)
-    #    y_pred = clf.predict_proba(X_dev@P_svd)
-    #    loss = sklearn.metrics.log_loss(y_dev, y_pred)
-    #    loss_vals.append(loss)
-    #    accs.append(clf.score(X_dev@P_svd, y_dev))
-    #ipdb.set_trace()
-    
-    #new but old
-    #clf = torch.nn.Sigmoid()
-
-    # batching of logits
-    #val_size = X_dev.shape[0]
-    #idx = np.arange(0, val_size)
-    #np.random.shuffle(idx)
-    #nbatches = int(val_size/256)
-
-    #logits_list = []
-    #for i in tqdm.trange(nbatches):
-    #    X_batch, U_batch = X_dev[idx[i*batch_size:(i+1)*batch_size]].to(device), U_dev[idx[i*batch_size:(i+1)*batch_size]].to(device)
-    #    logits = ((X_batch @ P_svd) * U_batch).sum(-1).cpu()
-    #    logits_list.append(logits)
-    #torch.stack(logits_list, dim=0)
-
-    #logits = ((X_dev @ P_svd) * U_dev).sum(-1).cpu()
-    #y_pred_1 = clf(logits).numpy()
-    
-    #loss = sklearn.metrics.log_loss(y_dev, y_pred_1)
-    # for multiclass
-    #loss = sklearn.metrics.log_loss(y_dev, y_pred_probs)
-    
-    # getting prediction
-    #y_pred_class = (y_pred_1>0.5).astype(float)
-    #acc =  1 - (np.sum(np.not_equal(y_pred_class, y_dev)) / y_dev.shape[0])
 
     return clf.loss_P(), clf.score_P()
 
@@ -172,17 +139,16 @@ def get_projection(P, rank):
     P_final = np.eye(P.shape[0]) - W.T @ W
     return P_final
 
-def prepare_output(P_loss, P_score, rank, best_score, best_loss, val_results):
+def prepare_output(P_loss, P_acc, rank, best_acc, best_loss):
     P_loss_svd = get_projection(P_loss, rank)
-    P_score_svd = get_projection(P_score, rank)
+    P_acc_svd = get_projection(P_acc, rank)
     return {
-        "best_score": best_score, 
         "best_loss": best_loss, 
+        "best_acc": best_acc, 
         "P_before_svd": np.eye(P_loss.shape[0]) - P_loss, 
         "P": P_loss_svd, 
-        "P_score_before_svd": np.eye(P_score.shape[0]) - P_score, 
-        "P_score": P_score_svd, 
-        "val_results": val_results
+        "P_acc_before_svd": np.eye(P_acc.shape[0]) - P_acc, 
+        "P_acc": P_acc_svd
     }
 
 def prepare_output_twoPs(Pu, Ph, rank, best_score, best_loss):
@@ -207,7 +173,7 @@ def get_default_predictor(X_train, y_train, device):
 def solve_adv_game(X_train, y_train, X_dev, y_dev, predictor=None, rank=1, device="cpu", out_iters=75000, 
     in_iters_adv=1, in_iters_clf=1, epsilon=0.0015, batch_size=128, evaluate_every=1000, 
     optimizer_class=SGD,  optimizer_params_P={"lr": 0.005, "weight_decay": 1e-4}, 
-    optimizer_params_predictor={"lr": 0.005, "weight_decay": 1e-4}, torch_outfile=None):
+    optimizer_params_predictor={"lr": 0.005, "weight_decay": 1e-4}, torch_outfile=None, wb=False):
     """
 
     :param X: The input (np array)
@@ -261,7 +227,6 @@ def solve_adv_game(X_train, y_train, X_dev, y_dev, predictor=None, rank=1, devic
     count_examples = 0
     best_P, best_score, best_loss = None, 1, -1
 
-    val_results = []
     for i in pbar:
 
         for j in range(in_iters_adv):
@@ -299,26 +264,32 @@ def solve_adv_game(X_train, y_train, X_dev, y_dev, predictor=None, rank=1, devic
 
         if i % evaluate_every == 0:
             #pbar.set_description("Evaluating current adversary...")
-            loss_val, score = get_score(X_train, y_train, X_dev, y_dev, P.detach().cpu().numpy(), rank)
-            val_results.append((loss_val, score))
+            loss_val, acc_val = run_validation(X_train, y_train, X_dev, y_dev, P.detach().cpu().numpy(), rank)
+            if wb:
+                wandb.log({"val/loss": loss_val, "val/acc": acc_val})
             #TODO: probably want to pick best_score and best_loss in the same if statement (evaluate on one)
             if loss_val > best_loss:#if np.abs(score - maj) < np.abs(best_score - maj):
                 best_P, best_loss = symmetric(P).detach().cpu().numpy().copy(), loss_val
-            if np.abs(score - maj) < np.abs(best_score - maj):
-                best_P_score, best_score = symmetric(P).detach().cpu().numpy().copy(), score
+            if np.abs(acc_val - maj) < np.abs(best_acc - maj):
+                best_P_acc, best_acc = symmetric(P).detach().cpu().numpy().copy(), acc_val
                 
             # update progress bar
-            
-            best_so_far = best_score if np.abs(best_score-maj) < np.abs(score-maj) else score
-            
-            pbar.set_description("{:.0f}/{:.0f}. Acc post-projection: {:.3f}%; best so-far: {:.3f}%; Maj: {:.3f}%; Gap: {:.3f}%; best loss: {:.4f}; current loss: {:.4f}".format(i, out_iters, score * 100, best_so_far * 100, maj * 100, np.abs(best_so_far - maj) * 100, best_loss, loss_val))
+            pbar.set_description(
+                "{:.0f}/{:.0f}. Acc post-projection: {:.3f}%; best so-far: {:.3f}%;"
+                " Maj: {:.3f}%; Gap: {:.3f}%; best loss: {:.4f}; current loss: {:.4f}".format(
+                    i, out_iters, acc_val * 100, best_acc * 100, maj * 100, 
+                    np.abs(best_acc - maj) * 100, best_loss, loss_val
+                )
+            )
             pbar.refresh()  # to show immediately the update
             time.sleep(0.01)
 
         #if i > 1 and np.abs(best_score - maj) < epsilon:
         #if i > 1 and np.abs(best_loss - label_entropy) < epsilon:
         #    break
-    output = prepare_output(best_P,best_P_score,rank,best_score,best_loss,val_results)
+    output = prepare_output(
+        best_P, best_P_acc, rank, best_acc, best_loss
+    )
     if torch_outfile is not None:
         torch.save(
             {"model_state_dict": predictor.state_dict(), 
