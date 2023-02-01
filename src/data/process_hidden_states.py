@@ -189,6 +189,6 @@ if __name__=="__main__":
         f"Hidden state filedir doesn't exist: {FILEDIR}"
 
     OUTFILE = (f"/cluster/work/cotterell/cguerner/usagebasedprobing/"
-                f"datasets/processed/{DATASET_NAME}_{MODEL_NAME}_shauli.pkl")
+                f"datasets/processed/{DATASET_NAME}_{MODEL_NAME}.pkl")
     
     process_hidden_states(FILEDIR, OUTFILE, nbatches=args.nbatches)
