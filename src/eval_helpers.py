@@ -93,9 +93,9 @@ def full_eval(output, X_train, U_train, y_train, X_val, U_val, y_val, X_test, U_
         Pu = None
 
     try:
-        P_score = output["P_score"]
+        P_acc = output["P_acc"]
     except KeyError:
-        P_score = None
+        P_acc = None
     
     try:
         val_results = output["val_results"]
@@ -103,11 +103,11 @@ def full_eval(output, X_train, U_train, y_train, X_val, U_val, y_val, X_test, U_
         val_results = None
         
     results["P"] = P
-    results["P_score"] = P_score
+    results["P_acc"] = P_acc
     results["Pu"] = Pu
     results["val_results"] = val_results
     results["runtime"] = runtime
-    results["optim_best_acc"] = output["best_score"]
+    results["optim_best_acc"] = output["best_acc"]
     results["optim_best_loss"] = output.get("best_loss", None)
     
     results_diag = eval_diagnostic(P, X_train, y_train, X_val, y_val, X_test, y_test)

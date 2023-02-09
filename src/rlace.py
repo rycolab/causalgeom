@@ -10,6 +10,7 @@ import ipdb
 import warnings
 import logging
 import coloredlogs
+import wandb
 
 from torch.utils.data import DataLoader, Dataset
 from abc import ABC
@@ -175,7 +176,6 @@ def solve_adv_game(X_train, y_train, X_dev, y_dev, predictor=None, rank=1, devic
     optimizer_class=SGD,  optimizer_params_P={"lr": 0.005, "weight_decay": 1e-4}, 
     optimizer_params_predictor={"lr": 0.005, "weight_decay": 1e-4}, torch_outfile=None, wb=False):
     """
-
     :param X: The input (np array)
     :param Y: the lables (np array)
     :param X_dev: Dev set (np array)
@@ -225,7 +225,7 @@ def solve_adv_game(X_train, y_train, X_dev, y_dev, predictor=None, rank=1, devic
     maj, label_entropy = get_majority_acc_entropy(y_train)
     pbar = tqdm.tqdm(range(out_iters), total = out_iters, ascii=True)
     count_examples = 0
-    best_P, best_score, best_loss = None, 1, -1
+    best_P, best_P_acc, best_acc, best_loss = None, None, 1, -1
 
     for i in pbar:
 
@@ -266,7 +266,8 @@ def solve_adv_game(X_train, y_train, X_dev, y_dev, predictor=None, rank=1, devic
             #pbar.set_description("Evaluating current adversary...")
             loss_val, acc_val = run_validation(X_train, y_train, X_dev, y_dev, P.detach().cpu().numpy(), rank)
             if wb:
-                wandb.log({"val/loss": loss_val, "val/acc": acc_val})
+                wandb.log({"diag_rlace/val/loss": loss_val, 
+                            "diag_rlace/val/acc": acc_val})
             #TODO: probably want to pick best_score and best_loss in the same if statement (evaluate on one)
             if loss_val > best_loss:#if np.abs(score - maj) < np.abs(best_score - maj):
                 best_P, best_loss = symmetric(P).detach().cpu().numpy().copy(), loss_val

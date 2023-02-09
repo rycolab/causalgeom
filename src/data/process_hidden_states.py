@@ -15,19 +15,29 @@ coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
 
 
-#%% Label creation
-def format_sample(sample):
-    hs, verb, iverb, verb_pos = sample
-    if verb_pos == "VBZ":
+#%% BATCH and SAMPLE processing
+
+## MASKED 
+def format_sample_masked(sample):
+    hs = sample["hs"]
+    verb = sample["verb_embedding"]
+    iverb = sample["iverb_embedding"]
+    verb_pos = sample["verb_pos"]
+    max_tokens = count_verb_tokens(sample)
+    if verb_pos == "VBZ" and max_tokens == 1:
         y = 0
         u = iverb - verb
-    elif verb_pos == "VBP":
+        return (hs, u, y)
+    elif verb_pos == "VBP" and max_tokens == 1:
         y = 1
         u = verb - iverb
+        return (hs, u, y)
+    elif max_tokens > 1:
+        return None 
     else:
         raise ValueError(f"Unknown verb POS tag: {verb_pos}")
-    return (hs, u, y)
 
+## AR
 def count_verb_tokens(sample):
     return max(
         len(sample["input_ids_verb"]), 
@@ -35,7 +45,6 @@ def count_verb_tokens(sample):
     )
 
 def format_sample_ar(sample):
-    #TODO: debug into this
     hs = sample["verb_hs"][0,:]
     verb = sample["verb_embedding"]
     iverb = sample["iverb_embedding"]
@@ -54,19 +63,43 @@ def format_sample_ar(sample):
     else:
         raise ValueError(f"Unknown verb POS tag: {verb_pos}")
 
-def format_batch(batch):
+## VERBS
+def format_sample_verbs(sample):
+    """ Returns verb and iverb input ids: (singular, plural)
+    """
+    verb_pos = sample["verb_pos"]
+    verb = sample["verb"]
+    iverb = sample["iverb"]
+    id_verb = sample["input_ids_verb"]
+    id_iverb = sample["input_ids_iverb"]
+    if verb_pos == "VBZ":
+        return (verb, id_verb, iverb, id_iverb)
+    elif verb_pos == "VBP":
+        return (iverb, id_iverb, verb, id_verb)
+    else:
+        raise ValueError(f"Unknown verb POS tag: {verb_pos}")
+
+## HANDLER
+def format_batch_handler(batch_data, out_type):
     formatted_batch = []
     count_drops = 0
-    for sample in batch:
-        formatted_sample = format_sample_ar(sample)
+    for sample in batch_data:
+        if out_type == "ar": 
+            formatted_sample = format_sample_ar(sample)
+        elif out_type == "masked":
+            formatted_sample = format_sample_masked(sample)
+        else:
+            formatted_sample = format_sample_verbs(sample)
+        # NOTE: this is only needed for AR, mb adapt MASKED
         if formatted_sample is None:
             count_drops+=1
         else:
             formatted_batch.append(formatted_sample)
-        #formatted_batch.append(format_sample_shauli(sample))
     return formatted_batch, count_drops
 
-def create_temp_files(batch_file_dir, tempdir, nbatches=None, temp_nbatches=100):
+
+#%% FILE HANDLERS
+def create_temp_files(batch_file_dir, tempdir, out_type, nbatches=None, temp_nbatches=100):
     """ Loops through batch_file_dir batch npy files containing hidden states,
     concatenates them, and exports temporary files containing 100 batches each
     into tempdir
@@ -83,7 +116,9 @@ def create_temp_files(batch_file_dir, tempdir, nbatches=None, temp_nbatches=100)
     for i, filename in enumerate(tqdm(files)):
         filepath = os.path.join(batch_file_dir, filename)
         with open(filepath, 'rb') as f:      
-            batch_data, drop_count = format_batch(pickle.load(f))
+            batch_data, drop_count = format_batch_handler(
+                pickle.load(f), out_type
+            )
             total_drop_count += drop_count
         if (i + 1) % temp_nbatches == 0 or i == len(files)-1:
             data = data + batch_data
@@ -122,16 +157,15 @@ def concat_temp_files(tempdir):
     return all_temps
 
 #%%
-def process_hidden_states(batch_file_dir, output_file, nbatches=None, delete_batch_dir=False):
+def process_hidden_states(batch_file_dir, output_file, out_type, nbatches=None, delete_batch_dir=False):
     """ Reads batch files containing hidden states and saves concatenated
     H matrix. Optionally deletes directory containing batch files.
     """
-
     OUTPUT_DIR = os.path.dirname(output_file)
     TEMPDIR = os.path.join(OUTPUT_DIR, "temp")
     os.mkdir(TEMPDIR)
 
-    create_temp_files(batch_file_dir, TEMPDIR, nbatches=nbatches)
+    create_temp_files(batch_file_dir, TEMPDIR, out_type, nbatches=nbatches)
     data = concat_temp_files(TEMPDIR)
 
     with open(output_file, 'wb') as f:
@@ -152,16 +186,23 @@ def process_hidden_states(batch_file_dir, output_file, nbatches=None, delete_bat
 def get_args():
     argparser = argparse.ArgumentParser(description='Process hidden states')
     argparser.add_argument(
-        "--dataset", 
+        "-dataset", 
         type=str,
         choices=["linzen"],
+        default="linzen",
         help="Dataset to extract counts from"
     )
     argparser.add_argument(
-        "--model",
+        "-model",
         type=str,
         choices=["bert-base-uncased", "gpt2"],
         help="MultiBERTs checkpoint for tokenizer and model"
+    )
+    argparser.add_argument(
+        "-outtype",
+        type=str,
+        choices=["full", "verbs"],
+        help="Export full dataset for probe training or just verbs"
     )
     argparser.add_argument(
         "-nbatches",
@@ -177,10 +218,18 @@ if __name__=="__main__":
     args = get_args()
     logging.info(args)
 
-    DATASET_NAME = "linzen"
-    MODEL_NAME = "gpt2"
+    DATASET_NAME = args.dataset
+    MODEL_NAME = args.model
+    OUT_TYPE = args.outtype
     
-    logging.info(f"Creating processed dataset for dataset {DATASET_NAME}, model {MODEL_NAME}.")
+    if MODEL_NAME == "gpt2" and OUT_TYPE == "full":
+        OUT_TYPE = "ar"
+    elif MODEL_NAME == "bert-base-uncased" and OUT_TYPE == "full":
+        OUT_TYPE = "masked"
+
+    assert OUT_TYPE in ["ar", "masked", "verbs"], "Wrong outtype"
+
+    logging.info(f"Creating {OUT_TYPE} dataset for raw data: {DATASET_NAME}, model {MODEL_NAME}.")
 
     FILEDIR = (f"/cluster/work/cotterell/cguerner/usagebasedprobing/"
                 f"out/hidden_states/{DATASET_NAME}/{MODEL_NAME}")
@@ -189,6 +238,6 @@ if __name__=="__main__":
         f"Hidden state filedir doesn't exist: {FILEDIR}"
 
     OUTFILE = (f"/cluster/work/cotterell/cguerner/usagebasedprobing/"
-                f"datasets/processed/{DATASET_NAME}_{MODEL_NAME}.pkl")
+                f"datasets/processed/{DATASET_NAME}_{MODEL_NAME}_{OUT_TYPE}.pkl")
     
-    process_hidden_states(FILEDIR, OUTFILE, nbatches=args.nbatches)
+    process_hidden_states(FILEDIR, OUTFILE, OUT_TYPE, nbatches=args.nbatches)

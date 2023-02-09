@@ -47,6 +47,12 @@ def get_args():
         help="Directory for exporting run eval"
     )
     argparser.add_argument(
+        "-model",
+        type=str,
+        choices=["gpt2", "bert-base-uncased"],
+        help="Model used to extract hidden states & embeddings"
+    )
+    argparser.add_argument(
         "-k",
         type=int,
         help="Rank of "
@@ -66,7 +72,7 @@ def get_args():
         type=int,
         help="Seed for shuffling data"
     )
-    parser.add_argument(
+    argparser.add_argument(
         '-wbn', 
         dest='wandb_name', 
         default="", 
@@ -78,6 +84,9 @@ def get_args():
 args = get_args()
 logging.info(args)
 
+
+MODEL_NAME = args.model
+#MODEL_NAME = "gpt2"
 RANK = args.k
 #RANK = 1
 RLACE_NITER = args.niter
@@ -87,25 +96,27 @@ NRUNS = 5
 SEED = args.seed
 #SEED = 0
 DIRECTORY = args.outdir
-#DIRECTORY = "real_runs_18"
+#DIRECTORY = "testruns"
 WBN = args.wandb_name
+#WBN = "test"
+
+
 
 #%% 
-MODEL_NAME = "bert-base-uncased"
 DATASET_NAME = "linzen"
 DATASET = f"/cluster/work/cotterell/cguerner/usagebasedprobing/datasets/processed/{DATASET_NAME}_{MODEL_NAME}.pkl"
-OUTPUT_DIR = f"/cluster/work/cotterell/cguerner/usagebasedprobing/out/{DIRECTORY}/"
+OUTPUT_DIR = f"/cluster/work/cotterell/cguerner/usagebasedprobing/out/run_output/{MODEL_NAME}/{DIRECTORY}/"
 
-assert os.path.exists(OUTPUT_DIR), \
-    f"Output dir doesn't exist: {OUTPUT_DIR}"
+assert not os.path.exists(OUTPUT_DIR), \
+    f"Output dir exists: {OUTPUT_DIR}"
+
+os.mkdir(OUTPUT_DIR)
 
 DIAG_RLACE_U_OUTDIR = os.path.join(OUTPUT_DIR, "diag_rlace_u")
-
-assert os.path.exists(DIAG_RLACE_U_OUTDIR), \
-    f"Torch output dir doesn't exist: {DIAG_RLACE_U_OUTDIR}"
+os.mkdir(DIAG_RLACE_U_OUTDIR)
 
 logging.info(
-    f"Running: rank {RANK} niter {RLACE_NITER}"
+    f"Running: model {MODEL_NAME}, rank {RANK}, niter {RLACE_NITER}, wandb {WBN}"
 )
 
 TRAIN_OBS = 30000
@@ -125,23 +136,28 @@ run_args = {
     "test_obs": TEST_OBS
 }
 
-if WBN:
-    wandb.init(
-        project="usagebasedprobing", 
-        entity="cguerner",
-        name=WBN
-    )
-    wandb.config.update(run_args)
-    WB = True
-else:
-    WB = False
+#%%
+#if WBN:
+#    wandb.init(
+#        project="usagebasedprobing", 
+#        entity="cguerner",
+#        name=WBN,
+#        reinit=True
+#    )
+#    wandb.config.update(run_args)
+#    WB = True
+#else:
+#    WB = False
 
 #%%
 with open(DATASET, 'rb') as f:      
     data = pd.DataFrame(pickle.load(f), columns = ["h", "u", "y"])
 
 #%%
-X = np.array([x for x in data["h"]])
+if MODEL_NAME == "gpt2":
+    X = np.array([x.numpy() for x in data["h"]])
+else:
+    X = np.array([x for x in data["h"]])
 U = np.array([x for x in data["u"]])
 y = np.array([yi for yi in data["y"]])
 del data
@@ -150,6 +166,14 @@ np.random.seed(SEED)
 #%%
 for i in trange(NRUNS):
         
+    if WBN:
+        run = wandb.init(
+            project="usagebasedprobing", 
+            entity="cguerner",
+            name=WBN+f"_run_{i}",
+            reinit=True
+        )
+
     #%%
     idx = np.arange(0, X.shape[0])
     np.random.shuffle(idx)
@@ -267,5 +291,10 @@ for i in trange(NRUNS):
 
     logging.info(f"Exported {outfile_path}")
 
+    if WB:
+        run.finish()
+
 
 logging.info("Done")
+
+# %%
