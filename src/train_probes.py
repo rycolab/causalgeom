@@ -65,6 +65,7 @@ def get_args():
     argparser.add_argument(
         "-nruns",
         type=int,
+        default=3,
         help="Number of runs of the experiment"
     )
     argparser.add_argument(
@@ -84,36 +85,42 @@ def get_args():
 args = get_args()
 logging.info(args)
 
-
 MODEL_NAME = args.model
-#MODEL_NAME = "gpt2"
 RANK = args.k
-#RANK = 1
 RLACE_NITER = args.niter
-#RLACE_NITER = 1000
-NRUNS = 5
-#NRUNS = args.nruns
+NRUNS = args.nruns
 SEED = args.seed
-#SEED = 0
 DIRECTORY = args.outdir
-#DIRECTORY = "testruns"
 WBN = args.wandb_name
+#MODEL_NAME = "gpt2" #"bert-base-uncased"
+#RANK = 1
+#RLACE_NITER = 3000
+#NRUNS = 3
+#SEED = 0
+#DIRECTORY = "testruns"
 #WBN = "test"
-
-
 
 #%% 
 DATASET_NAME = "linzen"
-DATASET = f"/cluster/work/cotterell/cguerner/usagebasedprobing/datasets/processed/{DATASET_NAME}_{MODEL_NAME}.pkl"
+
+if MODEL_NAME == "gpt2":
+    DATASET = f"/cluster/work/cotterell/cguerner/usagebasedprobing/datasets/processed/{DATASET_NAME}_{MODEL_NAME}_ar.pkl"
+elif MODEL_NAME == "bert-base-uncased":
+    DATASET = f"/cluster/work/cotterell/cguerner/usagebasedprobing/datasets/processed/{DATASET_NAME}_{MODEL_NAME}_masked.pkl"
+else:
+    DATASET = None
+
 OUTPUT_DIR = f"/cluster/work/cotterell/cguerner/usagebasedprobing/out/run_output/{MODEL_NAME}/{DIRECTORY}/"
 
-assert not os.path.exists(OUTPUT_DIR), \
-    f"Output dir exists: {OUTPUT_DIR}"
-
-os.mkdir(OUTPUT_DIR)
+if not os.path.exists(OUTPUT_DIR):
+    os.mkdir(OUTPUT_DIR)
+    logging.info(f"Created output dir: {OUTPUT_DIR}")
+else: 
+    logging.info(f"Output dir exists: {OUTPUT_DIR}")
 
 DIAG_RLACE_U_OUTDIR = os.path.join(OUTPUT_DIR, "diag_rlace_u")
-os.mkdir(DIAG_RLACE_U_OUTDIR)
+if not os.path.exists(DIAG_RLACE_U_OUTDIR):
+    os.mkdir(DIAG_RLACE_U_OUTDIR)
 
 logging.info(
     f"Running: model {MODEL_NAME}, rank {RANK}, niter {RLACE_NITER}, wandb {WBN}"
@@ -137,17 +144,16 @@ run_args = {
 }
 
 #%%
-#if WBN:
-#    wandb.init(
-#        project="usagebasedprobing", 
-#        entity="cguerner",
-#        name=WBN,
-#        reinit=True
-#    )
-#    wandb.config.update(run_args)
-#    WB = True
-#else:
-#    WB = False
+if WBN:
+    wandb.init(
+        project="usagebasedprobing", 
+        entity="cguerner",
+        name=WBN,
+    )
+    wandb.config.update(run_args)
+    WB = True
+else:
+    WB = False
 
 #%%
 with open(DATASET, 'rb') as f:      
@@ -166,13 +172,15 @@ np.random.seed(SEED)
 #%%
 for i in trange(NRUNS):
         
-    if WBN:
-        run = wandb.init(
-            project="usagebasedprobing", 
-            entity="cguerner",
-            name=WBN+f"_run_{i}",
-            reinit=True
-        )
+    #if WBN:
+    #    run = wandb.init(
+    #        project="usagebasedprobing", 
+    #        entity="cguerner",
+    #        name=WBN+f"_run_{i}",
+    #        reinit=True
+    #    )
+    #    wandb.config.update(run_args)
+    #    WB = True
 
     #%%
     idx = np.arange(0, X.shape[0])
@@ -284,15 +292,15 @@ for i in trange(NRUNS):
     )
     
     #%%
-    outfile_path = os.path.join(OUTPUT_DIR, f"run_k_{RANK}_n_{RLACE_NITER}_{i}_{NRUNS}.pkl")
+    outfile_path = os.path.join(OUTPUT_DIR, f"run_model_{MODEL_NAME}_k_{RANK}_n_{RLACE_NITER}_{i}_{NRUNS}.pkl")
 
     with open(outfile_path, 'wb') as f:
         pickle.dump(full_results, f, protocol=pickle.HIGHEST_PROTOCOL)
 
     logging.info(f"Exported {outfile_path}")
 
-    if WB:
-        run.finish()
+    #if WB:
+    #    run.finish()
 
 
 logging.info("Done")

@@ -12,7 +12,7 @@ import pandas as pd
 from tqdm import tqdm
 import pickle
 
-from transformers import GPT2TokenizerFast, GPT2LMHeadModel
+from transformers import GPT2TokenizerFast, BertTokenizerFast
 
 #import torch
 #from torch.utils.data import DataLoader, Dataset
@@ -33,7 +33,7 @@ warnings.filterwarnings("ignore")
 # - is/are are not in unimoprh
 
 #%% PARAMETERS
-MODEL_NAME = "gpt2"
+MODEL_NAME = "bert-base-uncased"
 DATASET_NAME = "linzen"
 DATASET = f"/cluster/work/cotterell/cguerner/usagebasedprobing/datasets/processed/{DATASET_NAME}_{MODEL_NAME}_verbs.pkl"
 
@@ -68,9 +68,16 @@ df.drop_duplicates(inplace=True)
 del data
 
 #%% TOKENIZE UNIMORPH
-TOKENIZER = GPT2TokenizerFast.from_pretrained(
-    MODEL_NAME, model_max_length=512
-)
+if MODEL_NAME == "gpt2":
+    TOKENIZER = GPT2TokenizerFast.from_pretrained(
+        MODEL_NAME, model_max_length=512
+    )
+elif MODEL_NAME == "bert-base-uncased":
+    TOKENIZER = BertTokenizerFast.from_pretrained(
+        MODEL_NAME, model_max_length=512
+    )
+else:
+    logging.warn("NO TOKENIZER")
 
 def tokenize_word(word):
     return TOKENIZER(word)["input_ids"]
@@ -90,13 +97,38 @@ all_verbs = pd.merge(
     how="outer",
     suffixes=("_sg", "_pl")
 )
-
+all_verbs.dropna(inplace=True)
 
 #%%###########
 # DATASET    #
 ##############
 with open(DATASET, 'rb') as f:      
-    verbpairs = pd.DataFrame(pickle.load(f), columns = ["verb_tok", "iverb_tok"])
+    verbpairs = pd.DataFrame(pickle.load(f), columns = ["sverb", "sverb_tok", "pverb", "pverb_tok"])
+
+verbpairs["sverb_tok_str"] = verbpairs["sverb_tok"].astype(str)
+verbpairs["pverb_tok_str"] = verbpairs["pverb_tok"].astype(str)
+#verbpairs["pverb_tok"] = verbpairs["pverb_tok"].apply(lambda x: str(x))
+
+verbpairs.drop_duplicates(
+    subset=["sverb", "sverb_tok_str", "pverb", "pverb_tok_str"], 
+    inplace=True
+)
+
+# dropping specific wrong obs that lead to dups
+#verbpairs["sverb"].value_counts()
+# verbpairs["pverb"].value_counts()
+verbpairs.drop([32257, 3912, 10716],inplace=True)
+
+#%%
+verbs_merged = pd.merge(
+    left=all_verbs,
+    right=verbpairs,
+    left_on=["word_sg", "word_pl"],
+    right_on=["sverb", "pverb"],
+    how="right"
+)
+
+#%%
 
 verbpairs["verb_1"] = verbpairs["verb_tok"].apply(lambda x: len(x))
 verbpairs["iverb_1"] = verbpairs["iverb_tok"].apply(lambda x: len(x))
@@ -123,5 +155,81 @@ from scipy.special import softmax
 
 probs = softmax(V @ h)
 
-#%%
+#%% OTHER UNIMORPH FILES
+uni_dir = os.path.dirname(UNIMORPH_ENG)
+uni_seg = os.path.join(
+    uni_dir, "eng.segmentations"
+)
+uni_args = os.path.join(
+    uni_dir, "eng.args"
+)
+uni_derivs = os.path.join(
+    uni_dir, "eng.derivations.tsv"
+)
 
+#%%
+data = []
+with open(uni_seg) as f:
+    tsv_file = csv.reader(f, delimiter="\t")
+    for line in tsv_file:
+        assert len(line) == 4, f"Line: {line}"
+        if "|" in line[2]:
+            morph_list = line[2].split("|")
+            morph_main = morph_list[0]
+            morph_tags = morph_list[1].split(";")
+        else:
+            morph_main = None
+            morph_tags = morph_list[1].split(";")
+        data.append(dict(
+            lemma = line[0],
+            word = line[1],
+            morph_main = morph_main,
+            morph_tags = morph_tags,
+            #sg = create_bin(["V", "PRS", "3", "SG"], morph),
+            #pl = create_bin(["V", "NFIN", "IMP+SBJV"], morph)
+            sg = ["V", "PRS", "3", "SG"] == morph_tags,
+            pl = ["V", "NFIN", "IMP+SBJV"] == morph_tags
+        ))
+
+#%%
+data = []
+with open(uni_args) as f:
+    tsv_file = csv.reader(f, delimiter="\t")
+    for line in tsv_file:
+        morph = line[2]
+        morph_list = morph.split(";")
+        data.append(dict(
+            lemma = line[0],
+            word = line[1],
+            morph = morph,
+            #sg = create_bin(["V", "PRS", "3", "SG"], morph),
+            #pl = create_bin(["V", "NFIN", "IMP+SBJV"], morph)
+            sg = ["V", "PRS", "3", "SG"] == morph_list,
+            pl = ["V", "NFIN", "IMP+SBJV"] == morph_list
+        ))
+        
+args_df = pd.DataFrame(data)
+df.drop_duplicates(inplace=True)
+del data
+
+#%%
+data = []
+with open(uni_derivs) as f:
+    tsv_file = csv.reader(f, delimiter="\t")
+    for line in tsv_file:
+        morph = line[2]
+        morph_list = morph.split(";")
+        data.append(dict(
+            word = line[0],
+            deriv = line[1],
+            morph = morph,
+            suffix = line[3],
+            #sg = create_bin(["V", "PRS", "3", "SG"], morph),
+            #pl = create_bin(["V", "NFIN", "IMP+SBJV"], morph)
+            sg = ["V", "PRS", "3", "SG"] == morph_list,
+            pl = ["V", "NFIN", "IMP+SBJV"] == morph_list
+        ))
+        
+deriv_df = pd.DataFrame(data)
+deriv_df.drop_duplicates(inplace=True)
+del data

@@ -59,8 +59,8 @@ MODEL = GPT2LMHeadModel.from_pretrained(
     cache_dir=HF_CACHE
 )
 
+V = MODEL.lm_head.weight.detach().numpy()
 MODEL = MODEL.to(device)
-V = MODEL.lm_head.weight.detach()
 
 #%%
 data = []
@@ -112,12 +112,16 @@ def export_batch(output_dir, batch_num, batch_data):
     with open(export_path, 'wb') as file:
         pickle.dump(batch_data, file, protocol=pickle.HIGHEST_PROTOCOL)
 
+"""
 def batch_tokenize_verbs(verbs):
     list_output = TOKENIZER(verbs)["input_ids"]
     tensor_list = [torch.LongTensor(x) for x in list_output]
     return torch.nn.utils.rnn.pad_sequence(
         tensor_list, batch_first=True, padding_value=PAD_TOKEN_ID
     )
+"""
+def batch_tokenize_verbs(verbs):
+    return TOKENIZER(verbs)["input_ids"]
 
 def batch_tokenize_text(text):
     return TOKENIZER(
@@ -125,6 +129,7 @@ def batch_tokenize_text(text):
         padding="max_length", truncation=True
     )
 
+"""
 def get_raw_sample_hs(pre_verb_ids, attention_mask, verb_ids):
     nopad_ti = pre_verb_ids[attention_mask == 1]
     #nopad_verb_ids = verb_ids[verb_ids != PAD_TOKEN_ID]
@@ -137,17 +142,32 @@ def get_raw_sample_hs(pre_verb_ids, attention_mask, verb_ids):
             output_hidden_states=True
         )
     return verb_ti, output.hidden_states[-1]
+"""
+def get_raw_sample_hs(pre_verb_ids, attention_mask, verb_ids):
+    nopad_ti = pre_verb_ids[attention_mask == 1]
+    verb_ti = torch.cat((nopad_ti, torch.LongTensor(verb_ids)), 0)
+    verb_ti_dev = verb_ti.to(device)
+    with torch.no_grad():
+        output = MODEL(
+            input_ids=verb_ti_dev, 
+            #attention_mask=attention_mask, 
+            labels=verb_ti_dev,
+            output_hidden_states=True
+        )
+    return verb_ti.numpy(), output.hidden_states[-1].cpu().numpy()
+
 
 def get_verb_hs(raw_hs, verb_tokens):
     #pre_verb_hs = raw_hs[:-(len(verb_tokens) + 1)]
-    verb_hs = raw_hs[-(verb_tokens.shape[0]+1):]
+    #verb_hs = raw_hs[-(verb_tokens.shape[0]+1):]
+    verb_hs = raw_hs[-(len(verb_tokens)+1):]
     return verb_hs
 
 def get_batch_hs(batch):
     batch_hs = []
-    tok_verbs = batch_tokenize_verbs(batch["verb"]).to(device)
-    tok_iverbs = batch_tokenize_verbs(batch["iverb"]).to(device)
-    tok_text = batch_tokenize_text(batch["pre_verb_text"]).to(device)
+    tok_verbs = batch_tokenize_verbs(batch["verb"])
+    tok_iverbs = batch_tokenize_verbs(batch["iverb"])
+    tok_text = batch_tokenize_text(batch["pre_verb_text"])
 
     for ti, am, tv, tiv, verb, iverb, verb_pos in zip(
         tok_text["input_ids"], 
@@ -163,29 +183,27 @@ def get_batch_hs(batch):
         ######################
         # NOTE: for dynamic program will need to separately
         # loop through all tokenizations of verb and iverb
-        nopad_tv = tv[tv != PAD_TOKEN_ID]
-        verb_ti, verb_raw_hs = get_raw_sample_hs(ti, am, nopad_tv)
-        verb_hs = get_verb_hs(verb_raw_hs, nopad_tv)
+        verb_ti, verb_raw_hs = get_raw_sample_hs(ti, am, tv)
+        verb_hs = get_verb_hs(verb_raw_hs, tv)
 
-        nopad_tiv = tiv[tiv != PAD_TOKEN_ID]
-        iverb_ti, iverb_raw_hs = get_raw_sample_hs(ti, am, nopad_tiv)
-        iverb_hs = get_verb_hs(iverb_raw_hs, nopad_tiv)
+        iverb_ti, iverb_raw_hs = get_raw_sample_hs(ti, am, tiv)
+        iverb_hs = get_verb_hs(iverb_raw_hs, tiv)
 
         ######################
         # Get verb embeddings
         ######################
-        verb_embedding = V[nopad_tv,:]
-        iverb_embedding = V[nopad_tiv,:]
+        verb_embedding = V[tv,:]
+        iverb_embedding = V[tiv,:]
 
         batch_hs.append(dict(
             verb = verb,
             iverb = iverb,
             verb_pos = verb_pos,
             input_ids_pre_verb = ti,
-            input_ids_verb = nopad_tv, 
+            input_ids_verb = tv, 
             verb_hs = verb_hs, 
             verb_embedding = verb_embedding,
-            input_ids_iverb = nopad_tiv, 
+            input_ids_iverb = tiv, 
             iverb_hs = iverb_hs,
             iverb_embedding = iverb_embedding)
         )

@@ -17,6 +17,13 @@ warnings.filterwarnings("ignore")
 
 #%% BATCH and SAMPLE processing
 
+## HELPERS
+def count_verb_tokens(sample):
+    return max(
+        len(sample["input_ids_verb"]), 
+        len(sample["input_ids_iverb"])
+    )
+
 ## MASKED 
 def format_sample_masked(sample):
     hs = sample["hs"]
@@ -38,16 +45,10 @@ def format_sample_masked(sample):
         raise ValueError(f"Unknown verb POS tag: {verb_pos}")
 
 ## AR
-def count_verb_tokens(sample):
-    return max(
-        len(sample["input_ids_verb"]), 
-        len(sample["input_ids_iverb"])
-    )
-
 def format_sample_ar(sample):
-    hs = sample["verb_hs"][0,:]
-    verb = sample["verb_embedding"]
-    iverb = sample["iverb_embedding"]
+    hs = sample["verb_hs"][0,:].cpu().numpy()
+    verb = sample["verb_embedding"].cpu().numpy()
+    iverb = sample["iverb_embedding"].cpu().numpy()
     verb_pos = sample["verb_pos"]
     max_tokens = count_verb_tokens(sample)
     if verb_pos == "VBZ" and max_tokens == 1:
@@ -157,16 +158,12 @@ def concat_temp_files(tempdir):
     return all_temps
 
 #%%
-def process_hidden_states(batch_file_dir, output_file, out_type, nbatches=None, delete_batch_dir=False):
+def process_hidden_states(batch_file_dir, output_file, temp_dir, out_type, nbatches=None, delete_batch_dir=False):
     """ Reads batch files containing hidden states and saves concatenated
     H matrix. Optionally deletes directory containing batch files.
     """
-    OUTPUT_DIR = os.path.dirname(output_file)
-    TEMPDIR = os.path.join(OUTPUT_DIR, "temp")
-    os.mkdir(TEMPDIR)
-
-    create_temp_files(batch_file_dir, TEMPDIR, out_type, nbatches=nbatches)
-    data = concat_temp_files(TEMPDIR)
+    create_temp_files(batch_file_dir, temp_dir, out_type, nbatches=nbatches)
+    data = concat_temp_files(temp_dir)
 
     with open(output_file, 'wb') as f:
         pickle.dump(data, f, protocol=pickle.HIGHEST_PROTOCOL)
@@ -174,8 +171,8 @@ def process_hidden_states(batch_file_dir, output_file, out_type, nbatches=None, 
     logging.info(f"Exported processed data to {output_file}")
 
     #%% Delete temp files
-    shutil.rmtree(TEMPDIR)
-    logging.info(f"Deleted tempdir: {TEMPDIR}")
+    shutil.rmtree(temp_dir)
+    logging.info(f"Deleted temp_dir: {temp_dir}")
 
     #%% Delete batch files
     if delete_batch_dir:
@@ -221,7 +218,12 @@ if __name__=="__main__":
     DATASET_NAME = args.dataset
     MODEL_NAME = args.model
     OUT_TYPE = args.outtype
-    
+    NBATCHES = args.nbatches
+    #DATASET_NAME = "linzen"
+    #MODEL_NAME = "gpt2"
+    #OUT_TYPE = "verbs"
+    #NBATCHES = 10
+
     if MODEL_NAME == "gpt2" and OUT_TYPE == "full":
         OUT_TYPE = "ar"
     elif MODEL_NAME == "bert-base-uncased" and OUT_TYPE == "full":
@@ -240,4 +242,11 @@ if __name__=="__main__":
     OUTFILE = (f"/cluster/work/cotterell/cguerner/usagebasedprobing/"
                 f"datasets/processed/{DATASET_NAME}_{MODEL_NAME}_{OUT_TYPE}.pkl")
     
-    process_hidden_states(FILEDIR, OUTFILE, OUT_TYPE, nbatches=args.nbatches)
+    assert not os.path.isfile(OUTFILE), \
+        f"Output file {OUTFILE} already exists"
+
+    OUTPUT_DIR = os.path.dirname(OUTFILE)
+    TEMPDIR = os.path.join(OUTPUT_DIR, f"temp_{MODEL_NAME}_{OUT_TYPE}")
+    os.mkdir(TEMPDIR)
+
+    process_hidden_states(FILEDIR, OUTFILE, TEMPDIR, OUT_TYPE, nbatches=NBATCHES)
