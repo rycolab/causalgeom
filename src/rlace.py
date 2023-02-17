@@ -174,7 +174,7 @@ def get_default_predictor(X_train, y_train, device):
 def solve_adv_game(X_train, y_train, X_dev, y_dev, predictor=None, rank=1, device="cpu", out_iters=75000, 
     in_iters_adv=1, in_iters_clf=1, epsilon=0.0015, batch_size=128, evaluate_every=1000, 
     optimizer_class=SGD,  optimizer_params_P={"lr": 0.005, "weight_decay": 1e-4}, 
-    optimizer_params_predictor={"lr": 0.005, "weight_decay": 1e-4}, torch_outfile=None, wb=False):
+    optimizer_params_predictor={"lr": 0.005, "weight_decay": 1e-4}, torch_outfile=None, wb=False, wb_run=None):
     """
     :param X: The input (np array)
     :param Y: the lables (np array)
@@ -227,6 +227,10 @@ def solve_adv_game(X_train, y_train, X_dev, y_dev, predictor=None, rank=1, devic
     count_examples = 0
     best_P, best_P_acc, best_acc, best_loss = None, None, 1, -1
 
+    if wb:
+        if wb_run is None:
+            wb_run = 0
+
     for i in pbar:
 
         for j in range(in_iters_adv):
@@ -265,15 +269,17 @@ def solve_adv_game(X_train, y_train, X_dev, y_dev, predictor=None, rank=1, devic
         if i % evaluate_every == 0:
             #pbar.set_description("Evaluating current adversary...")
             loss_val, acc_val = run_validation(X_train, y_train, X_dev, y_dev, P.detach().cpu().numpy(), rank)
-            if wb:
-                wandb.log({"diag_rlace/val/loss": loss_val, 
-                            "diag_rlace/val/acc": acc_val})
             #TODO: probably want to pick best_score and best_loss in the same if statement (evaluate on one)
             if loss_val > best_loss:#if np.abs(score - maj) < np.abs(best_score - maj):
                 best_P, best_loss = symmetric(P).detach().cpu().numpy().copy(), loss_val
             if np.abs(acc_val - maj) < np.abs(best_acc - maj):
                 best_P_acc, best_acc = symmetric(P).detach().cpu().numpy().copy(), acc_val
                 
+            if wb:
+                wandb.log({f"diag_rlace/val/{wb_run}/loss": loss_val, 
+                            f"diag_rlace/val/{wb_run}/acc": acc_val,
+                            f"diag_rlace/val/{wb_run}/best_loss": best_loss,
+                            f"diag_rlace/val/{wb_run}/best_acc": best_acc})
             # update progress bar
             pbar.set_description(
                 "{:.0f}/{:.0f}. Acc post-projection: {:.3f}%; best so-far: {:.3f}%;"

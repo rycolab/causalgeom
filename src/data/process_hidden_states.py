@@ -46,9 +46,9 @@ def format_sample_masked(sample):
 
 ## AR
 def format_sample_ar(sample):
-    hs = sample["verb_hs"][0,:].cpu().numpy()
-    verb = sample["verb_embedding"].cpu().numpy()
-    iverb = sample["iverb_embedding"].cpu().numpy()
+    hs = sample["verb_hs"][0,:]
+    verb = sample["verb_embedding"]
+    iverb = sample["iverb_embedding"]
     verb_pos = sample["verb_pos"]
     max_tokens = count_verb_tokens(sample)
     if verb_pos == "VBZ" and max_tokens == 1:
@@ -221,7 +221,7 @@ if __name__=="__main__":
     NBATCHES = args.nbatches
     #DATASET_NAME = "linzen"
     #MODEL_NAME = "gpt2"
-    #OUT_TYPE = "verbs"
+    #OUT_TYPE = "full"
     #NBATCHES = 10
 
     if MODEL_NAME == "gpt2" and OUT_TYPE == "full":

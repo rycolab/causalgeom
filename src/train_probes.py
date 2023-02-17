@@ -171,17 +171,7 @@ np.random.seed(SEED)
 
 #%%
 for i in trange(NRUNS):
-        
-    #if WBN:
-    #    run = wandb.init(
-    #        project="usagebasedprobing", 
-    #        entity="cguerner",
-    #        name=WBN+f"_run_{i}",
-    #        reinit=True
-    #    )
-    #    wandb.config.update(run_args)
-    #    WB = True
-
+    
     #%%
     idx = np.arange(0, X.shape[0])
     np.random.shuffle(idx)
@@ -213,7 +203,7 @@ for i in trange(NRUNS):
         optimizer_params_P =rlace_optimizer_params_P, 
         optimizer_params_predictor=rlace_optimizer_params_predictor, 
         epsilon=rlace_epsilon,batch_size=rlace_batch_size,
-        torch_outfile=diag_rlace_u_outfile, wb=WB
+        torch_outfile=diag_rlace_u_outfile, wb=WB, wb_run=i
     )
     end = time.time()
     
