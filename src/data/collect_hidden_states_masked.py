@@ -1,3 +1,6 @@
+#TODO:
+# - debug the new device, get_tokenizer, etc. functions
+
 #%%
 import warnings
 import logging
@@ -22,6 +25,8 @@ from abc import ABC
 sys.path.append('./src/')
 
 from paths import OUT, HF_CACHE, LINZEN_PREPROCESSED
+from utils.cuda_loaders import get_device
+from utils.lm_loaders import get_model, get_tokenizer, get_V
 
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
@@ -39,31 +44,16 @@ assert not os.path.exists(OUTPUT_DIR), \
 os.mkdir(OUTPUT_DIR)
 
 #%%
-if torch.cuda.is_available():
-    device = torch.device("cuda")
-    logging.info(f"GPU found, model: {torch.cuda.get_device_name(0)}")
-    logging.info(f"GPU info: {torch.cuda.get_device_properties(0)}")
-else: 
-    torch.device("cpu")
-    logging.warning("No GPU found")
+device = get_device()
 
-#%%
-TOKENIZER = BertTokenizerFast.from_pretrained(
-    MODEL_NAME, model_max_length=512
-)
-MODEL = BertForMaskedLM.from_pretrained(
-    MODEL_NAME, 
-    cache_dir=HF_CACHE, 
-    is_decoder=False
-)
+TOKENIZER = get_tokenizer(MODEL_NAME)
+MODEL = get_model(MODEL_NAME)
+V = get_V(MODEL_NAME, MODEL)
+MODEL = MODEL.to(device)
 
 MASK_TOKEN_ID = TOKENIZER.mask_token_id
-word_embeddings = MODEL.bert.embeddings.word_embeddings.weight
-bias = MODEL.cls.predictions.decoder.bias
-V = torch.cat(
-    (word_embeddings, bias.view(-1, 1)), dim=1).detach().numpy()
 
-MODEL = MODEL.to(device)
+
 
 #%%
 data = []

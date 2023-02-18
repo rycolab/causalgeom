@@ -1,3 +1,6 @@
+#TODO:
+# - debug the new device, get_tokenizer, etc. functions
+
 #%%
 import warnings
 import logging
@@ -22,6 +25,8 @@ from abc import ABC
 sys.path.append('./src/')
 
 from paths import OUT, HF_CACHE, LINZEN_PREPROCESSED
+from utils.cuda_loaders import get_device
+from utils.lm_loaders import get_model, get_tokenizer, get_V
 
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
@@ -39,27 +44,16 @@ assert not os.path.exists(OUTPUT_DIR), \
 os.mkdir(OUTPUT_DIR)
 
 #%%
-if torch.cuda.is_available():
-    device = torch.device("cuda")
-    logging.info(f"GPU found, model: {torch.cuda.get_device_name(0)}")
-    logging.info(f"GPU info: {torch.cuda.get_device_properties(0)}")
-else: 
-    torch.device("cpu")
-    logging.warning("No GPU found")
+device = get_device()
 
-#%%
-TOKENIZER = GPT2TokenizerFast.from_pretrained(
-    MODEL_NAME, model_max_length=512
-)
+TOKENIZER = get_tokenizer(MODEL_NAME)
 TOKENIZER.pad_token = TOKENIZER.eos_token
 PAD_TOKEN_ID = TOKENIZER.encode(TOKENIZER.pad_token)[0]
 
-MODEL = GPT2LMHeadModel.from_pretrained(
-    MODEL_NAME, 
-    cache_dir=HF_CACHE
-)
+MODEL = get_model(MODEL_NAME)
 
-V = MODEL.lm_head.weight.detach().numpy()
+V = get_V(MODEL_NAME, MODEL)
+
 MODEL = MODEL.to(device)
 
 #%%

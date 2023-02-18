@@ -74,9 +74,9 @@ def format_sample_verbs(sample):
     id_verb = sample["input_ids_verb"]
     id_iverb = sample["input_ids_iverb"]
     if verb_pos == "VBZ":
-        return (verb, id_verb, iverb, id_iverb)
+        return (verb, id_verb, iverb, id_iverb, verb_pos)
     elif verb_pos == "VBP":
-        return (iverb, id_iverb, verb, id_verb)
+        return (iverb, id_iverb, verb, id_verb, verb_pos)
     else:
         raise ValueError(f"Unknown verb POS tag: {verb_pos}")
 

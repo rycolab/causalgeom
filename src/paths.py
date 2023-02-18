@@ -1,7 +1,10 @@
 import os
 
-OUT = "out"
-HF_CACHE = os.path.join("../hf_cache")
+MAIN = "/cluster/work/cotterell/cguerner/usagebasedprobing/"
+
+OUT = os.path.join(MAIN, "out")
+DATASETS = os.path.join(MAIN, "datasets")
+HF_CACHE = "../hf_cache"
 
 
 BERT_SYNTAX_LINZEN_GOLDBERG = "../bert-syntax/lgd_dataset.tsv"

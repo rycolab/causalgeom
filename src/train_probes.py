@@ -63,6 +63,12 @@ def get_args():
         help="Number of iterations of RLACE"
     )
     argparser.add_argument(
+        "-plr",
+        type=float,
+        default=0.003,
+        help="Learning rate for P" 
+    )
+    argparser.add_argument(
         "-nruns",
         type=int,
         default=3,
@@ -82,23 +88,29 @@ def get_args():
     )
     return argparser.parse_args()
 
-args = get_args()
-logging.info(args)
+MODE = "debug" # "debug"
 
-MODEL_NAME = args.model
-RANK = args.k
-RLACE_NITER = args.niter
-NRUNS = args.nruns
-SEED = args.seed
-DIRECTORY = args.outdir
-WBN = args.wandb_name
-#MODEL_NAME = "gpt2" #"bert-base-uncased"
-#RANK = 1
-#RLACE_NITER = 3000
-#NRUNS = 3
-#SEED = 0
-#DIRECTORY = "testruns"
-#WBN = "test"
+if MODE == "job":
+    args = get_args()
+    logging.info(args)
+
+    MODEL_NAME = args.model
+    RANK = args.k
+    RLACE_NITER = args.niter
+    PLR = args.plr
+    NRUNS = args.nruns
+    SEED = args.seed
+    DIRECTORY = args.outdir
+    WBN = args.wandb_name
+else:
+    MODEL_NAME = "gpt2" #"bert-base-uncased"
+    RANK = 1
+    RLACE_NITER = 3000
+    PLR=0.0003
+    NRUNS = 1
+    SEED = 0
+    DIRECTORY = "testruns"
+    WBN = "test"
 
 #%% 
 DATASET_NAME = "linzen"
@@ -122,10 +134,6 @@ DIAG_RLACE_U_OUTDIR = os.path.join(OUTPUT_DIR, "diag_rlace_u")
 if not os.path.exists(DIAG_RLACE_U_OUTDIR):
     os.mkdir(DIAG_RLACE_U_OUTDIR)
 
-logging.info(
-    f"Running: model {MODEL_NAME}, rank {RANK}, niter {RLACE_NITER}, wandb {WBN}"
-)
-
 TRAIN_OBS = 30000
 VAL_OBS = 10000
 TEST_OBS = 20000
@@ -133,6 +141,7 @@ TEST_OBS = 20000
 run_args = {
     "rank": RANK,
     "rlace_niter": RLACE_NITER,
+    "p_lr": PLR,
     "nruns": NRUNS,
     "seed": SEED,
     "out_dir": OUTPUT_DIR,
@@ -143,12 +152,16 @@ run_args = {
     "test_obs": TEST_OBS
 }
 
+RUN_NAME = f"{MODEL_NAME[:4]}_k_{RANK}_n_{RLACE_NITER}_plr_{PLR}"
+
+logging.info(f"Running: {RUN_NAME}")
+
 #%%
 if WBN:
     wandb.init(
         project="usagebasedprobing", 
         entity="cguerner",
-        name=WBN,
+        name=WBN+f"_{RUN_NAME}",
     )
     wandb.config.update(run_args)
     WB = True
@@ -160,10 +173,10 @@ with open(DATASET, 'rb') as f:
     data = pd.DataFrame(pickle.load(f), columns = ["h", "u", "y"])
 
 #%%
-if MODEL_NAME == "gpt2":
-    X = np.array([x.numpy() for x in data["h"]])
-else:
-    X = np.array([x for x in data["h"]])
+#if MODEL_NAME == "gpt2":
+#    X = np.array([x.numpy() for x in data["h"]])
+#else:
+X = np.array([x for x in data["h"]])
 U = np.array([x for x in data["u"]])
 y = np.array([yi for yi in data["y"]])
 del data
@@ -185,17 +198,16 @@ for i in trange(NRUNS):
 
     #%%
     rlace_optimizer_class = torch.optim.SGD
-    rlace_optimizer_params_P = {"lr": 0.003, "weight_decay": 1e-4}
+    rlace_optimizer_params_P = {"lr": PLR, "weight_decay": 1e-4}
     rlace_optimizer_params_predictor = {"lr": 0.003,"weight_decay": 1e-4}
     rlace_epsilon = 0.001 # stop 0.1% from majority acc
     rlace_batch_size = 256
     dim = X_train.shape[1]
 
     #%%
-    logging.info("Training RLACE with diagnostic data")
     start = time.time()
     
-    diag_rlace_u_outfile = os.path.join(DIAG_RLACE_U_OUTDIR, f"rk_{RANK}_niter_{RLACE_NITER}_{i}.pt")
+    diag_rlace_u_outfile = os.path.join(DIAG_RLACE_U_OUTDIR, f"{RUN_NAME}.pt")
     
     diag_rlace_output = solve_adv_game(
         X_train, y_train, X_val, y_val, rank=RANK, device=device, 
@@ -282,7 +294,7 @@ for i in trange(NRUNS):
     )
     
     #%%
-    outfile_path = os.path.join(OUTPUT_DIR, f"run_model_{MODEL_NAME}_k_{RANK}_n_{RLACE_NITER}_{i}_{NRUNS}.pkl")
+    outfile_path = os.path.join(OUTPUT_DIR, f"run_{RUN_NAME}_{i}_{NRUNS}.pkl")
 
     with open(outfile_path, 'wb') as f:
         pickle.dump(full_results, f, protocol=pickle.HIGHEST_PROTOCOL)
