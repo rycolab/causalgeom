@@ -20,8 +20,10 @@ from sklearn.model_selection import train_test_split
 from sklearn.linear_model import SGDClassifier
 import wandb
 
-from rlace import solve_adv_game, solve_adv_game_param_free, \
-    init_classifier, get_majority_acc, solve_adv_game_param_free_twoPs
+#from rlace import solve_adv_game, solve_adv_game_param_free, \
+#    init_classifier, get_majority_acc, solve_adv_game_param_free_twoPs
+from rlace import solve_adv_game, init_classifier, get_majority_acc
+
 import algorithms.inlp.debias
 from classifiers.classifiers import BinaryParamFreeClf
 from eval_helpers import full_eval
@@ -75,6 +77,12 @@ def get_args():
         help="Number of runs of the experiment"
     )
     argparser.add_argument(
+        "-train_obs",
+        type=int,
+        default=30000,
+        help="Number of train obs"
+    )
+    argparser.add_argument(
         "-seed",
         type=int,
         help="Seed for shuffling data"
@@ -88,7 +96,7 @@ def get_args():
     )
     return argparser.parse_args()
 
-MODE = "debug" # "debug"
+MODE = "job" # "debug"
 
 if MODE == "job":
     args = get_args()
@@ -98,19 +106,57 @@ if MODE == "job":
     RANK = args.k
     RLACE_NITER = args.niter
     PLR = args.plr
+    
+    #scheduler
+    SCHED_NRED = 5
+    SCHED_FACTOR = .5
+    SCHED_PATIENCE = 4
+
+    #data
     NRUNS = args.nruns
+    TRAIN_OBS = args.train_obs
+    VAL_OBS = 10000
+    TEST_OBS = 20000
     SEED = args.seed
+
     DIRECTORY = args.outdir
     WBN = args.wandb_name
 else:
     MODEL_NAME = "gpt2" #"bert-base-uncased"
     RANK = 1
-    RLACE_NITER = 3000
-    PLR=0.0003
+    RLACE_NITER = 1000
+    PLR=0.003
+
+    #scheduler
+    SCHED_NRED = 5
+    SCHED_FACTOR = .5
+    SCHED_PATIENCE = 4
+
+    #data
     NRUNS = 1
+    TRAIN_OBS = 60000
+    VAL_OBS = 10000
+    TEST_OBS = 20000
     SEED = 0
+    
     DIRECTORY = "testruns"
     WBN = "test"
+
+rlace_optimizer_class = torch.optim.SGD
+rlace_scheduler_class = torch.optim.lr_scheduler.ReduceLROnPlateau
+SCHED_MIN_LR = PLR * (SCHED_FACTOR**SCHED_NRED)
+
+rlace_optimizer_params_P = {"lr": PLR, 
+                            "weight_decay": 1e-4}
+rlace_scheduler_params_P = {"mode": "max", 
+                            "factor": SCHED_FACTOR, 
+                            "patience": SCHED_PATIENCE, 
+                            "min_lr": SCHED_MIN_LR, 
+                            "verbose": True}
+rlace_optimizer_params_predictor = {"lr": 0.003,"weight_decay": 1e-4}
+rlace_epsilon = 0.001 # stop 0.1% from majority acc
+rlace_batch_size = 256
+
 
 #%% 
 DATASET_NAME = "linzen"
@@ -134,15 +180,13 @@ DIAG_RLACE_U_OUTDIR = os.path.join(OUTPUT_DIR, "diag_rlace_u")
 if not os.path.exists(DIAG_RLACE_U_OUTDIR):
     os.mkdir(DIAG_RLACE_U_OUTDIR)
 
-TRAIN_OBS = 30000
-VAL_OBS = 10000
-TEST_OBS = 20000
 
 run_args = {
     "rank": RANK,
     "rlace_niter": RLACE_NITER,
     "p_lr": PLR,
     "nruns": NRUNS,
+    "train_obs": TRAIN_OBS,
     "seed": SEED,
     "out_dir": OUTPUT_DIR,
     "model_name": MODEL_NAME,
@@ -197,23 +241,19 @@ for i in trange(NRUNS):
     y_train, y_val, y_test = y[idx[:train_lastind]], y[idx[train_lastind:val_lastind]], y[idx[val_lastind:test_lastind]]
 
     #%%
-    rlace_optimizer_class = torch.optim.SGD
-    rlace_optimizer_params_P = {"lr": PLR, "weight_decay": 1e-4}
-    rlace_optimizer_params_predictor = {"lr": 0.003,"weight_decay": 1e-4}
-    rlace_epsilon = 0.001 # stop 0.1% from majority acc
-    rlace_batch_size = 256
-    dim = X_train.shape[1]
-
-    #%%
     start = time.time()
     
     diag_rlace_u_outfile = os.path.join(DIAG_RLACE_U_OUTDIR, f"{RUN_NAME}.pt")
     
+    #dim = X_train.shape[1]
+
     diag_rlace_output = solve_adv_game(
         X_train, y_train, X_val, y_val, rank=RANK, device=device, 
         out_iters=RLACE_NITER, optimizer_class=rlace_optimizer_class, 
         optimizer_params_P =rlace_optimizer_params_P, 
         optimizer_params_predictor=rlace_optimizer_params_predictor, 
+        scheduler_class=rlace_scheduler_class, 
+        scheduler_params_P=rlace_scheduler_params_P,
         epsilon=rlace_epsilon,batch_size=rlace_batch_size,
         torch_outfile=diag_rlace_u_outfile, wb=WB, wb_run=i
     )

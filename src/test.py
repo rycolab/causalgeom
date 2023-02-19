@@ -29,8 +29,21 @@ warnings.filterwarnings("ignore")
 ####################
 MODEL_NAME = "bert-base-uncased"
 DATASET_NAME = "linzen"
-WORDLIST_PATH = os.path.join(DATASETS, "processed/linzen_word_lists/linzen_wordlist.csv")
-VERBLIST_PATH = os.path.join(DATASETS, "processed/linzen_word_lists/linzen_verb_list_final.pkl")
+
+WORD_EMB = os.path.join(DATASETS, f"processed/linzen_word_lists/{MODEL_NAME}_word_embeds.npy")
+VERB_P = os.path.join(DATASETS, f"processed/linzen_word_lists/{MODEL_NAME}_verb_p.npy")
+SG_EMB = os.path.join(DATASETS, f"processed/linzen_word_lists/{MODEL_NAME}_sg_embeds.npy")
+PL_EMB = os.path.join(DATASETS, f"processed/linzen_word_lists/{MODEL_NAME}_pl_embeds.npy")
+
+logging.info(f"Tokenizing and saving embeddings from word and verb lists for model {MODEL_NAME}")
+
+#%%#################
+# Loading        #
+####################
+#TODO: write it so that you can provide:
+# - dataset
+# - model name
+# - P, I-P
 
 if MODEL_NAME == "gpt2":
     DATASET = os.path.join(DATASETS, f"processed/{DATASET_NAME}_{MODEL_NAME}_ar.pkl")
@@ -44,67 +57,16 @@ with open(DATASET, 'rb') as f:
     h = data["h"]
     del data
 
-#%%
-TOKENIZER = get_tokenizer(MODEL_NAME)
-V = get_V(MODEL_NAME)
+word_emb = np.load(WORD_OUTFILE)
+sg_emb = np.load(SG_OUTFILE)
+pl_emb = np.load(PL_OUTFILE)
 
-#%%#################
-# Wordlist         #
-####################
-wl = pd.read_csv(WORDLIST_PATH, index_col=0)
-wl.drop_duplicates(inplace=True)
+RUN_OUTPUT = os.path.join(OUT, "run_output/bert-base-uncased/20230216/run_model_bert-base-uncased_k_1_n_20000_0_3.pkl")
 
-def tokenize_word(word, add_space=False):
-    if add_space and type(word) == str:
-        return TOKENIZER(" "+word)["input_ids"]
-    elif type(word) == str:
-        return TOKENIZER(word)["input_ids"]
-    else:
-        return []
+with open(RUN_OUTPUT, 'rb') as f:      
+    run = pickle.load(f)
 
-wl["input_ids_word"] = wl["word"].apply(lambda x: tokenize_word(x)[1:-1])
-#df["input_ids_word_spc"] = df["word"].apply(lambda x: tokenize_word(x, add_space=True)[1:-1])
-wl["ntokens"] = wl["input_ids_word"].apply(lambda x: len(x))
-#df["ntokens_spc"] = df["input_ids_word_spc"].apply(lambda x: len(x))
-wl_1tok = wl[wl["ntokens"]==1]
-wl_1tok["first_id_word"] = wl_1tok["input_ids_word"].apply(lambda x: int(x[0]))
-
-word_tok = wl_1tok["first_id_word"].to_numpy()
-word_tok_unq, word_tok_counts = np.unique(word_tok, return_counts=True)
-count_sort_ind = np.argsort(-word_tok_counts)
-word_tok_unq[count_sort_ind]
-word_tok_counts[count_sort_ind]
-
-#word_tok_unq 
-
-#%%#################
-# Verblist         #
-####################
-with open(VERBLIST_PATH, 'rb') as f:      
-    vl = pickle.load(f)
-
-vl["sverb_ntok"] = vl["sverb_tok"].apply(lambda x: len(x))
-vl["pverb_ntok"] = vl["pverb_tok"].apply(lambda x: len(x))
-vl["1tok"] = (vl["sverb_ntok"] == 1) & (vl["pverb_ntok"]==1)
-
-vl.drop(vl[vl["1tok"] != True].index, inplace=True)
-
-vl_sg_tok = vl["sverb_tok"].apply(lambda x: x[0]).to_numpy()
-#vl_sg_tok_unq, vl_sg_tok_counts = np.unique(vl_sg_tok, return_counts=True)
-#count_sort_ind = np.argsort(-vl_sg_tok_counts)
-#vl_sg_tok_unq[count_sort_ind]
-#vl_sg_tok_counts[count_sort_ind]
-
-vl_pl_tok = vl["pverb_tok"].apply(lambda x: x[0]).to_numpy()
-#vl_pl_tok_unq, vl_pl_tok_counts = np.unique(vl_sg_tok, return_counts=True)
-#count_sort_ind = np.argsort(-vl_pl_tok_counts)
-#vl_pl_tok_unq[count_sort_ind]
-#vl_pl_tok_counts[count_sort_ind]
-
-#%%
-WORD_EMB = V[word_tok_unq]
-SG_EMB = V[vl_sg_tok]
-PL_EMB = V[vl_pl_tok]
+P = run["diag_rlace"]["P_acc"]
 
 #%%
 def get_logs(hidden_state):
@@ -138,16 +100,14 @@ def normalize_pairs(sg, pl):
     return base_pair_probs
 
 #%% Loading Run
-RUN_OUTPUT = os.path.join(OUT, "run_output/bert-base-uncased/20230216/run_model_bert-base-uncased_k_1_n_20000_0_3.pkl")
 
-with open(RUN_OUTPUT, 'rb') as f:      
-    run = pickle.load(f)
+def sample_hs(h, nsamples=200):
+    idx = np.arange(0, h.shape[0])
+    np.random.shuffle(idx)
+    ind = idx[:nsamples]
+    return h[ind]
 
-P = run["diag_rlace"]["P_acc"]
 
-idx = np.arange(0, h.shape[0])
-np.random.shuffle(idx)
-ind = idx[:200]
 kls_all_split = []
 kls_all_merged = []
 kls_words = []

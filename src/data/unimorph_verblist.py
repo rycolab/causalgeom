@@ -1,7 +1,3 @@
-#TODO:
-# - once verb data is re-output, update this to get relative counts
-# - debug the removal of the tokens
-
 #%%
 import warnings
 import logging
@@ -20,7 +16,7 @@ import pickle
 sys.path.append('..')
 #sys.path.append('./src/')
 
-from paths import OUT, UNIMORPH_ENG, HF_CACHE
+from paths import OUT, UNIMORPH_ENG, DATASETS
 
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
@@ -29,8 +25,12 @@ warnings.filterwarnings("ignore")
 #%% PARAMETERS -- note that there is no difference for this portion between different models (same dataset)
 MODEL_NAME = "bert-base-uncased"
 DATASET_NAME = "linzen"
-DATASET = f"/cluster/work/cotterell/cguerner/usagebasedprobing/datasets/processed/{DATASET_NAME}_{MODEL_NAME}_verbs.pkl"
+DATASET = os.path.join(DATASETS, f"processed/{DATASET_NAME}_{MODEL_NAME}_verbs.pkl")
 
+# MANUAL_VERBLIST is a cleaned up version of the full verb list
+# with manual drops.
+MANUAL_VERBLIST_PATH = os.path.join(DATASETS, "processed/linzen_word_lists/linzen_verb_list_drop.csv")
+OUTFILE = os.path.join(DATASETS, "processed/linzen_word_lists/linzen_verb_list_final.pkl")
 
 #%%#################
 # Unimorph         #
@@ -91,9 +91,6 @@ with open(DATASET, 'rb') as f:
 verbpairs["count"] = 1
 vpc = verbpairs.groupby(["sverb", "pverb"])["count"].sum().reset_index()
 
-#TODO: make the relative counts
-vpc_pos = verbpairs.groupby(["sverb", "pverb", "verb_pos"])["count"].sum().reset_index()
-
 # dropping specific wrong obs that lead to dups
 #vpc["sverb"].value_counts()
 #vpc["pverb"].value_counts()
@@ -128,7 +125,7 @@ verblist = verbs_merged_check[["sverb", "pverb", "count", "uni"]]
 #verblist.to_csv("../../out/linzen_verb_list.csv")
 
 #%%
-manual_verblist = pd.read_csv("../../datasets/processed/linzen_verb_list/linzen_verb_list_drop.csv", index_col=0)
+manual_verblist = pd.read_csv(MANUAL_VERBLIST_PATH, index_col=0)
 manual_verblist["drop"].fillna(value=0, inplace=True)
 
 verblist_drop = pd.merge(
@@ -153,8 +150,26 @@ verblist_final = verblist_drop.drop(
     verblist_drop[verblist_drop["drop"]==1].index)[
         ["sverb", "pverb"]]
 
-OUTFILE = "../../datasets/processed/linzen_verb_list/linzen_verb_list_final.pkl"
-with open(OUTFILE, 'wb') as file:
-    pickle.dump(verblist_final, file, protocol=pickle.HIGHEST_PROTOCOL)
+#%% RELATIVE COUNTS
+vpc_pos = verbpairs.groupby(["sverb", "pverb", "verb_pos"])["count"].sum().reset_index()
+vpc_pos_tab = vpc_pos.pivot(index=["sverb", "pverb"], columns="verb_pos", values="count").reset_index()
+vpc_pos_tab.fillna(value=0, inplace=True)
+vpc_pos_tab["total"] = vpc_pos_tab["VBZ"] + vpc_pos_tab["VBP"]
+vpc_pos_tab["p_sg"] = vpc_pos_tab["VBZ"] / vpc_pos_tab["total"]
+vpc_pos_tab["p_pl"] = vpc_pos_tab["VBP"] / vpc_pos_tab["total"]
 
-# %%
+vpc_pos_tab.drop(["VBP", "VBZ", "total"], axis=1, inplace=True)
+
+#%%
+verblist_final_p = pd.merge(
+    left=verblist_final,
+    right=vpc_pos_tab,
+    on=["sverb", "pverb"],
+    how="inner"
+)
+assert verblist_final.shape[0] == verblist_final_p.shape[0]
+
+#%%
+with open(OUTFILE, 'wb') as file:
+    pickle.dump(verblist_final_p, file, protocol=pickle.HIGHEST_PROTOCOL)
+

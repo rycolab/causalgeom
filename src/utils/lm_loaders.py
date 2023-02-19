@@ -17,7 +17,7 @@ warnings.filterwarnings("ignore")
 def get_tokenizer(model_name):
     if model_name == "gpt2":
         tokenizer = GPT2TokenizerFast.from_pretrained(
-            MODEL_NAME, model_max_length=512
+            model_name, model_max_length=512
         )
         tokenizer.pad_token = tokenizer.eos_token
         return tokenizer

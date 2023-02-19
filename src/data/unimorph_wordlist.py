@@ -17,13 +17,14 @@ from transformers import GPT2TokenizerFast, BertTokenizerFast
 sys.path.append('..')
 #sys.path.append('./src/')
 
-from paths import OUT, UNIMORPH_ENG, HF_CACHE
+from paths import OUT, UNIMORPH_ENG, DATASETS
 
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
 
 #%% ARGS
-VERBLIST_PATH = "../../datasets/processed/linzen_word_lists/linzen_verb_list_final.pkl"
+VERBLIST_PATH = os.path.join(DATASETS, 
+    "processed/linzen_word_lists/linzen_verb_list_final.pkl")
 
 #%%#################
 # Unimorph         #
