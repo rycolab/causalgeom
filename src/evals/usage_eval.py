@@ -17,7 +17,7 @@ def eval_diagnostic(P, I_P, X_train, y_train, X_val, y_val, X_test, y_test):
     results = {}
     
     svm = init_classifier()
-    svm.fit(X_train , y_train)
+    svm.fit(X_train, y_train)
     results["diag_acc_original"] = svm.score(X_test, y_test)
     results["diag_loss_original"] = log_loss(
         y_test, svm.predict_proba(X_test)
@@ -83,7 +83,7 @@ def eval_usage(P, I_P, X_train, U_train, y_train, X_test, U_test, y_test, Pu = N
     #results["lm_loss_I_P_train_disag"] = disag_trainclf.loss_I_P()
     return results
 
-def full_eval(output, X_train, U_train, y_train, X_val, U_val, y_val, X_test, U_test, y_test, runtime):
+def full_usage_eval(output, X_train, U_train, y_train, X_val, U_val, y_val, X_test, U_test, y_test, runtime):
     results = {}
     
     P = output["P"]

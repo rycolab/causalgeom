@@ -26,21 +26,18 @@ from rlace import solve_adv_game, init_classifier, get_majority_acc
 
 import algorithms.inlp.debias
 from classifiers.classifiers import BinaryParamFreeClf
-from eval_helpers import full_eval
+from utils.cuda_loaders import get_device
+from evals.kl_eval import compute_kls, load_model_eval
+from evals.usage_eval import full_usage_eval
 
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
 
-#%%
-if torch.cuda.is_available():
-    device = torch.device("cuda")
-    logging.info(f"GPU found, model: {torch.cuda.get_device_name(0)}")
-    logging.info(f"GPU info: {torch.cuda.get_device_properties(0)}")
-else: 
-    torch.device("cpu")
-    logging.warning("No GPU found")
+device = get_device()
 
-#%%
+#%%#################
+# Args             #
+####################
 def get_args():
     argparser = argparse.ArgumentParser(description='Compute H Matrices')
     argparser.add_argument(
@@ -98,10 +95,11 @@ def get_args():
 
 MODE = "job" # "debug"
 
-if MODE == "job":
+if MODE == "debug":
     args = get_args()
     logging.info(args)
 
+    DATASET_NAME = "linzen"
     MODEL_NAME = args.model
     RANK = args.k
     RLACE_NITER = args.niter
@@ -119,9 +117,10 @@ if MODE == "job":
     TEST_OBS = 20000
     SEED = args.seed
 
-    DIRECTORY = args.outdir
+    OUTPUT_FOLDER = args.outdir
     WBN = args.wandb_name
 else:
+    DATASET_NAME = "linzen"
     MODEL_NAME = "gpt2" #"bert-base-uncased"
     RANK = 1
     RLACE_NITER = 1000
@@ -139,7 +138,7 @@ else:
     TEST_OBS = 20000
     SEED = 0
     
-    DIRECTORY = "testruns"
+    OUTPUT_FOLDER = "testruns"
     WBN = "test"
 
 rlace_optimizer_class = torch.optim.SGD
@@ -157,30 +156,7 @@ rlace_optimizer_params_predictor = {"lr": 0.003,"weight_decay": 1e-4}
 rlace_epsilon = 0.001 # stop 0.1% from majority acc
 rlace_batch_size = 256
 
-
-#%% 
-DATASET_NAME = "linzen"
-
-if MODEL_NAME == "gpt2":
-    DATASET = f"/cluster/work/cotterell/cguerner/usagebasedprobing/datasets/processed/{DATASET_NAME}_{MODEL_NAME}_ar.pkl"
-elif MODEL_NAME == "bert-base-uncased":
-    DATASET = f"/cluster/work/cotterell/cguerner/usagebasedprobing/datasets/processed/{DATASET_NAME}_{MODEL_NAME}_masked.pkl"
-else:
-    DATASET = None
-
-OUTPUT_DIR = f"/cluster/work/cotterell/cguerner/usagebasedprobing/out/run_output/{MODEL_NAME}/{DIRECTORY}/"
-
-if not os.path.exists(OUTPUT_DIR):
-    os.mkdir(OUTPUT_DIR)
-    logging.info(f"Created output dir: {OUTPUT_DIR}")
-else: 
-    logging.info(f"Output dir exists: {OUTPUT_DIR}")
-
-DIAG_RLACE_U_OUTDIR = os.path.join(OUTPUT_DIR, "diag_rlace_u")
-if not os.path.exists(DIAG_RLACE_U_OUTDIR):
-    os.mkdir(DIAG_RLACE_U_OUTDIR)
-
-
+# Logging run args
 run_args = {
     "rank": RANK,
     "rlace_niter": RLACE_NITER,
@@ -188,7 +164,7 @@ run_args = {
     "nruns": NRUNS,
     "train_obs": TRAIN_OBS,
     "seed": SEED,
-    "out_dir": OUTPUT_DIR,
+    "out_folder": OUTPUT_FOLDER,
     "model_name": MODEL_NAME,
     "dataset_name": DATASET_NAME,
     "train_obs": TRAIN_OBS,
@@ -200,7 +176,47 @@ RUN_NAME = f"{MODEL_NAME[:4]}_k_{RANK}_n_{RLACE_NITER}_plr_{PLR}"
 
 logging.info(f"Running: {RUN_NAME}")
 
-#%%
+#%%#################
+# Loading Data     #
+####################
+
+# Output directory creation
+OUTPUT_DIR = f"/cluster/work/cotterell/cguerner/usagebasedprobing/out/run_output/{MODEL_NAME}/{OUTPUT_FOLDER}/"
+if not os.path.exists(OUTPUT_DIR):
+    os.mkdir(OUTPUT_DIR)
+    logging.info(f"Created output dir: {OUTPUT_DIR}")
+else: 
+    logging.info(f"Output dir exists: {OUTPUT_DIR}")
+
+DIAG_RLACE_U_OUTDIR = os.path.join(OUTPUT_DIR, "diag_rlace_u")
+if not os.path.exists(DIAG_RLACE_U_OUTDIR):
+    os.mkdir(DIAG_RLACE_U_OUTDIR)
+
+# Loading word lists for KL eval
+WORD_EMB, SG_EMB, PL_EMB, VERB_PROBS = load_model_eval(MODEL_NAME)
+
+# Load dataset
+if MODEL_NAME == "gpt2":
+    DATASET = f"/cluster/work/cotterell/cguerner/usagebasedprobing/datasets/processed/{DATASET_NAME}_{MODEL_NAME}_ar.pkl"
+elif MODEL_NAME == "bert-base-uncased":
+    DATASET = f"/cluster/work/cotterell/cguerner/usagebasedprobing/datasets/processed/{DATASET_NAME}_{MODEL_NAME}_masked.pkl"
+else:
+    DATASET = None
+
+with open(DATASET, 'rb') as f:      
+    data = pd.DataFrame(pickle.load(f), columns = ["h", "u", "y"])
+
+X = np.array([x for x in data["h"]])
+U = np.array([x for x in data["u"]])
+y = np.array([yi for yi in data["y"]])
+del data
+
+# Set seed
+np.random.seed(SEED)
+
+#%%#################
+# Wandb Logging    #
+####################
 if WBN:
     wandb.init(
         project="usagebasedprobing", 
@@ -212,19 +228,6 @@ if WBN:
 else:
     WB = False
 
-#%%
-with open(DATASET, 'rb') as f:      
-    data = pd.DataFrame(pickle.load(f), columns = ["h", "u", "y"])
-
-#%%
-#if MODEL_NAME == "gpt2":
-#    X = np.array([x.numpy() for x in data["h"]])
-#else:
-X = np.array([x for x in data["h"]])
-U = np.array([x for x in data["u"]])
-y = np.array([yi for yi in data["y"]])
-del data
-np.random.seed(SEED)
 
 #%%
 for i in trange(NRUNS):
@@ -259,13 +262,17 @@ for i in trange(NRUNS):
     )
     end = time.time()
     
-    diag_rlace_results = full_eval(
+    usage_eval = full_usage_eval(
         diag_rlace_output, 
         X_train, U_train, y_train, 
         X_val, U_val, y_val,
         X_test, U_test, y_test, end-start
     )
 
+    kl_eval = compute_kls(
+        X_test, diag_rlace_output["P"], diag_rlace_output["I_P"], 
+        WORD_EMB, SG_EMB, PL_EMB, VERB_PROBS
+    )
 
     """
     #%%
@@ -325,7 +332,8 @@ for i in trange(NRUNS):
     full_results = dict(
         run = i,
         run_args = run_args,
-        diag_rlace = diag_rlace_results,
+        diag_rlace_usage_eval = usage_eval,
+        diag_rlace_kl_eval = kl_eval,
         #functional_rlace = functional_rlace_results,
         #inlp = inlp_results,
         maj_acc_test = get_majority_acc(y_test),
