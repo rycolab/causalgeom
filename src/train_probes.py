@@ -68,6 +68,12 @@ def get_args():
         help="Learning rate for P" 
     )
     argparser.add_argument(
+        "-n_lr_red",
+        type=int,
+        default=5,
+        help="Number of ReduceLROnPlateau reductions" 
+    )
+    argparser.add_argument(
         "-nruns",
         type=int,
         default=3,
@@ -95,7 +101,7 @@ def get_args():
 
 MODE = "job" # "debug"
 
-if MODE == "debug":
+if MODE == "job":
     args = get_args()
     logging.info(args)
 
@@ -106,7 +112,7 @@ if MODE == "debug":
     PLR = args.plr
     
     #scheduler
-    SCHED_NRED = 5
+    SCHED_NRED = args.n_lr_red
     SCHED_FACTOR = .5
     SCHED_PATIENCE = 4
 
@@ -120,6 +126,7 @@ if MODE == "debug":
     OUTPUT_FOLDER = args.outdir
     WBN = args.wandb_name
 else:
+    logging.warn("RUNNING IN DEBUG MODE.")
     DATASET_NAME = "linzen"
     MODEL_NAME = "gpt2" #"bert-base-uncased"
     RANK = 1
@@ -161,6 +168,7 @@ run_args = {
     "rank": RANK,
     "rlace_niter": RLACE_NITER,
     "p_lr": PLR,
+    "n_lr_red": SCHED_NRED,
     "nruns": NRUNS,
     "train_obs": TRAIN_OBS,
     "seed": SEED,
@@ -273,6 +281,7 @@ for i in trange(NRUNS):
         X_test, diag_rlace_output["P"], diag_rlace_output["I_P"], 
         WORD_EMB, SG_EMB, PL_EMB, VERB_PROBS
     )
+    kl_means = kl_eval.loc["mean",:]
 
     if WB:
         wandb.log({
@@ -280,22 +289,22 @@ for i in trange(NRUNS):
             f"diag_rlace/test/usage/{i}/diag_acc_I_P_test": usage_eval["diag_acc_I_P_test"],
             f"diag_rlace/test/usage/{i}/lm_acc_P_test": usage_eval["lm_acc_P_test"], 
             f"diag_rlace/test/usage/{i}/lm_acc_I_P_test": usage_eval["lm_acc_I_P_test"],
-            f"diag_rlace/test/fth_kls/{i}/P_faith_kl_all_split": kl_eval["P_faith_kl_all_split"],
-            f"diag_rlace/test/fth_kls/{i}/P_faith_kl_all_merged": kl_eval["P_faith_kl_all_merged"],
-            f"diag_rlace/test/fth_kls/{i}/P_faith_kl_words": kl_eval["P_faith_kl_words"],
-            f"diag_rlace/test/fth_kls/{i}/P_faith_kl_tgt_split": kl_eval["P_faith_kl_tgt_split"],
-            f"diag_rlace/test/fth_kls/{i}/P_faith_kl_tgt_merged": kl_eval["P_faith_kl_tgt_merged"],
-            f"diag_rlace/test/fth_kls/{i}/I_P_faith_kl_all_split": kl_eval["I_P_faith_kl_all_split"],
-            f"diag_rlace/test/fth_kls/{i}/I_P_faith_kl_all_merged": kl_eval["I_P_faith_kl_all_merged"],
-            f"diag_rlace/test/fth_kls/{i}/I_P_faith_kl_words": kl_eval["I_P_faith_kl_words"],
-            f"diag_rlace/test/fth_kls/{i}/I_P_faith_kl_tgt_split": kl_eval["I_P_faith_kl_tgt_split"],
-            f"diag_rlace/test/fth_kls/{i}/I_P_faith_kl_tgt_merged": kl_eval["I_P_faith_kl_tgt_merged"],
-            f"diag_rlace/test/er_kls/{i}/P_er_kl_base_proj": kl_eval["P_er_kl_base_proj"],
-            f"diag_rlace/test/er_kls/{i}/P_er_kl_maj_base": kl_eval["P_er_kl_maj_base"],
-            f"diag_rlace/test/er_kls/{i}/P_er_kl_maj_proj": kl_eval["P_er_kl_maj_proj"],
-            f"diag_rlace/test/er_kls/{i}/I_P_er_kl_base_proj": kl_eval["I_P_er_kl_base_proj"],
-            f"diag_rlace/test/er_kls/{i}/I_P_er_kl_maj_base": kl_eval["I_P_er_kl_maj_base"],
-            f"diag_rlace/test/er_kls/{i}/I_P_er_kl_maj_proj": kl_eval["I_P_er_kl_maj_proj"],
+            f"diag_rlace/test/fth_kls/{i}/P_faith_kl_all_split": kl_means["P_faith_kl_all_split"],
+            f"diag_rlace/test/fth_kls/{i}/P_faith_kl_all_merged": kl_means["P_faith_kl_all_merged"],
+            f"diag_rlace/test/fth_kls/{i}/P_faith_kl_words": kl_means["P_faith_kl_words"],
+            f"diag_rlace/test/fth_kls/{i}/P_faith_kl_tgt_split": kl_means["P_faith_kl_tgt_split"],
+            f"diag_rlace/test/fth_kls/{i}/P_faith_kl_tgt_merged": kl_means["P_faith_kl_tgt_merged"],
+            f"diag_rlace/test/fth_kls/{i}/I_P_faith_kl_all_split": kl_means["I_P_faith_kl_all_split"],
+            f"diag_rlace/test/fth_kls/{i}/I_P_faith_kl_all_merged": kl_means["I_P_faith_kl_all_merged"],
+            f"diag_rlace/test/fth_kls/{i}/I_P_faith_kl_words": kl_means["I_P_faith_kl_words"],
+            f"diag_rlace/test/fth_kls/{i}/I_P_faith_kl_tgt_split": kl_means["I_P_faith_kl_tgt_split"],
+            f"diag_rlace/test/fth_kls/{i}/I_P_faith_kl_tgt_merged": kl_means["I_P_faith_kl_tgt_merged"],
+            f"diag_rlace/test/er_kls/{i}/P_er_kl_base_proj": kl_means["P_er_kl_base_proj"],
+            f"diag_rlace/test/er_kls/{i}/P_er_kl_maj_base": kl_means["P_er_kl_maj_base"],
+            f"diag_rlace/test/er_kls/{i}/P_er_kl_maj_proj": kl_means["P_er_kl_maj_proj"],
+            f"diag_rlace/test/er_kls/{i}/I_P_er_kl_base_proj": kl_means["I_P_er_kl_base_proj"],
+            f"diag_rlace/test/er_kls/{i}/I_P_er_kl_maj_base": kl_means["I_P_er_kl_maj_base"],
+            f"diag_rlace/test/er_kls/{i}/I_P_er_kl_maj_proj": kl_means["I_P_er_kl_maj_proj"],
         })
     
 
@@ -358,7 +367,7 @@ for i in trange(NRUNS):
         run = i,
         run_args = run_args,
         diag_rlace_usage_eval = usage_eval,
-        diag_rlace_kl_eval = kl_eval,
+        diag_rlace_kl_eval = kl_means,
         #functional_rlace = functional_rlace_results,
         #inlp = inlp_results,
         maj_acc_test = get_majority_acc(y_test),

@@ -179,7 +179,7 @@ def compute_kls(hs, P, I_P, word_emb, sg_emb, pl_emb, verb_probs, nsamples=200):
     kls = []
     for i in pbar:
         kls.append(compute_kls_one_sample(hs[i], P, I_P, word_emb, sg_emb, pl_emb, verb_probs))
-    kls = pd.DataFrame(kls)
+    kls = pd.DataFrame(kls).describe()
     return kls
 
 #%%#################
