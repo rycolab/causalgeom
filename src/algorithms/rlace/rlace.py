@@ -15,8 +15,11 @@ import wandb
 from torch.utils.data import DataLoader, Dataset
 from abc import ABC
 
+#sys.path.append('..')
+sys.path.append('./src/')
+
 from classifiers.classifiers import BinaryParamFreeClf, BinaryParamFreeClfTwoPs
-import functionals
+#import functionals
 
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")

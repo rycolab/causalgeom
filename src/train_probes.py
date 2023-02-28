@@ -22,7 +22,7 @@ import wandb
 
 #from rlace import solve_adv_game, solve_adv_game_param_free, \
 #    init_classifier, get_majority_acc, solve_adv_game_param_free_twoPs
-from rlace import solve_adv_game, init_classifier, get_majority_acc
+from algorithms.rlace.rlace import solve_adv_game, init_classifier, get_majority_acc
 
 import algorithms.inlp.debias
 from classifiers.classifiers import BinaryParamFreeClf
