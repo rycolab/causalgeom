@@ -274,6 +274,31 @@ for i in trange(NRUNS):
         WORD_EMB, SG_EMB, PL_EMB, VERB_PROBS
     )
 
+    if WB:
+        wandb.log({
+            f"diag_rlace/test/usage/{i}/diag_acc_P_test": usage_eval["diag_acc_P_test"],
+            f"diag_rlace/test/usage/{i}/diag_acc_I_P_test": usage_eval["diag_acc_I_P_test"],
+            f"diag_rlace/test/usage/{i}/lm_acc_P_test": usage_eval["lm_acc_P_test"], 
+            f"diag_rlace/test/usage/{i}/lm_acc_I_P_test": usage_eval["lm_acc_I_P_test"],
+            f"diag_rlace/test/fth_kls/{i}/P_faith_kl_all_split": kl_eval["P_faith_kl_all_split"],
+            f"diag_rlace/test/fth_kls/{i}/P_faith_kl_all_merged": kl_eval["P_faith_kl_all_merged"],
+            f"diag_rlace/test/fth_kls/{i}/P_faith_kl_words": kl_eval["P_faith_kl_words"],
+            f"diag_rlace/test/fth_kls/{i}/P_faith_kl_tgt_split": kl_eval["P_faith_kl_tgt_split"],
+            f"diag_rlace/test/fth_kls/{i}/P_faith_kl_tgt_merged": kl_eval["P_faith_kl_tgt_merged"],
+            f"diag_rlace/test/fth_kls/{i}/I_P_faith_kl_all_split": kl_eval["I_P_faith_kl_all_split"],
+            f"diag_rlace/test/fth_kls/{i}/I_P_faith_kl_all_merged": kl_eval["I_P_faith_kl_all_merged"],
+            f"diag_rlace/test/fth_kls/{i}/I_P_faith_kl_words": kl_eval["I_P_faith_kl_words"],
+            f"diag_rlace/test/fth_kls/{i}/I_P_faith_kl_tgt_split": kl_eval["I_P_faith_kl_tgt_split"],
+            f"diag_rlace/test/fth_kls/{i}/I_P_faith_kl_tgt_merged": kl_eval["I_P_faith_kl_tgt_merged"],
+            f"diag_rlace/test/er_kls/{i}/P_er_kl_base_proj": kl_eval["P_er_kl_base_proj"],
+            f"diag_rlace/test/er_kls/{i}/P_er_kl_maj_base": kl_eval["P_er_kl_maj_base"],
+            f"diag_rlace/test/er_kls/{i}/P_er_kl_maj_proj": kl_eval["P_er_kl_maj_proj"],
+            f"diag_rlace/test/er_kls/{i}/I_P_er_kl_base_proj": kl_eval["I_P_er_kl_base_proj"],
+            f"diag_rlace/test/er_kls/{i}/I_P_er_kl_maj_base": kl_eval["I_P_er_kl_maj_base"],
+            f"diag_rlace/test/er_kls/{i}/I_P_er_kl_maj_proj": kl_eval["I_P_er_kl_maj_proj"],
+        })
+    
+
     """
     #%%
     #versions = ["original", "positively_functional", "negatively_functional"]

@@ -39,7 +39,7 @@ def load_hs(dataset_name, model_name):
 
     with open(DATASET, 'rb') as f:      
         data = pd.DataFrame(pickle.load(f), columns = ["h", "u", "y"])
-        h = data["h"]
+        h = np.array([x for x in data["h"]])
         del data
     return h
 
@@ -173,12 +173,12 @@ def compute_kls(hs, P, I_P, word_emb, sg_emb, pl_emb, verb_probs, nsamples=200):
     idx = np.arange(0, hs.shape[0])
     np.random.shuffle(idx)
     ind = idx[:nsamples]
-    
+
     pbar = tqdm(ind)
     pbar.set_description("Computing faithfulness and erasure KL on hidden states")
     kls = []
     for i in pbar:
-        kls.append(compute_kls(hs[i], P, I_P, word_emb, sg_emb, pl_emb, verb_probs))
+        kls.append(compute_kls_one_sample(hs[i], P, I_P, word_emb, sg_emb, pl_emb, verb_probs))
     kls = pd.DataFrame(kls)
     return kls
 
