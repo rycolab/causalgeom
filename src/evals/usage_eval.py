@@ -9,8 +9,11 @@ import numpy as np
 import torch
 from sklearn.metrics import log_loss
 
+#sys.path.append('..')
+sys.path.append('./src/')
+
 from classifiers.classifiers import BinaryParamFreeClf, BinaryParamFreeClfTwoPs
-from rlace import init_classifier, get_majority_acc
+from algorithms.rlace.rlace import init_classifier, get_majority_acc
 
 #%% Diagnostic probe performance before and after
 def eval_diagnostic(P, I_P, X_train, y_train, X_val, y_val, X_test, y_test):
