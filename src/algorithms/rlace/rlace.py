@@ -21,7 +21,6 @@ from abc import ABC
 #sys.path.append('..')
 sys.path.append('./src/')
 
-from classifiers.classifiers import BinaryParamFreeClf, BinaryParamFreeClfTwoPs
 #import functionals
 
 coloredlogs.install(level=logging.INFO)
@@ -68,21 +67,7 @@ def run_validation(X_train, y_train, X_dev, y_dev, P, rank):
         
     i = np.argmin(loss_vals)
     return loss_vals[i], accs[i]
-"""
-def get_score_param_free(X_dev, U_dev, y_dev, P, rank, device):
-    P_svd = torch.Tensor(get_projection(P, rank)).to(device)
-    clf = BinaryParamFreeClf(X_dev, U_dev, y_dev, P_svd, device)
 
-    return clf.loss_P(), clf.score_P()
-
-def get_score_param_free_twoPs(X_dev, U_dev, y_dev, Pu, Ph, rank, device):
-    Pu_svd = torch.Tensor(get_projection(Pu, rank)).to(device)
-    Ph_svd = torch.Tensor(get_projection(Ph, rank)).to(device)
-    
-    clf = BinaryParamFreeClfTwoPs(X_dev, U_dev, y_dev, Pu_svd, Ph_svd, device)
-
-    return clf.loss_P(), clf.score_P()
-"""
 def solve_constraint(lambdas, d=1):
     def f(theta):
         return_val = np.sum(np.minimum(np.maximum(lambdas - theta, 0), 1)) - d
@@ -147,16 +132,19 @@ def get_projection(P, rank):
     I_P_final = np.eye(P.shape[0]) - P_final
     return P_final, I_P_final
 
-def prepare_output(P_loss, P_acc, rank, best_acc, best_loss):
+def prepare_output(P_loss, P_acc, P_burn, rank, best_acc, best_loss):
     P_loss_svd, I_P_loss_svd = get_projection(P_loss, rank)
     P_acc_svd, I_P_acc_svd = get_projection(P_acc, rank)
+    P_burn_svd, I_P_burn_svd = get_projection(P_burn, rank)
     return {
-        "best_loss": best_loss, 
-        "best_acc": best_acc, 
+        "optim_best_loss": best_loss, 
+        "optim_best_acc": best_acc, 
         "P": P_loss_svd,
         "I_P": I_P_loss_svd,
         "P_acc": P_acc_svd,
-        "I_P_acc": I_P_acc_svd
+        "I_P_acc": I_P_acc_svd,
+        "P_burn": P_burn_svd,
+        "I_P_burn": I_P_burn_svd
     }
 
 """
@@ -254,6 +242,8 @@ def solve_adv_game(X_train, y_train, X_dev, y_dev,
     maj, label_entropy = get_majority_acc_entropy(y_train)
     best_P, best_P_acc, best_acc, best_loss = None, None, 1, -1
 
+    burn_P, burn_loss = None, -1
+
     if wb:
         if wb_run is None:
             wb_run = 0
@@ -296,7 +286,7 @@ def solve_adv_game(X_train, y_train, X_dev, y_dev,
             loss_predictor.backward()
             optimizer_predictor.step()
 
-        if i % evaluate_every == 0:
+        if (i+1) % evaluate_every == 0:
             #pbar.set_description("Evaluating current adversary...")
             loss_val, acc_val = run_validation(X_val_train, y_val_train, X_dev, y_dev, P.detach().cpu().numpy(), rank)
             #TODO: probably want to pick best_score and best_loss in the same if statement (evaluate on one)
@@ -304,6 +294,8 @@ def solve_adv_game(X_train, y_train, X_dev, y_dev,
                 best_P, best_loss = symmetric(P).detach().cpu().numpy().copy(), loss_val
             if np.abs(acc_val - maj) < np.abs(best_acc - maj):
                 best_P_acc, best_acc = symmetric(P).detach().cpu().numpy().copy(), acc_val
+            if i / out_iters > .8 and loss_val > burn_loss:
+                burn_P, burn_loss = symmetric(P).detach().cpu().numpy().copy(), loss_val
 
             scheduler_P.step(loss_val)
 
@@ -312,6 +304,7 @@ def solve_adv_game(X_train, y_train, X_dev, y_dev,
                             f"diag_rlace/val/{wb_run}/acc": acc_val,
                             f"diag_rlace/val/{wb_run}/best_loss": best_loss,
                             f"diag_rlace/val/{wb_run}/best_acc": best_acc,
+                            f"diag_rlace/val/{wb_run}/burn_loss": burn_loss,
                             f"diag_rlace/val/{wb_run}/lr": optimizer_P.param_groups[0]['lr']})
             
             # update progress bar
@@ -329,7 +322,7 @@ def solve_adv_game(X_train, y_train, X_dev, y_dev,
         #if i > 1 and np.abs(best_loss - label_entropy) < epsilon:
         #    break
     output = prepare_output(
-        best_P, best_P_acc, rank, best_acc, best_loss
+        best_P, best_P_acc, burn_P, rank, best_acc, best_loss
     )
     if torch_outfile is not None:
         torch.save(

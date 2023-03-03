@@ -28,7 +28,7 @@ import algorithms.inlp.debias
 from classifiers.classifiers import BinaryParamFreeClf
 from utils.cuda_loaders import get_device
 from evals.kl_eval import compute_kls, load_model_eval
-from evals.usage_eval import full_usage_eval
+from evals.usage_eval import full_usage_eval, full_diag_eval
 
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
@@ -54,18 +54,31 @@ def get_args():
     argparser.add_argument(
         "-k",
         type=int,
-        help="Rank of "
+        help="Rank of P."
     )
     argparser.add_argument(
         "-niter",
         type=int,
+        default=75000,
         help="Number of iterations of RLACE"
     )
     argparser.add_argument(
-        "-plr",
+        "-bs",
+        type=int,
+        default=256,
+        help="Batch size of RLACE"
+    )
+    argparser.add_argument(
+        "-p_lr",
         type=float,
         default=0.003,
         help="Learning rate for P" 
+    )
+    argparser.add_argument(
+        "-clf_lr",
+        type=float,
+        default=0.003,
+        help="Learning rate for clf" 
     )
     argparser.add_argument(
         "-n_lr_red",
@@ -76,13 +89,13 @@ def get_args():
     argparser.add_argument(
         "-nruns",
         type=int,
-        default=3,
+        default=1,
         help="Number of runs of the experiment"
     )
     argparser.add_argument(
         "-train_obs",
         type=int,
-        default=30000,
+        default=200000,
         help="Number of train obs"
     )
     argparser.add_argument(
@@ -101,17 +114,36 @@ def get_args():
 
 MODE = "job" # "debug"
 
+def get_default_lrs(model_name):
+    p_lr = None
+    clf_lr = None
+    if model_name == "gpt2":
+        p_lr = 0.001
+        clf_lr = 0.0003
+    elif model_name == "bert-base-uncased":
+        p_lr = 0.003
+        clf_lr = 0.003
+    else:
+        raise ValueError("Incorrect model name")
+    return p_lr, clf_lr
+
 if MODE == "job":
     args = get_args()
     logging.info(args)
 
     DATASET_NAME = "linzen"
     MODEL_NAME = args.model
+    
+    # rlace args
     RANK = args.k
     RLACE_NITER = args.niter
-    PLR = args.plr
-    
+    BATCH_SIZE = args.bs
+    #P_LR = args.p_lr
+    #CLF_LR = args.clf_lr
+    P_LR, CLF_LR = get_default_lrs(MODEL_NAME)
+
     #scheduler
+    #TODO: add a separate LR scheduler for clf
     SCHED_NRED = args.n_lr_red
     SCHED_FACTOR = .5
     SCHED_PATIENCE = 4
@@ -129,12 +161,17 @@ else:
     logging.warn("RUNNING IN DEBUG MODE.")
     DATASET_NAME = "linzen"
     MODEL_NAME = "gpt2" #"bert-base-uncased"
+    
+    # rlace
     RANK = 1
     RLACE_NITER = 1000
-    PLR=0.003
+    BATCH_SIZE = 256
+    #P_LR=0.003
+    #CLF_LR = 0.003
+    P_LR, CLF_LR = get_default_lrs(MODEL_NAME)
 
     #scheduler
-    SCHED_NRED = 5
+    SCHED_NRED = 0
     SCHED_FACTOR = .5
     SCHED_PATIENCE = 4
 
@@ -150,24 +187,31 @@ else:
 
 rlace_optimizer_class = torch.optim.SGD
 rlace_scheduler_class = torch.optim.lr_scheduler.ReduceLROnPlateau
-SCHED_MIN_LR = PLR * (SCHED_FACTOR**SCHED_NRED)
+SCHED_MIN_LR = P_LR * (SCHED_FACTOR**SCHED_NRED)
 
-rlace_optimizer_params_P = {"lr": PLR, 
+rlace_optimizer_params_P = {"lr": P_LR, 
                             "weight_decay": 1e-4}
 rlace_scheduler_params_P = {"mode": "max", 
                             "factor": SCHED_FACTOR, 
                             "patience": SCHED_PATIENCE, 
                             "min_lr": SCHED_MIN_LR, 
                             "verbose": True}
-rlace_optimizer_params_predictor = {"lr": 0.003,"weight_decay": 1e-4}
+rlace_optimizer_params_predictor = {"lr": CLF_LR,"weight_decay": 1e-4}
+#rlace_scheduler_params_predictor = {"mode": "min", 
+#                            "factor": SCHED_FACTOR, 
+#                            "patience": SCHED_PATIENCE, 
+#                            "min_lr": SCHED_MIN_LR, 
+#                            "verbose": True}
 rlace_epsilon = 0.001 # stop 0.1% from majority acc
-rlace_batch_size = 256
+rlace_batch_size = BATCH_SIZE
 
 # Logging run args
 run_args = {
     "rank": RANK,
     "rlace_niter": RLACE_NITER,
-    "p_lr": PLR,
+    "batch_size": BATCH_SIZE,
+    "p_lr": P_LR,
+    "clf_lr": CLF_LR,
     "n_lr_red": SCHED_NRED,
     "nruns": NRUNS,
     "train_obs": TRAIN_OBS,
@@ -180,7 +224,7 @@ run_args = {
     "test_obs": TEST_OBS
 }
 
-RUN_NAME = f"{MODEL_NAME[:4]}_k_{RANK}_n_{RLACE_NITER}_plr_{PLR}"
+RUN_NAME = f"{MODEL_NAME[:4]}_k_{RANK}_plr_{P_LR}_clflr_{CLF_LR}_bs_{BATCH_SIZE}"
 
 logging.info(f"Running: {RUN_NAME}")
 
@@ -229,7 +273,7 @@ if WBN:
     wandb.init(
         project="usagebasedprobing", 
         entity="cguerner",
-        name=WBN+f"_{RUN_NAME}",
+        name=f"{OUTPUT_FOLDER}_{WBN}_{RUN_NAME}",
     )
     wandb.config.update(run_args)
     WB = True
@@ -269,12 +313,15 @@ for i in trange(NRUNS):
         torch_outfile=diag_rlace_u_outfile, wb=WB, wb_run=i
     )
     end = time.time()
+    diag_rlace_output["runtime"] = end-start
     
+    logging.info("Computing evals")
+
+    diag_eval = full_diag_eval(
+        diag_rlace_output, X_train, y_train, X_val, y_val, X_test, y_test
+    )
     usage_eval = full_usage_eval(
-        diag_rlace_output, 
-        X_train, U_train, y_train, 
-        X_val, U_val, y_val,
-        X_test, U_test, y_test, end-start
+        diag_rlace_output, X_train, U_train, y_train, X_test, U_test, y_test
     )
 
     kl_eval = compute_kls(
@@ -283,30 +330,55 @@ for i in trange(NRUNS):
     )
     kl_means = kl_eval.loc["mean",:]
 
+    burn_kl_eval = compute_kls(
+        X_test, diag_rlace_output["P_burn"], diag_rlace_output["I_P_burn"], 
+        WORD_EMB, SG_EMB, PL_EMB, VERB_PROBS
+    )
+    burn_kl_means = burn_kl_eval.loc["mean",:]
+
     if WB:
         wandb.log({
-            f"diag_rlace/test/usage/{i}/diag_acc_P_test": usage_eval["diag_acc_P_test"],
-            f"diag_rlace/test/usage/{i}/diag_acc_I_P_test": usage_eval["diag_acc_I_P_test"],
+            f"diag_rlace/test/diag/{i}/diag_acc_P_test": diag_eval["diag_acc_P_test"],
+            f"diag_rlace/test/diag/{i}/diag_acc_I_P_test": diag_eval["diag_acc_I_P_test"],
             f"diag_rlace/test/usage/{i}/lm_acc_P_test": usage_eval["lm_acc_P_test"], 
             f"diag_rlace/test/usage/{i}/lm_acc_I_P_test": usage_eval["lm_acc_I_P_test"],
-            f"diag_rlace/test/fth_kls/{i}/P_faith_kl_all_split": kl_means["P_faith_kl_all_split"],
-            f"diag_rlace/test/fth_kls/{i}/P_faith_kl_all_merged": kl_means["P_faith_kl_all_merged"],
-            f"diag_rlace/test/fth_kls/{i}/P_faith_kl_words": kl_means["P_faith_kl_words"],
-            f"diag_rlace/test/fth_kls/{i}/P_faith_kl_tgt_split": kl_means["P_faith_kl_tgt_split"],
-            f"diag_rlace/test/fth_kls/{i}/P_faith_kl_tgt_merged": kl_means["P_faith_kl_tgt_merged"],
-            f"diag_rlace/test/fth_kls/{i}/I_P_faith_kl_all_split": kl_means["I_P_faith_kl_all_split"],
-            f"diag_rlace/test/fth_kls/{i}/I_P_faith_kl_all_merged": kl_means["I_P_faith_kl_all_merged"],
-            f"diag_rlace/test/fth_kls/{i}/I_P_faith_kl_words": kl_means["I_P_faith_kl_words"],
-            f"diag_rlace/test/fth_kls/{i}/I_P_faith_kl_tgt_split": kl_means["I_P_faith_kl_tgt_split"],
-            f"diag_rlace/test/fth_kls/{i}/I_P_faith_kl_tgt_merged": kl_means["I_P_faith_kl_tgt_merged"],
-            f"diag_rlace/test/er_kls/{i}/P_er_kl_base_proj": kl_means["P_er_kl_base_proj"],
-            f"diag_rlace/test/er_kls/{i}/P_er_kl_maj_base": kl_means["P_er_kl_maj_base"],
-            f"diag_rlace/test/er_kls/{i}/P_er_kl_maj_proj": kl_means["P_er_kl_maj_proj"],
-            f"diag_rlace/test/er_kls/{i}/I_P_er_kl_base_proj": kl_means["I_P_er_kl_base_proj"],
-            f"diag_rlace/test/er_kls/{i}/I_P_er_kl_maj_base": kl_means["I_P_er_kl_maj_base"],
-            f"diag_rlace/test/er_kls/{i}/I_P_er_kl_maj_proj": kl_means["I_P_er_kl_maj_proj"],
+            f"diag_rlace/test/diag/{i}/diag_acc_P_burn_test": diag_eval["diag_acc_P_burn_test"],
+            f"diag_rlace/test/diag/{i}/diag_acc_I_P_burn_test": diag_eval["diag_acc_I_P_burn_test"],
+            f"diag_rlace/test/usage/{i}/lm_acc_P_burn_test": usage_eval["lm_acc_P_burn_test"], 
+            f"diag_rlace/test/usage/{i}/lm_acc_I_P_burn_test": usage_eval["lm_acc_I_P_burn_test"],
+            f"diag_rlace/test/fth_kls/P/{i}/faith_kl_all_split": kl_means["P_faith_kl_all_split"],
+            f"diag_rlace/test/fth_kls/P/{i}/faith_kl_all_merged": kl_means["P_faith_kl_all_merged"],
+            f"diag_rlace/test/fth_kls/P/{i}/faith_kl_words": kl_means["P_faith_kl_words"],
+            f"diag_rlace/test/fth_kls/P/{i}/faith_kl_tgt_split": kl_means["P_faith_kl_tgt_split"],
+            f"diag_rlace/test/fth_kls/P/{i}/faith_kl_tgt_merged": kl_means["P_faith_kl_tgt_merged"],
+            f"diag_rlace/test/fth_kls/I_P/{i}/faith_kl_all_split": kl_means["I_P_faith_kl_all_split"],
+            f"diag_rlace/test/fth_kls/I_P/{i}/faith_kl_all_merged": kl_means["I_P_faith_kl_all_merged"],
+            f"diag_rlace/test/fth_kls/I_P/{i}/faith_kl_words": kl_means["I_P_faith_kl_words"],
+            f"diag_rlace/test/fth_kls/I_P/{i}/faith_kl_tgt_split": kl_means["I_P_faith_kl_tgt_split"],
+            f"diag_rlace/test/fth_kls/I_P/{i}/faith_kl_tgt_merged": kl_means["I_P_faith_kl_tgt_merged"],
+            f"diag_rlace/test/er_kls/P/{i}/er_kl_base_proj": kl_means["P_er_kl_base_proj"],
+            f"diag_rlace/test/er_kls/P/{i}/er_kl_maj_base": kl_means["P_er_kl_maj_base"],
+            f"diag_rlace/test/er_kls/P/{i}/er_kl_maj_proj": kl_means["P_er_kl_maj_proj"],
+            f"diag_rlace/test/er_kls/I_P/{i}/er_kl_base_proj": kl_means["I_P_er_kl_base_proj"],
+            f"diag_rlace/test/er_kls/I_P/{i}/er_kl_maj_base": kl_means["I_P_er_kl_maj_base"],
+            f"diag_rlace/test/er_kls/I_P/{i}/er_kl_maj_proj": kl_means["I_P_er_kl_maj_proj"],
+            f"diag_rlace/test/fth_kls/burn_P/{i}/faith_kl_all_split": burn_kl_means["P_faith_kl_all_split"],
+            f"diag_rlace/test/fth_kls/burn_P/{i}/faith_kl_all_merged": burn_kl_means["P_faith_kl_all_merged"],
+            f"diag_rlace/test/fth_kls/burn_P/{i}/faith_kl_words": burn_kl_means["P_faith_kl_words"],
+            f"diag_rlace/test/fth_kls/burn_P/{i}/faith_kl_tgt_split": burn_kl_means["P_faith_kl_tgt_split"],
+            f"diag_rlace/test/fth_kls/burn_P/{i}/faith_kl_tgt_merged": burn_kl_means["P_faith_kl_tgt_merged"],
+            f"diag_rlace/test/fth_kls/burn_I_P/{i}/faith_kl_all_split": burn_kl_means["I_P_faith_kl_all_split"],
+            f"diag_rlace/test/fth_kls/burn_I_P/{i}/faith_kl_all_merged": burn_kl_means["I_P_faith_kl_all_merged"],
+            f"diag_rlace/test/fth_kls/burn_I_P/{i}/faith_kl_words": burn_kl_means["I_P_faith_kl_words"],
+            f"diag_rlace/test/fth_kls/burn_I_P/{i}/faith_kl_tgt_split": burn_kl_means["I_P_faith_kl_tgt_split"],
+            f"diag_rlace/test/fth_kls/burn_I_P/{i}/faith_kl_tgt_merged": burn_kl_means["I_P_faith_kl_tgt_merged"],
+            f"diag_rlace/test/er_kls/burn_P/{i}/er_kl_base_proj": burn_kl_means["P_er_kl_base_proj"],
+            f"diag_rlace/test/er_kls/burn_P/{i}/er_kl_maj_base": burn_kl_means["P_er_kl_maj_base"],
+            f"diag_rlace/test/er_kls/burn_P/{i}/er_kl_maj_proj": burn_kl_means["P_er_kl_maj_proj"],
+            f"diag_rlace/test/er_kls/burn_I_P/{i}/er_kl_base_proj": burn_kl_means["I_P_er_kl_base_proj"],
+            f"diag_rlace/test/er_kls/burn_I_P/{i}/er_kl_maj_base": burn_kl_means["I_P_er_kl_maj_base"],
+            f"diag_rlace/test/er_kls/burn_I_P/{i}/er_kl_maj_proj": burn_kl_means["I_P_er_kl_maj_proj"],
         })
-    
 
     """
     #%%
@@ -366,10 +438,11 @@ for i in trange(NRUNS):
     full_results = dict(
         run = i,
         run_args = run_args,
-        diag_rlace_usage_eval = usage_eval,
-        diag_rlace_kl_eval = kl_means,
-        #functional_rlace = functional_rlace_results,
-        #inlp = inlp_results,
+        output = diag_rlace_output,
+        diag_eval = diag_eval,
+        usage_eval = usage_eval,
+        kl_eval = kl_means,
+        burn_kl_eval = burn_kl_means,
         maj_acc_test = get_majority_acc(y_test),
         maj_acc_val = get_majority_acc(y_val),
         maj_acc_train = get_majority_acc(y_train)

@@ -144,7 +144,7 @@ verb_p = vl[["p_sg", "p_pl"]].to_numpy()
 np.save(VERB_P_OUTFILE, verb_p)
 logging.info(f"Exported single token verb probs to: {VERB_P_OUTFILE}")
 
-vl_sg_tok = vl["pverb_tok"].to_numpy()
+vl_sg_tok = vl["sverb_tok"].to_numpy()
 logging.info(f"Single token sg verb list of length: {len(vl_sg_tok)}")
 
 sg_emb = V[vl_sg_tok]

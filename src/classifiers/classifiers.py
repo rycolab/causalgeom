@@ -3,8 +3,39 @@ import pickle
 import torch
 import sklearn
 
-#%% 
+#%%
 class BinaryParamFreeClf():
+    def __init__(self, X, U, y, device):
+        self.X = torch.tensor(X).float()
+        self.U = torch.tensor(U).float()
+        self.y = y
+
+        self.clf = torch.nn.Sigmoid()
+
+    def get_logits(self):
+        return (self.X * self.U).sum(-1)
+
+    def predict_proba(self):
+        return self.clf(self.get_logits()).cpu().numpy()
+
+    def __get_class_from_probas(self, probas):
+        return (probas>0.5).astype(float)
+
+    def predict(self):
+        return self.__get_class_from_probas(self.predict_proba())
+
+    def loss(self):
+        return sklearn.metrics.log_loss(self.y, self.predict_proba())
+            
+    def __compute_acc(self, y_pred):
+        """ y_pred has to be {0, 1}"""
+        return 1 - (np.sum(np.not_equal(y_pred, self.y)) / self.y.shape[0])
+
+    def score(self):
+        return self.__compute_acc(self.predict())
+
+#%% 
+class BinaryParamFreeClfPs():
     def __init__(self, X, U, y, P, I_P, device):
         self.X = torch.tensor(X).float()
         self.U = torch.tensor(U).float()

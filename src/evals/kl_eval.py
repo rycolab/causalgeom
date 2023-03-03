@@ -65,8 +65,8 @@ def load_run_output(run_path):
     with open(run_path, 'rb') as f:      
         run = pickle.load(f)
 
-    P = run["diag_rlace"]["P"]
-    I_P = run["diag_rlace"]["I_P"]
+    P = run["diag_rlace_usage_eval"]["P"]
+    I_P = run["diag_rlace_usage_eval"]["I_P"]
     return P, I_P
 
 #%%#################
@@ -189,7 +189,7 @@ if __name__ == '__main__':
 
     model_name = "gpt2"
     dataset_name = "linzen"
-    run_output = os.path.join(OUT, "run_output/gpt2/230219/run_gpt2_k_1_n_30000_plr_0.001_0_1.pkl")
+    run_output = os.path.join(OUT, "run_output/gpt2/230302/run_gpt2_k_1_plr_0.001_clflr_0.0003_bs_256_0_1.pkl")
 
     logging.info(f"Tokenizing and saving embeddings from word and verb lists for model {model_name}")
 

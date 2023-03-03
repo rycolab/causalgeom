@@ -31,6 +31,7 @@ DATASET = os.path.join(DATASETS, f"processed/{DATASET_NAME}_{MODEL_NAME}_verbs.p
 # with manual drops.
 MANUAL_VERBLIST_PATH = os.path.join(DATASETS, "processed/linzen_word_lists/linzen_verb_list_drop.csv")
 OUTFILE = os.path.join(DATASETS, "processed/linzen_word_lists/linzen_verb_list_final.pkl")
+SG_PL_OUTFILE = os.path.join(DATASETS, "processed/linzen_word_lists/sg_pl_prob.pkl")
 
 #%%#################
 # Unimorph         #
@@ -150,7 +151,7 @@ verblist_final = verblist_drop.drop(
     verblist_drop[verblist_drop["drop"]==1].index)[
         ["sverb", "pverb"]]
 
-#%% RELATIVE COUNTS
+#%% RELATIVE COUNTS PAIRWISE
 vpc_pos = verbpairs.groupby(["sverb", "pverb", "verb_pos"])["count"].sum().reset_index()
 vpc_pos_tab = vpc_pos.pivot(index=["sverb", "pverb"], columns="verb_pos", values="count").reset_index()
 vpc_pos_tab.fillna(value=0, inplace=True)
@@ -170,6 +171,13 @@ verblist_final_p = pd.merge(
 assert verblist_final.shape[0] == verblist_final_p.shape[0]
 
 #%%
-with open(OUTFILE, 'wb') as file:
-    pickle.dump(verblist_final_p, file, protocol=pickle.HIGHEST_PROTOCOL)
+with open(OUTFILE, 'wb') as f:
+    pickle.dump(verblist_final_p, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+#%% RELATIVE COUNTS OVERALL
+sg_pl = verbpairs["verb_pos"].value_counts()
+sg_pl_prob = sg_pl / sg_pl.sum()
+
+with open(SG_PL_OUTFILE, 'wb') as f:
+    pickle.dump(sg_pl_prob, f, protocol=pickle.HIGHEST_PROTOCOL)
 
