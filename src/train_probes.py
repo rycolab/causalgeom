@@ -123,7 +123,7 @@ for i in trange(cfg["nruns"]):
         optimizer_params_predictor=cfg["rlace_optimizer_params_clf"], 
         scheduler_class=rlace_scheduler_class, 
         scheduler_params_P=cfg["rlace_scheduler_params_P"],
-        scheduler_params_clf=cfg["rlace_scheduler_params_clf"],
+        scheduler_params_predictor=cfg["rlace_scheduler_params_clf"],
         batch_size=cfg["batch_size"],
         torch_outfile=diag_rlace_u_outfile, wb=WB, wb_run=i
     )
@@ -168,9 +168,11 @@ for i in trange(cfg["nruns"]):
             f"diag_rlace/test/P/fth_kls/{i}/faith_kl_tgt_split": kl_means["P_faith_kl_tgt_split"],
             f"diag_rlace/test/P/fth_kls/{i}/faith_kl_tgt_merged": kl_means["P_faith_kl_tgt_merged"],
 
-            f"diag_rlace/test/P/er_kls/{i}/er_kl_base_proj": kl_means["P_er_kl_base_proj"],
-            f"diag_rlace/test/P/er_kls/{i}/er_kl_maj_base": kl_means["P_er_kl_maj_base"],
-            f"diag_rlace/test/P/er_kls/{i}/er_kl_maj_proj": kl_means["P_er_kl_maj_proj"],
+            f"diag_rlace/test/base/er_mis/{i}/overall_mi": kl_means["base_overall_mi"],
+            f"diag_rlace/test/base/er_mis/{i}/pairwise_mi": kl_means["base_pairwise_mi"],
+
+            f"diag_rlace/test/P/er_mis/{i}/overall_mi": kl_means["P_overall_mi"],
+            f"diag_rlace/test/P/er_mis/{i}/pairwise_mi": kl_means["P_pairwise_mi"],
 
             f"diag_rlace/test/I_P/fth_kls/{i}/faith_kl_all_split": kl_means["I_P_faith_kl_all_split"],
             f"diag_rlace/test/I_P/fth_kls/{i}/faith_kl_all_merged": kl_means["I_P_faith_kl_all_merged"],
@@ -178,19 +180,17 @@ for i in trange(cfg["nruns"]):
             f"diag_rlace/test/I_P/fth_kls/{i}/faith_kl_tgt_split": kl_means["I_P_faith_kl_tgt_split"],
             f"diag_rlace/test/I_P/fth_kls/{i}/faith_kl_tgt_merged": kl_means["I_P_faith_kl_tgt_merged"],
 
-            f"diag_rlace/test/I_P/er_kls/{i}/er_kl_base_proj": kl_means["I_P_er_kl_base_proj"],
-            f"diag_rlace/test/I_P/er_kls/{i}/er_kl_maj_base": kl_means["I_P_er_kl_maj_base"],
-            f"diag_rlace/test/I_P/er_kls/{i}/er_kl_maj_proj": kl_means["I_P_er_kl_maj_proj"],
+            f"diag_rlace/test/I_P/er_mis/{i}/overall_mi": kl_means["I_P_overall_mi"],
+            f"diag_rlace/test/I_P/er_mis/{i}/pairwise_mi": kl_means["I_P_pairwise_mi"],
 
             f"diag_rlace/test/P_burn/fth_kls/{i}/faith_kl_all_split": burn_kl_means["P_faith_kl_all_split"],
             f"diag_rlace/test/P_burn/fth_kls/{i}/faith_kl_all_merged": burn_kl_means["P_faith_kl_all_merged"],
             f"diag_rlace/test/P_burn/fth_kls/{i}/faith_kl_words": burn_kl_means["P_faith_kl_words"],
             f"diag_rlace/test/P_burn/fth_kls/{i}/faith_kl_tgt_split": burn_kl_means["P_faith_kl_tgt_split"],
             f"diag_rlace/test/P_burn/fth_kls/{i}/faith_kl_tgt_merged": burn_kl_means["P_faith_kl_tgt_merged"],
-            
-            f"diag_rlace/test/P_burn/er_kls/{i}/er_kl_base_proj": burn_kl_means["P_er_kl_base_proj"],
-            f"diag_rlace/test/P_burn/er_kls/{i}/er_kl_maj_base": burn_kl_means["P_er_kl_maj_base"],
-            f"diag_rlace/test/P_burn/er_kls/{i}/er_kl_maj_proj": burn_kl_means["P_er_kl_maj_proj"],
+
+            f"diag_rlace/test/P_burn/er_mis/{i}/overall_mi": burn_kl_means["P_overall_mi"],
+            f"diag_rlace/test/P_burn/er_mis/{i}/pairwise_mi": burn_kl_means["P_pairwise_mi"],
 
             f"diag_rlace/test/I_P_burn/fth_kls/{i}/faith_kl_all_split": burn_kl_means["I_P_faith_kl_all_split"],
             f"diag_rlace/test/I_P_burn/fth_kls/{i}/faith_kl_all_merged": burn_kl_means["I_P_faith_kl_all_merged"],
@@ -198,9 +198,8 @@ for i in trange(cfg["nruns"]):
             f"diag_rlace/test/I_P_burn/fth_kls/{i}/faith_kl_tgt_split": burn_kl_means["I_P_faith_kl_tgt_split"],
             f"diag_rlace/test/I_P_burn/fth_kls/{i}/faith_kl_tgt_merged": burn_kl_means["I_P_faith_kl_tgt_merged"],
 
-            f"diag_rlace/test/I_P_burn/er_kls/{i}/er_kl_base_proj": burn_kl_means["I_P_er_kl_base_proj"],
-            f"diag_rlace/test/I_P_burn/er_kls/{i}/er_kl_maj_base": burn_kl_means["I_P_er_kl_maj_base"],
-            f"diag_rlace/test/I_P_burn/er_kls/{i}/er_kl_maj_proj": burn_kl_means["I_P_er_kl_maj_proj"],
+            f"diag_rlace/test/I_P_burn/er_mis/{i}/overall_mi": burn_kl_means["I_P_overall_mi"],
+            f"diag_rlace/test/I_P_burn/er_mis/{i}/pairwise_mi": burn_kl_means["I_P_pairwise_mi"],
         })
 
     """

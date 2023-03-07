@@ -11,8 +11,8 @@ import wandb
 import tqdm
 import numpy as np
 import torch
-from torch.utils.data import DataLoader, Dataset
 from sklearn.linear_model import SGDClassifier
+from torch.utils.data import DataLoader, Dataset
 from torch.optim import SGD, Adam
 import sklearn
 
@@ -22,6 +22,8 @@ from abc import ABC
 sys.path.append('./src/')
 
 #import functionals
+
+from evals.kl_eval import compute_kls, load_model_eval
 
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
@@ -67,6 +69,15 @@ def run_validation(X_train, y_train, X_dev, y_dev, P, rank):
         
     i = np.argmin(loss_vals)
     return loss_vals[i], accs[i]
+
+def compute_mis(X_dev, P, rank, word_emb, sg_emb, pl_emb, verb_probs, sg_pl_prob):
+    P_svd, I_P_svd = get_projection(P, rank)
+
+    mis = compute_kls(
+        X_dev, P_svd, I_P_svd, word_emb, sg_emb, pl_emb, verb_probs, sg_pl_prob,
+        faith=False, er_kls=False, er_mis=True
+    )
+    return mis.loc["mean",:]
 
 def solve_constraint(lambdas, d=1):
     def f(theta):
@@ -174,7 +185,8 @@ def solve_adv_game(X_train, y_train, X_dev, y_dev,
                    optimizer_class=SGD, 
                    optimizer_params_P={"lr": 0.005, "weight_decay": 1e-4}, 
                    optimizer_params_predictor={"lr": 0.005, "weight_decay": 1e-4}, 
-                   scheduler_class=None, scheduler_params_P=None,
+                   scheduler_class=None, scheduler_params_P=None, 
+                   scheduler_params_predictor=None,
                    torch_outfile=None, wb=False, wb_run=None):
     """
     :param X: The input (np array)
@@ -238,11 +250,14 @@ def solve_adv_game(X_train, y_train, X_dev, y_dev,
     assert scheduler_class is not None
 
     scheduler_P = scheduler_class(optimizer_P, **scheduler_params_P)
+    scheduler_predictor = scheduler_class(optimizer_predictor, **scheduler_params_predictor)
 
     maj, label_entropy = get_majority_acc_entropy(y_train)
     best_P, best_P_acc, best_acc, best_loss = None, None, 1, -1
 
     burn_P, burn_loss = None, -1
+
+    word_emb, sg_emb, pl_emb, verb_probs, sg_pl_prob = load_model_eval(model_name)
 
     if wb:
         if wb_run is None:
@@ -288,24 +303,43 @@ def solve_adv_game(X_train, y_train, X_dev, y_dev,
 
         if (i+1) % evaluate_every == 0:
             #pbar.set_description("Evaluating current adversary...")
-            loss_val, acc_val = run_validation(X_val_train, y_val_train, X_dev, y_dev, P.detach().cpu().numpy(), rank)
+            loss_val, acc_val = run_validation(
+                X_val_train, y_val_train, X_dev, y_dev, P.detach().cpu().numpy(), 
+                rank
+            )
+            mis_val = compute_mis(
+                X_dev, P.detach().cpu().numpy(), rank, word_emb, sg_emb, pl_emb, 
+                verb_probs, sg_pl_prob
+            )
             #TODO: probably want to pick best_score and best_loss in the same if statement (evaluate on one)
             if loss_val > best_loss:#if np.abs(score - maj) < np.abs(best_score - maj):
-                best_P, best_loss = symmetric(P).detach().cpu().numpy().copy(), loss_val
+                best_P, best_loss, best_loss_acc = symmetric(P).detach().cpu().numpy().copy(), loss_val, acc_val
             if np.abs(acc_val - maj) < np.abs(best_acc - maj):
                 best_P_acc, best_acc = symmetric(P).detach().cpu().numpy().copy(), acc_val
             if i / out_iters > .8 and loss_val > burn_loss:
                 burn_P, burn_loss = symmetric(P).detach().cpu().numpy().copy(), loss_val
 
             scheduler_P.step(loss_val)
+            scheduler_predictor.step(loss_val)
 
             if wb:
-                wandb.log({f"diag_rlace/val/{wb_run}/loss": loss_val, 
-                            f"diag_rlace/val/{wb_run}/acc": acc_val,
-                            f"diag_rlace/val/{wb_run}/best_loss": best_loss,
-                            f"diag_rlace/val/{wb_run}/best_acc": best_acc,
-                            f"diag_rlace/val/{wb_run}/burn_loss": burn_loss,
-                            f"diag_rlace/val/{wb_run}/lr": optimizer_P.param_groups[0]['lr']})
+                wandb.log({
+                    f"diag_rlace/val/{wb_run}/loss": loss_val, 
+                    f"diag_rlace/val/{wb_run}/acc": acc_val,
+                    f"diag_rlace/val/{wb_run}/best_loss": best_loss,
+                    f"diag_rlace/val/{wb_run}/best_loss_acc": best_loss_acc,
+                    f"diag_rlace/val/{wb_run}/best_acc": best_acc,
+                    f"diag_rlace/val/{wb_run}/best_loss_acc_gap": np.abs(best_loss_acc - maj) - np.abs(best_acc - maj),
+                    f"diag_rlace/val/{wb_run}/burn_loss": burn_loss,
+                    f"diag_rlace/val/{wb_run}/P_lr": optimizer_P.param_groups[0]['lr'],
+                    f"diag_rlace/val/{wb_run}/clf_lr": optimizer_predictor.param_groups[0]['lr'],
+                    f"diag_rlace/val/{wb_run}/base_overall_mi": mis_val["base_overall_mi"],
+                    f"diag_rlace/val/{wb_run}/P_overall_mi": mis_val["P_overall_mi"],
+                    f"diag_rlace/val/{wb_run}/I_P_overall_mi": mis_val["I_P_overall_mi"],
+                    f"diag_rlace/val/{wb_run}/base_pairwise_mi": mis_val["base_pairwise_mi"],
+                    f"diag_rlace/val/{wb_run}/P_pairwise_mi": mis_val["P_pairwise_mi"],
+                    f"diag_rlace/val/{wb_run}/I_P_pairwise_mi": mis_val["I_P_pairwise_mi"],
+                })
             
             # update progress bar
             pbar.set_description(

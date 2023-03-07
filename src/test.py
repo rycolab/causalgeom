@@ -121,10 +121,31 @@ P_pair_probs = normalize_pairs(P_distribs["sg"], P_distribs["pl"])
 I_P_pair_probs = normalize_pairs(I_P_distribs["sg"], I_P_distribs["pl"])
 
 # %%
-pairwise_ent = np.mean(np.apply_along_axis(entropy, 1, verb_probs))
-base_ent = np.mean(np.apply_along_axis(entropy, 1, base_pair_probs))
-P_ent = np.mean(np.apply_along_axis(entropy, 1, P_pair_probs))
-I_P_ent = np.mean(np.apply_along_axis(entropy, 1, I_P_pair_probs))
+def compute_pairwise_entropy(pairwise_p):
+    return np.apply_along_axis(entropy, 1, pairwise_p)
+
+def compute_pairwise_mi(pairwise_uncond_ent, pairwise_cond_ent):
+    return np.mean(pairwise_uncond_ent - pairwise_cond_ent)    
+
+def get_pairwise_mi(pairwise_uncond_probs, pairwise_cond_probs):
+    pairwise_uncond_ent = compute_pairwise_entropy(pairwise_uncond_probs)
+    pairwise_cond_ent = compute_pairwise_entropy(pairwise_cond_probs)
+    return compute_pairwise_mi(pairwise_uncond_ent, pairwise_cond_ent)
+
+verb_ent = pairwise_entropy(verb_probs)
+base_ent = pairwise_entropy(base_pair_probs)
+P_ent = pairwise_entropy(P_pair_probs)
+I_P_ent = pairwise_entropy(I_P_pair_probs)
+
+
+
+base_pairwise_mi = pairwise_mi(verb_ent, base_ent)
+P_pairwise_mi = pairwise_mi(verb_ent, P_ent)
+I_P_pairwise_mi = pairwise_mi(verb_ent, I_P_ent)
+
+base_pairwise_mi = get_pairwise_mi(verb_probs, base_pair_probs)
+P_pairwise_mi = get_pairwise_mi(verb_probs, P_pair_probs)
+I_P_pairwise_mi = get_pairwise_mi(verb_probs, I_P_pair_probs)
 
 # %%
 SG_PL_PROB = os.path.join(DATASETS, "processed/linzen_word_lists/sg_pl_prob.pkl")
@@ -144,9 +165,30 @@ def get_sg_pl_prob(sg_prob, pl_prob):
     sg_pl_prob = np.hstack([total_sg_prob, total_pl_prob]) / total_prob
     return sg_pl_prob
 
+def compute_overall_mi(uncond_sg_pl_prob, cond_sg_probs, cond_pl_probs):
+    cond_sg_pl_prob = get_sg_pl_prob(cond_sg_probs, cond_pl_probs)
+    return entropy(uncond_sg_pl_prob) - entropy(cond_sg_pl_prob)
+
+def get_all_overall_mis(uncond_sg_pl_prob, base_distribs, P_distribs, I_P_distribs):
+    res = dict(
+        base_overall_mi = compute_overall_mi(
+            uncond_sg_pl_prob, base_distribs["sg"], base_distribs["pl"]),
+        P_overall_mi = compute_overall_mi(
+            uncond_sg_pl_prob, P_distribs["sg"], P_distribs["pl"]),
+        I_P_overall_mi = compute_overall_mi(
+            uncond_sg_pl_prob, I_P_distribs["sg"], I_P_distribs["pl"]),
+    )
+    return res
+
 base_sg_pl_prob = get_sg_pl_prob(base_distribs["sg"], base_distribs["pl"])
 P_sg_pl_prob = get_sg_pl_prob(P_distribs["sg"], P_distribs["pl"])
 I_P_sg_pl_prob = get_sg_pl_prob(I_P_distribs["sg"], I_P_distribs["pl"])
+
+mi_base = data_ent - entropy(base_sg_pl_prob)
+mi_P = data_ent - entropy(P_sg_pl_prob)
+mi_I_P = data_ent - entropy(I_P_sg_pl_prob)
+
+get_all_overall_mis(data_sg_pl_prob, base_distribs, P_distribs, I_P_distribs)
 
 # %%
 # compute the XMI: trueprob * probthat model outputs
