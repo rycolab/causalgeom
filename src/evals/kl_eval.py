@@ -120,31 +120,75 @@ def get_all_distribs(hidden_state, word_emb, sg_emb, pl_emb):
         lemma_merged=lemma_merged
     )
 
-def compute_faith_kls(base, proj, prefix=""):
+def compute_kl(p, q, agg_func=np.sum):
+    if not (np.isclose(np.sum(p), 1) and np.isclose(np.sum(q), 1)):
+        logging.warn("Distribution not normalized before KL")
+        return 0
+    else:
+        return agg_func(kl_div(p, q))
+
+def renormalize(p):
+    return p / np.sum(p)
+
+def compute_faith_kls(base, proj, prefix="", agg_func=np.sum):
     kls = {
-        f"{prefix}faith_kl_all_split": np.mean(kl_div(base["all_split"], proj["all_split"])),
-        f"{prefix}faith_kl_all_merged": np.mean(kl_div(base["all_merged"], proj["all_merged"])),
-        f"{prefix}faith_kl_words": np.mean(kl_div(base["words"], proj["words"])),
-        f"{prefix}faith_kl_tgt_split": np.mean(kl_div(base["lemma_split"], proj["lemma_split"])),
-        f"{prefix}faith_kl_tgt_merged": np.mean(kl_div(base["lemma_merged"], proj["lemma_merged"])),
+        f"{prefix}faith_kl_all_split": compute_kl(base["all_split"], proj["all_split"], agg_func),
+        f"{prefix}faith_kl_all_merged": compute_kl(base["all_merged"], proj["all_merged"], agg_func),
+        f"{prefix}faith_kl_words": compute_kl(renormalize(base["words"]), renormalize(proj["words"]), agg_func),
+        f"{prefix}faith_kl_tgt_split": compute_kl(renormalize(base["lemma_split"]), renormalize(proj["lemma_split"]), agg_func),
+        f"{prefix}faith_kl_tgt_merged": compute_kl(renormalize(base["lemma_merged"]), renormalize(proj["lemma_merged"]), agg_func),
     }
     return kls
     
+def compute_tvd(p, q, agg_func=np.mean):
+    if not (np.isclose(np.sum(p), 1) and np.isclose(np.sum(q), 1)):
+        logging.warn("Distribution not normalized before KL")
+        return 0
+    else:
+        return agg_func(np.abs(p-q))
+    
+def compute_faith_tvds(base, proj, prefix="", agg_func=np.mean):
+    tvds = {
+        f"{prefix}faith_tvd_all_split": compute_tvd(base["all_split"], proj["all_split"], agg_func),
+        f"{prefix}faith_tvd_all_merged": compute_tvd(base["all_merged"], proj["all_merged"], agg_func),
+        f"{prefix}faith_tvd_words": compute_tvd(renormalize(base["words"]), renormalize(proj["words"]), agg_func),
+        f"{prefix}faith_tvd_tgt_split": compute_tvd(renormalize(base["lemma_split"]), renormalize(proj["lemma_split"]), agg_func),
+        f"{prefix}faith_tvd_tgt_merged": compute_tvd(renormalize(base["lemma_merged"]), renormalize(proj["lemma_merged"]), agg_func),
+    }
+    return tvds
+
+def compute_pct_chg(p, q, agg_func=np.mean):
+    if not (np.isclose(np.sum(p), 1) and np.isclose(np.sum(q), 1)):
+        logging.warn("Distribution not normalized before KL")
+        return 0
+    else:
+        return agg_func(np.abs(q-p) / p)
+    
+def compute_faith_pct_chg(base, proj, prefix="", agg_func=np.mean):
+    pct_chgs = {
+        f"{prefix}faith_pct_chg_all_split": compute_pct_chg(base["all_split"], proj["all_split"], agg_func),
+        f"{prefix}faith_pct_chg_all_merged": compute_pct_chg(base["all_merged"], proj["all_merged"], agg_func),
+        f"{prefix}faith_pct_chg_words": compute_pct_chg(renormalize(base["words"]), renormalize(proj["words"]), agg_func),
+        f"{prefix}faith_pct_chg_tgt_split": compute_pct_chg(renormalize(base["lemma_split"]), renormalize(proj["lemma_split"]), agg_func),
+        f"{prefix}faith_pct_chg_tgt_merged": compute_pct_chg(renormalize(base["lemma_merged"]), renormalize(proj["lemma_merged"]), agg_func),
+    }
+    return pct_chgs
+
 # erasure KL
-def compute_erasure_kl(base_pair_probs, proj_pair_probs):
+def compute_erasure_kl(base_pair_probs, proj_pair_probs, agg_func=np.sum):
     obs_er_kls = []
     for base_pair, proj_pair in zip(base_pair_probs, proj_pair_probs):
-        obs_er_kls.append(np.mean(kl_div(base_pair, proj_pair)))
+        obs_er_kls.append(compute_kl(base_pair, proj_pair, agg_func))
     return np.mean(obs_er_kls)
 
-def compute_erasure_kls(base_pair_probs, proj_pair_probs, verb_probs, prefix=""):
+def compute_erasure_kls(base_pair_probs, proj_pair_probs, verb_probs, prefix="", agg_func=np.sum):
     erasure_kls = {
         f"{prefix}er_kl_base_proj": compute_erasure_kl(
-            base_pair_probs, proj_pair_probs),
+            base_pair_probs, proj_pair_probs, agg_func),
         f"{prefix}er_kl_maj_base": compute_erasure_kl(
-            verb_probs, base_pair_probs),
+            verb_probs, base_pair_probs, agg_func),
         f"{prefix}er_kl_maj_proj": compute_erasure_kl(
-            verb_probs, proj_pair_probs)
+            verb_probs, proj_pair_probs, agg_func)
     }
     return erasure_kls
 
@@ -155,6 +199,12 @@ def compute_kls_one_sample(h, P, I_P, word_emb, sg_emb, pl_emb, verb_probs):
 
     P_fth_kls = compute_faith_kls(base_distribs, P_distribs, prefix="P_")
     I_P_fth_kls = compute_faith_kls(base_distribs, I_P_distribs, prefix="I_P_")
+
+    P_fth_tvds = compute_faith_tvds(base_distribs, P_distribs, prefix="P_")
+    I_P_fth_tvds = compute_faith_tvds(base_distribs, I_P_distribs, prefix="I_P_")
+
+    P_fth_pct_chg = compute_faith_pct_chg(base_distribs, P_distribs, prefix="P_")
+    I_P_fth_pct_chg = compute_faith_pct_chg(base_distribs, I_P_distribs, prefix="I_P_")
 
     base_pair_probs = normalize_pairs(base_distribs["sg"], base_distribs["pl"])
     P_pair_probs = normalize_pairs(P_distribs["sg"], P_distribs["pl"])
@@ -167,9 +217,9 @@ def compute_kls_one_sample(h, P, I_P, word_emb, sg_emb, pl_emb, verb_probs):
         base_pair_probs, I_P_pair_probs, verb_probs, prefix="I_P_"
     )
 
-    return P_fth_kls | P_er_kls | I_P_fth_kls | I_P_er_kls
+    return P_fth_kls | P_fth_tvds | P_fth_pct_chg | P_er_kls | I_P_fth_kls | I_P_fth_tvds | I_P_fth_pct_chg | I_P_er_kls
 
-def compute_kls(hs, P, I_P, word_emb, sg_emb, pl_emb, verb_probs, nsamples=200):
+def compute_kls(hs, P, I_P, word_emb, sg_emb, pl_emb, verb_probs, agg_func=np.sum, nsamples=200):
     idx = np.arange(0, hs.shape[0])
     np.random.shuffle(idx)
     ind = idx[:nsamples]
@@ -178,7 +228,9 @@ def compute_kls(hs, P, I_P, word_emb, sg_emb, pl_emb, verb_probs, nsamples=200):
     pbar.set_description("Computing faithfulness and erasure KL on hidden states")
     kls = []
     for i in pbar:
-        kls.append(compute_kls_one_sample(hs[i], P, I_P, word_emb, sg_emb, pl_emb, verb_probs))
+        kls.append(compute_kls_one_sample(
+            hs[i], P, I_P, word_emb, sg_emb, pl_emb, verb_probs
+        ))
     kls = pd.DataFrame(kls).describe()
     return kls
 

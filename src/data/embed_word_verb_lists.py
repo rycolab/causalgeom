@@ -27,7 +27,7 @@ warnings.filterwarnings("ignore")
 #%%#################
 # Arguments        #
 ####################
-MODEL_NAME = "gpt2"
+MODEL_NAME = "bert-base-uncased"
 DATASET_NAME = "linzen"
 WORDLIST_PATH = os.path.join(DATASETS, "processed/linzen_word_lists/linzen_wordlist.csv")
 VERBLIST_PATH = os.path.join(DATASETS, "processed/linzen_word_lists/linzen_verb_list_final.pkl")

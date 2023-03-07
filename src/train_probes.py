@@ -27,6 +27,7 @@ from algorithms.rlace.rlace import solve_adv_game, init_classifier, get_majority
 import algorithms.inlp.debias
 from classifiers.classifiers import BinaryParamFreeClf
 from utils.cuda_loaders import get_device
+from utils.config_args import get_train_probes_config
 from evals.kl_eval import compute_kls, load_model_eval
 from evals.usage_eval import full_usage_eval, full_diag_eval
 
@@ -34,206 +35,19 @@ coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
 
 device = get_device()
-
-#%%#################
-# Args             #
-####################
-def get_args():
-    argparser = argparse.ArgumentParser(description='Compute H Matrices')
-    argparser.add_argument(
-        "-outdir",
-        type=str,
-        help="Directory for exporting run eval"
-    )
-    argparser.add_argument(
-        "-model",
-        type=str,
-        choices=["gpt2", "bert-base-uncased"],
-        help="Model used to extract hidden states & embeddings"
-    )
-    argparser.add_argument(
-        "-k",
-        type=int,
-        help="Rank of P."
-    )
-    argparser.add_argument(
-        "-niter",
-        type=int,
-        default=75000,
-        help="Number of iterations of RLACE"
-    )
-    argparser.add_argument(
-        "-bs",
-        type=int,
-        default=256,
-        help="Batch size of RLACE"
-    )
-    argparser.add_argument(
-        "-p_lr",
-        type=float,
-        default=0.003,
-        help="Learning rate for P" 
-    )
-    argparser.add_argument(
-        "-clf_lr",
-        type=float,
-        default=0.003,
-        help="Learning rate for clf" 
-    )
-    argparser.add_argument(
-        "-n_lr_red",
-        type=int,
-        default=5,
-        help="Number of ReduceLROnPlateau reductions" 
-    )
-    argparser.add_argument(
-        "-nruns",
-        type=int,
-        default=1,
-        help="Number of runs of the experiment"
-    )
-    argparser.add_argument(
-        "-train_obs",
-        type=int,
-        default=200000,
-        help="Number of train obs"
-    )
-    argparser.add_argument(
-        "-seed",
-        type=int,
-        help="Seed for shuffling data"
-    )
-    argparser.add_argument(
-        '-wbn', 
-        dest='wandb_name', 
-        default="", 
-        type=str, 
-        help="Name of wandb run."
-    )
-    return argparser.parse_args()
-
-MODE = "job" # "debug"
-
-def get_default_lrs(model_name):
-    p_lr = None
-    clf_lr = None
-    if model_name == "gpt2":
-        p_lr = 0.001
-        clf_lr = 0.0003
-    elif model_name == "bert-base-uncased":
-        p_lr = 0.003
-        clf_lr = 0.003
-    else:
-        raise ValueError("Incorrect model name")
-    return p_lr, clf_lr
-
-if MODE == "job":
-    args = get_args()
-    logging.info(args)
-
-    DATASET_NAME = "linzen"
-    MODEL_NAME = args.model
-    
-    # rlace args
-    RANK = args.k
-    RLACE_NITER = args.niter
-    BATCH_SIZE = args.bs
-    #P_LR = args.p_lr
-    #CLF_LR = args.clf_lr
-    P_LR, CLF_LR = get_default_lrs(MODEL_NAME)
-
-    #scheduler
-    #TODO: add a separate LR scheduler for clf
-    SCHED_NRED = args.n_lr_red
-    SCHED_FACTOR = .5
-    SCHED_PATIENCE = 4
-
-    #data
-    NRUNS = args.nruns
-    TRAIN_OBS = args.train_obs
-    VAL_OBS = 10000
-    TEST_OBS = 20000
-    SEED = args.seed
-
-    OUTPUT_FOLDER = args.outdir
-    WBN = args.wandb_name
-else:
-    logging.warn("RUNNING IN DEBUG MODE.")
-    DATASET_NAME = "linzen"
-    MODEL_NAME = "gpt2" #"bert-base-uncased"
-    
-    # rlace
-    RANK = 1
-    RLACE_NITER = 1000
-    BATCH_SIZE = 256
-    #P_LR=0.003
-    #CLF_LR = 0.003
-    P_LR, CLF_LR = get_default_lrs(MODEL_NAME)
-
-    #scheduler
-    SCHED_NRED = 0
-    SCHED_FACTOR = .5
-    SCHED_PATIENCE = 4
-
-    #data
-    NRUNS = 1
-    TRAIN_OBS = 60000
-    VAL_OBS = 10000
-    TEST_OBS = 20000
-    SEED = 0
-    
-    OUTPUT_FOLDER = "testruns"
-    WBN = "test"
+cfg = get_train_probes_config()
 
 rlace_optimizer_class = torch.optim.SGD
 rlace_scheduler_class = torch.optim.lr_scheduler.ReduceLROnPlateau
-SCHED_MIN_LR = P_LR * (SCHED_FACTOR**SCHED_NRED)
 
-rlace_optimizer_params_P = {"lr": P_LR, 
-                            "weight_decay": 1e-4}
-rlace_scheduler_params_P = {"mode": "max", 
-                            "factor": SCHED_FACTOR, 
-                            "patience": SCHED_PATIENCE, 
-                            "min_lr": SCHED_MIN_LR, 
-                            "verbose": True}
-rlace_optimizer_params_predictor = {"lr": CLF_LR,"weight_decay": 1e-4}
-#rlace_scheduler_params_predictor = {"mode": "min", 
-#                            "factor": SCHED_FACTOR, 
-#                            "patience": SCHED_PATIENCE, 
-#                            "min_lr": SCHED_MIN_LR, 
-#                            "verbose": True}
-rlace_epsilon = 0.001 # stop 0.1% from majority acc
-rlace_batch_size = BATCH_SIZE
-
-# Logging run args
-run_args = {
-    "rank": RANK,
-    "rlace_niter": RLACE_NITER,
-    "batch_size": BATCH_SIZE,
-    "p_lr": P_LR,
-    "clf_lr": CLF_LR,
-    "n_lr_red": SCHED_NRED,
-    "nruns": NRUNS,
-    "train_obs": TRAIN_OBS,
-    "seed": SEED,
-    "out_folder": OUTPUT_FOLDER,
-    "model_name": MODEL_NAME,
-    "dataset_name": DATASET_NAME,
-    "train_obs": TRAIN_OBS,
-    "val_obs": VAL_OBS,
-    "test_obs": TEST_OBS
-}
-
-RUN_NAME = f"{MODEL_NAME[:4]}_k_{RANK}_plr_{P_LR}_clflr_{CLF_LR}_bs_{BATCH_SIZE}"
-
-logging.info(f"Running: {RUN_NAME}")
+logging.info(f"Running: {config["run_name"]}")
 
 #%%#################
 # Loading Data     #
 ####################
 
 # Output directory creation
-OUTPUT_DIR = f"/cluster/work/cotterell/cguerner/usagebasedprobing/out/run_output/{MODEL_NAME}/{OUTPUT_FOLDER}/"
+OUTPUT_DIR = f"/cluster/work/cotterell/cguerner/usagebasedprobing/out/run_output/{cfg["model_name"]}/{cfg["out_folder"]}/"
 if not os.path.exists(OUTPUT_DIR):
     os.mkdir(OUTPUT_DIR)
     logging.info(f"Created output dir: {OUTPUT_DIR}")
@@ -245,13 +59,13 @@ if not os.path.exists(DIAG_RLACE_U_OUTDIR):
     os.mkdir(DIAG_RLACE_U_OUTDIR)
 
 # Loading word lists for KL eval
-WORD_EMB, SG_EMB, PL_EMB, VERB_PROBS = load_model_eval(MODEL_NAME)
+WORD_EMB, SG_EMB, PL_EMB, VERB_PROBS = load_model_eval(cfg["model_name"])
 
 # Load dataset
-if MODEL_NAME == "gpt2":
-    DATASET = f"/cluster/work/cotterell/cguerner/usagebasedprobing/datasets/processed/{DATASET_NAME}_{MODEL_NAME}_ar.pkl"
-elif MODEL_NAME == "bert-base-uncased":
-    DATASET = f"/cluster/work/cotterell/cguerner/usagebasedprobing/datasets/processed/{DATASET_NAME}_{MODEL_NAME}_masked.pkl"
+if cfg["model_name"] == "gpt2":
+    DATASET = f"/cluster/work/cotterell/cguerner/usagebasedprobing/datasets/processed/{cfg["dataset_name"]}_{cfg["model_name"]}_ar.pkl"
+elif cfg["model_name"] == "bert-base-uncased":
+    DATASET = f"/cluster/work/cotterell/cguerner/usagebasedprobing/datasets/processed/{cfg["dataset_name"]}_{cfg["model_name"]}_masked.pkl"
 else:
     DATASET = None
 
@@ -264,33 +78,33 @@ y = np.array([yi for yi in data["y"]])
 del data
 
 # Set seed
-np.random.seed(SEED)
+np.random.seed(cfg["seed"])
 
 #%%#################
 # Wandb Logging    #
 ####################
-if WBN:
+if cfg["wbn"]:
     wandb.init(
         project="usagebasedprobing", 
         entity="cguerner",
-        name=f"{OUTPUT_FOLDER}_{WBN}_{RUN_NAME}",
+        name=f"{cfg["output_folder"]}_{cfg["wbn"]}_{cfg["run_name"]}",
     )
-    wandb.config.update(run_args)
+    wandb.config.update(cfg)
     WB = True
 else:
     WB = False
 
 
 #%%
-for i in trange(NRUNS):
+for i in trange(cfg["nruns"]):
     
     #%%
     idx = np.arange(0, X.shape[0])
     np.random.shuffle(idx)
 
-    train_lastind = TRAIN_OBS
-    val_lastind = train_lastind + VAL_OBS
-    test_lastind = val_lastind + TEST_OBS
+    train_lastind = cfg["train_obs"]
+    val_lastind = train_lastind + cfg["val_obs"]
+    test_lastind = val_lastind + cfg["test_obs"]
     X_train, X_val, X_test = X[idx[:train_lastind]], X[idx[train_lastind:val_lastind]], X[idx[val_lastind:test_lastind]]
     U_train, U_val, U_test = U[idx[:train_lastind]], U[idx[train_lastind:val_lastind]], U[idx[val_lastind:test_lastind]]
     y_train, y_val, y_test = y[idx[:train_lastind]], y[idx[train_lastind:val_lastind]], y[idx[val_lastind:test_lastind]]
@@ -298,17 +112,18 @@ for i in trange(NRUNS):
     #%%
     start = time.time()
     
-    diag_rlace_u_outfile = os.path.join(DIAG_RLACE_U_OUTDIR, f"{RUN_NAME}.pt")
+    diag_rlace_u_outfile = os.path.join(DIAG_RLACE_U_OUTDIR, f"{cfg["run_name"]}.pt")
     
     #dim = X_train.shape[1]
 
     diag_rlace_output = solve_adv_game(
-        X_train, y_train, X_val, y_val, rank=RANK, device=device, 
-        out_iters=RLACE_NITER, optimizer_class=rlace_optimizer_class, 
-        optimizer_params_P =rlace_optimizer_params_P, 
-        optimizer_params_predictor=rlace_optimizer_params_predictor, 
+        X_train, y_train, X_val, y_val, rank=cfg["k"], device=device, 
+        out_iters=cfg["niter"], optimizer_class=rlace_optimizer_class, 
+        optimizer_params_P=cfg["rlace_optimizer_params_P"], 
+        optimizer_params_predictor=cfg["rlace_optimizer_params_clf"], 
         scheduler_class=rlace_scheduler_class, 
-        scheduler_params_P=rlace_scheduler_params_P,
+        scheduler_params_P=cfg["rlace_scheduler_params_P"],
+        scheduler_params_clf=cfg["rlace_scheduler_params_clf"],
         epsilon=rlace_epsilon,batch_size=rlace_batch_size,
         torch_outfile=diag_rlace_u_outfile, wb=WB, wb_run=i
     )
