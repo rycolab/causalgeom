@@ -41,6 +41,7 @@ def get_train_probes_args():
         "-bs",
         type=int,
         default=256,
+        dest="batch_size",
         help="Batch size of RLACE"
     )
     argparser.add_argument(

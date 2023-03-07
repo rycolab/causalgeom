@@ -40,7 +40,7 @@ cfg = get_train_probes_config()
 rlace_optimizer_class = torch.optim.SGD
 rlace_scheduler_class = torch.optim.lr_scheduler.ReduceLROnPlateau
 
-logging.info(f"Running: {config["run_name"]}")
+logging.info(f"Running: {cfg["run_name"]}")
 
 #%%#################
 # Loading Data     #
@@ -87,7 +87,7 @@ if cfg["wbn"]:
     wandb.init(
         project="usagebasedprobing", 
         entity="cguerner",
-        name=f"{cfg["output_folder"]}_{cfg["wbn"]}_{cfg["run_name"]}",
+        name=f"{cfg["output_folder"]}_{cfg["wbn"]}_{cfg["run_name"]}"
     )
     wandb.config.update(cfg)
     WB = True
@@ -124,7 +124,7 @@ for i in trange(cfg["nruns"]):
         scheduler_class=rlace_scheduler_class, 
         scheduler_params_P=cfg["rlace_scheduler_params_P"],
         scheduler_params_clf=cfg["rlace_scheduler_params_clf"],
-        epsilon=rlace_epsilon,batch_size=rlace_batch_size,
+        batch_size=cfg["batch_size"],
         torch_outfile=diag_rlace_u_outfile, wb=WB, wb_run=i
     )
     end = time.time()
@@ -153,46 +153,54 @@ for i in trange(cfg["nruns"]):
 
     if WB:
         wandb.log({
-            f"diag_rlace/test/diag/{i}/diag_acc_P_test": diag_eval["diag_acc_P_test"],
-            f"diag_rlace/test/diag/{i}/diag_acc_I_P_test": diag_eval["diag_acc_I_P_test"],
-            f"diag_rlace/test/usage/{i}/lm_acc_P_test": usage_eval["lm_acc_P_test"], 
-            f"diag_rlace/test/usage/{i}/lm_acc_I_P_test": usage_eval["lm_acc_I_P_test"],
-            f"diag_rlace/test/diag/{i}/diag_acc_P_burn_test": diag_eval["diag_acc_P_burn_test"],
-            f"diag_rlace/test/diag/{i}/diag_acc_I_P_burn_test": diag_eval["diag_acc_I_P_burn_test"],
-            f"diag_rlace/test/usage/{i}/lm_acc_P_burn_test": usage_eval["lm_acc_P_burn_test"], 
-            f"diag_rlace/test/usage/{i}/lm_acc_I_P_burn_test": usage_eval["lm_acc_I_P_burn_test"],
-            f"diag_rlace/test/fth_kls/P/{i}/faith_kl_all_split": kl_means["P_faith_kl_all_split"],
-            f"diag_rlace/test/fth_kls/P/{i}/faith_kl_all_merged": kl_means["P_faith_kl_all_merged"],
-            f"diag_rlace/test/fth_kls/P/{i}/faith_kl_words": kl_means["P_faith_kl_words"],
-            f"diag_rlace/test/fth_kls/P/{i}/faith_kl_tgt_split": kl_means["P_faith_kl_tgt_split"],
-            f"diag_rlace/test/fth_kls/P/{i}/faith_kl_tgt_merged": kl_means["P_faith_kl_tgt_merged"],
-            f"diag_rlace/test/fth_kls/I_P/{i}/faith_kl_all_split": kl_means["I_P_faith_kl_all_split"],
-            f"diag_rlace/test/fth_kls/I_P/{i}/faith_kl_all_merged": kl_means["I_P_faith_kl_all_merged"],
-            f"diag_rlace/test/fth_kls/I_P/{i}/faith_kl_words": kl_means["I_P_faith_kl_words"],
-            f"diag_rlace/test/fth_kls/I_P/{i}/faith_kl_tgt_split": kl_means["I_P_faith_kl_tgt_split"],
-            f"diag_rlace/test/fth_kls/I_P/{i}/faith_kl_tgt_merged": kl_means["I_P_faith_kl_tgt_merged"],
-            f"diag_rlace/test/er_kls/P/{i}/er_kl_base_proj": kl_means["P_er_kl_base_proj"],
-            f"diag_rlace/test/er_kls/P/{i}/er_kl_maj_base": kl_means["P_er_kl_maj_base"],
-            f"diag_rlace/test/er_kls/P/{i}/er_kl_maj_proj": kl_means["P_er_kl_maj_proj"],
-            f"diag_rlace/test/er_kls/I_P/{i}/er_kl_base_proj": kl_means["I_P_er_kl_base_proj"],
-            f"diag_rlace/test/er_kls/I_P/{i}/er_kl_maj_base": kl_means["I_P_er_kl_maj_base"],
-            f"diag_rlace/test/er_kls/I_P/{i}/er_kl_maj_proj": kl_means["I_P_er_kl_maj_proj"],
-            f"diag_rlace/test/fth_kls/burn_P/{i}/faith_kl_all_split": burn_kl_means["P_faith_kl_all_split"],
-            f"diag_rlace/test/fth_kls/burn_P/{i}/faith_kl_all_merged": burn_kl_means["P_faith_kl_all_merged"],
-            f"diag_rlace/test/fth_kls/burn_P/{i}/faith_kl_words": burn_kl_means["P_faith_kl_words"],
-            f"diag_rlace/test/fth_kls/burn_P/{i}/faith_kl_tgt_split": burn_kl_means["P_faith_kl_tgt_split"],
-            f"diag_rlace/test/fth_kls/burn_P/{i}/faith_kl_tgt_merged": burn_kl_means["P_faith_kl_tgt_merged"],
-            f"diag_rlace/test/fth_kls/burn_I_P/{i}/faith_kl_all_split": burn_kl_means["I_P_faith_kl_all_split"],
-            f"diag_rlace/test/fth_kls/burn_I_P/{i}/faith_kl_all_merged": burn_kl_means["I_P_faith_kl_all_merged"],
-            f"diag_rlace/test/fth_kls/burn_I_P/{i}/faith_kl_words": burn_kl_means["I_P_faith_kl_words"],
-            f"diag_rlace/test/fth_kls/burn_I_P/{i}/faith_kl_tgt_split": burn_kl_means["I_P_faith_kl_tgt_split"],
-            f"diag_rlace/test/fth_kls/burn_I_P/{i}/faith_kl_tgt_merged": burn_kl_means["I_P_faith_kl_tgt_merged"],
-            f"diag_rlace/test/er_kls/burn_P/{i}/er_kl_base_proj": burn_kl_means["P_er_kl_base_proj"],
-            f"diag_rlace/test/er_kls/burn_P/{i}/er_kl_maj_base": burn_kl_means["P_er_kl_maj_base"],
-            f"diag_rlace/test/er_kls/burn_P/{i}/er_kl_maj_proj": burn_kl_means["P_er_kl_maj_proj"],
-            f"diag_rlace/test/er_kls/burn_I_P/{i}/er_kl_base_proj": burn_kl_means["I_P_er_kl_base_proj"],
-            f"diag_rlace/test/er_kls/burn_I_P/{i}/er_kl_maj_base": burn_kl_means["I_P_er_kl_maj_base"],
-            f"diag_rlace/test/er_kls/burn_I_P/{i}/er_kl_maj_proj": burn_kl_means["I_P_er_kl_maj_proj"],
+            f"diag_rlace/test/P/diag/{i}/diag_acc_test": diag_eval["diag_acc_P_test"],
+            f"diag_rlace/test/I_P/diag/{i}/diag_acc_test": diag_eval["diag_acc_I_P_test"],
+            f"diag_rlace/test/P/usage/{i}/lm_acc_test": usage_eval["lm_acc_P_test"], 
+            f"diag_rlace/test/I_P/usage/{i}/lm_acc_test": usage_eval["lm_acc_I_P_test"],
+            f"diag_rlace/test/P_burn/diag/{i}/diag_acc_test": diag_eval["diag_acc_P_burn_test"],
+            f"diag_rlace/test/I_P_burn/diag/{i}/diag_acc_test": diag_eval["diag_acc_I_P_burn_test"],
+            f"diag_rlace/test/P_burn/usage/{i}/lm_acc_test": usage_eval["lm_acc_P_burn_test"], 
+            f"diag_rlace/test/I_P_burn/usage/{i}/lm_acc_test": usage_eval["lm_acc_I_P_burn_test"],
+            
+            f"diag_rlace/test/P/fth_kls/{i}/faith_kl_all_split": kl_means["P_faith_kl_all_split"],
+            f"diag_rlace/test/P/fth_kls/{i}/faith_kl_all_merged": kl_means["P_faith_kl_all_merged"],
+            f"diag_rlace/test/P/fth_kls/{i}/faith_kl_words": kl_means["P_faith_kl_words"],
+            f"diag_rlace/test/P/fth_kls/{i}/faith_kl_tgt_split": kl_means["P_faith_kl_tgt_split"],
+            f"diag_rlace/test/P/fth_kls/{i}/faith_kl_tgt_merged": kl_means["P_faith_kl_tgt_merged"],
+
+            f"diag_rlace/test/P/er_kls/{i}/er_kl_base_proj": kl_means["P_er_kl_base_proj"],
+            f"diag_rlace/test/P/er_kls/{i}/er_kl_maj_base": kl_means["P_er_kl_maj_base"],
+            f"diag_rlace/test/P/er_kls/{i}/er_kl_maj_proj": kl_means["P_er_kl_maj_proj"],
+
+            f"diag_rlace/test/I_P/fth_kls/{i}/faith_kl_all_split": kl_means["I_P_faith_kl_all_split"],
+            f"diag_rlace/test/I_P/fth_kls/{i}/faith_kl_all_merged": kl_means["I_P_faith_kl_all_merged"],
+            f"diag_rlace/test/I_P/fth_kls/{i}/faith_kl_words": kl_means["I_P_faith_kl_words"],
+            f"diag_rlace/test/I_P/fth_kls/{i}/faith_kl_tgt_split": kl_means["I_P_faith_kl_tgt_split"],
+            f"diag_rlace/test/I_P/fth_kls/{i}/faith_kl_tgt_merged": kl_means["I_P_faith_kl_tgt_merged"],
+
+            f"diag_rlace/test/I_P/er_kls/{i}/er_kl_base_proj": kl_means["I_P_er_kl_base_proj"],
+            f"diag_rlace/test/I_P/er_kls/{i}/er_kl_maj_base": kl_means["I_P_er_kl_maj_base"],
+            f"diag_rlace/test/I_P/er_kls/{i}/er_kl_maj_proj": kl_means["I_P_er_kl_maj_proj"],
+
+            f"diag_rlace/test/P_burn/fth_kls/{i}/faith_kl_all_split": burn_kl_means["P_faith_kl_all_split"],
+            f"diag_rlace/test/P_burn/fth_kls/{i}/faith_kl_all_merged": burn_kl_means["P_faith_kl_all_merged"],
+            f"diag_rlace/test/P_burn/fth_kls/{i}/faith_kl_words": burn_kl_means["P_faith_kl_words"],
+            f"diag_rlace/test/P_burn/fth_kls/{i}/faith_kl_tgt_split": burn_kl_means["P_faith_kl_tgt_split"],
+            f"diag_rlace/test/P_burn/fth_kls/{i}/faith_kl_tgt_merged": burn_kl_means["P_faith_kl_tgt_merged"],
+            
+            f"diag_rlace/test/P_burn/er_kls/{i}/er_kl_base_proj": burn_kl_means["P_er_kl_base_proj"],
+            f"diag_rlace/test/P_burn/er_kls/{i}/er_kl_maj_base": burn_kl_means["P_er_kl_maj_base"],
+            f"diag_rlace/test/P_burn/er_kls/{i}/er_kl_maj_proj": burn_kl_means["P_er_kl_maj_proj"],
+
+            f"diag_rlace/test/I_P_burn/fth_kls/{i}/faith_kl_all_split": burn_kl_means["I_P_faith_kl_all_split"],
+            f"diag_rlace/test/I_P_burn/fth_kls/{i}/faith_kl_all_merged": burn_kl_means["I_P_faith_kl_all_merged"],
+            f"diag_rlace/test/I_P_burn/fth_kls/{i}/faith_kl_words": burn_kl_means["I_P_faith_kl_words"],
+            f"diag_rlace/test/I_P_burn/fth_kls/{i}/faith_kl_tgt_split": burn_kl_means["I_P_faith_kl_tgt_split"],
+            f"diag_rlace/test/I_P_burn/fth_kls/{i}/faith_kl_tgt_merged": burn_kl_means["I_P_faith_kl_tgt_merged"],
+
+            f"diag_rlace/test/I_P_burn/er_kls/{i}/er_kl_base_proj": burn_kl_means["I_P_er_kl_base_proj"],
+            f"diag_rlace/test/I_P_burn/er_kls/{i}/er_kl_maj_base": burn_kl_means["I_P_er_kl_maj_base"],
+            f"diag_rlace/test/I_P_burn/er_kls/{i}/er_kl_maj_proj": burn_kl_means["I_P_er_kl_maj_proj"],
         })
 
     """

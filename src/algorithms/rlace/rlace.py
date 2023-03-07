@@ -169,7 +169,7 @@ def get_default_predictor(X_train, y_train, device):
 
 def solve_adv_game(X_train, y_train, X_dev, y_dev, 
                    predictor=None, rank=1, device="cpu", out_iters=75000, 
-                   in_iters_adv=1, in_iters_clf=1, epsilon=0.0015, 
+                   in_iters_adv=1, in_iters_clf=1,
                    batch_size=128, evaluate_every=1000, 
                    optimizer_class=SGD, 
                    optimizer_params_P={"lr": 0.005, "weight_decay": 1e-4}, 
@@ -186,7 +186,7 @@ def solve_adv_game(X_train, y_train, X_dev, y_dev,
     :param out_iters: Number of batches to run
     :param in_iters_adv: number of iterations for adversary's optimization
     :param in_iters_clf: number of iterations from the predictor's optimization
-    :param epsilon: stopping criterion .Stops if abs(acc - majority) < epsilon.
+    #:param epsilon: stopping criterion .Stops if abs(acc - majority) < epsilon. -- REMOVED TO AVOID EARLY STOPPING BEFORE CONVERGENCE
     :param batch_size:
     :param evaluate_every: After how many batches to evaluate the current adversary.
     :param optimizer_class: SGD/Adam etc.
