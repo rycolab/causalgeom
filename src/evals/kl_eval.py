@@ -14,6 +14,7 @@ import pandas as pd
 import pickle
 
 from scipy.special import softmax, kl_div
+from scipy.stats import entropy
 
 #sys.path.append('..')
 sys.path.append('./src/')
@@ -297,7 +298,7 @@ def compute_kls_one_sample(h, P, I_P, word_emb, sg_emb, pl_emb, verb_probs,
         h, P, I_P, word_emb, sg_emb, pl_emb
     )
 
-    faith_metrics, er_kls, er_mis = {},{},{}
+    faith_metrics, er_kl_metrics, er_mis_metrics = {},{},{}
     if faith:
         faith_metrics = compute_all_faith_metrics(
             base_distribs, P_distribs, I_P_distribs
@@ -312,14 +313,14 @@ def compute_kls_one_sample(h, P, I_P, word_emb, sg_emb, pl_emb, verb_probs,
         )
     return faith_metrics | er_kl_metrics | er_mis_metrics
 
-def get_hs_sample_index(hs):
+def get_hs_sample_index(hs, nsamples=200):
     idx = np.arange(0, hs.shape[0])
     np.random.shuffle(idx)
     return idx[:nsamples]
 
 def compute_kls(hs, P, I_P, word_emb, sg_emb, pl_emb, verb_probs, sg_pl_prob, 
     nsamples=200, faith=True, er_kls=True, er_mis=True):
-    ind = get_hs_sample_index(hs)    
+    ind = get_hs_sample_index(hs, nsamples)    
 
     pbar = tqdm(ind)
     pbar.set_description("Computing faithfulness and erasure KL on hidden states")

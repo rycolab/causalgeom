@@ -187,7 +187,7 @@ def solve_adv_game(X_train, y_train, X_dev, y_dev,
                    optimizer_params_predictor={"lr": 0.005, "weight_decay": 1e-4}, 
                    scheduler_class=None, scheduler_params_P=None, 
                    scheduler_params_predictor=None,
-                   torch_outfile=None, wb=False, wb_run=None):
+                   torch_outfile=None, wb=False, wb_run=None, model_name=None):
     """
     :param X: The input (np array)
     :param Y: the lables (np array)

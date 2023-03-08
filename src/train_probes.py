@@ -40,14 +40,14 @@ cfg = get_train_probes_config()
 rlace_optimizer_class = torch.optim.SGD
 rlace_scheduler_class = torch.optim.lr_scheduler.ReduceLROnPlateau
 
-logging.info(f"Running: {cfg["run_name"]}")
+logging.info(f"Running: {cfg['run_name']}")
 
 #%%#################
 # Loading Data     #
 ####################
 
 # Output directory creation
-OUTPUT_DIR = f"/cluster/work/cotterell/cguerner/usagebasedprobing/out/run_output/{cfg["model_name"]}/{cfg["out_folder"]}/"
+OUTPUT_DIR = f"/cluster/work/cotterell/cguerner/usagebasedprobing/out/run_output/{cfg['model_name']}/{cfg['out_folder']}/"
 if not os.path.exists(OUTPUT_DIR):
     os.mkdir(OUTPUT_DIR)
     logging.info(f"Created output dir: {OUTPUT_DIR}")
@@ -59,13 +59,13 @@ if not os.path.exists(DIAG_RLACE_U_OUTDIR):
     os.mkdir(DIAG_RLACE_U_OUTDIR)
 
 # Loading word lists for KL eval
-WORD_EMB, SG_EMB, PL_EMB, VERB_PROBS = load_model_eval(cfg["model_name"])
+WORD_EMB, SG_EMB, PL_EMB, VERB_PROBS, SG_PL_PROB = load_model_eval(cfg['model_name'])
 
 # Load dataset
-if cfg["model_name"] == "gpt2":
-    DATASET = f"/cluster/work/cotterell/cguerner/usagebasedprobing/datasets/processed/{cfg["dataset_name"]}_{cfg["model_name"]}_ar.pkl"
-elif cfg["model_name"] == "bert-base-uncased":
-    DATASET = f"/cluster/work/cotterell/cguerner/usagebasedprobing/datasets/processed/{cfg["dataset_name"]}_{cfg["model_name"]}_masked.pkl"
+if cfg['model_name'] == "gpt2":
+    DATASET = f"/cluster/work/cotterell/cguerner/usagebasedprobing/datasets/processed/{cfg['dataset_name']}_{cfg['model_name']}_ar.pkl"
+elif cfg['model_name'] == "bert-base-uncased":
+    DATASET = f"/cluster/work/cotterell/cguerner/usagebasedprobing/datasets/processed/{cfg['dataset_name']}_{cfg['model_name']}_masked.pkl"
 else:
     DATASET = None
 
@@ -78,16 +78,16 @@ y = np.array([yi for yi in data["y"]])
 del data
 
 # Set seed
-np.random.seed(cfg["seed"])
+np.random.seed(cfg['seed'])
 
 #%%#################
 # Wandb Logging    #
 ####################
-if cfg["wbn"]:
+if cfg['wandb_name']:
     wandb.init(
         project="usagebasedprobing", 
         entity="cguerner",
-        name=f"{cfg["output_folder"]}_{cfg["wbn"]}_{cfg["run_name"]}"
+        name=f"{cfg['out_folder']}_{cfg['wandb_name']}_{cfg['run_name']}"
     )
     wandb.config.update(cfg)
     WB = True
@@ -96,15 +96,15 @@ else:
 
 
 #%%
-for i in trange(cfg["nruns"]):
+for i in trange(cfg['nruns']):
     
     #%%
     idx = np.arange(0, X.shape[0])
     np.random.shuffle(idx)
 
-    train_lastind = cfg["train_obs"]
-    val_lastind = train_lastind + cfg["val_obs"]
-    test_lastind = val_lastind + cfg["test_obs"]
+    train_lastind = cfg['train_obs']
+    val_lastind = train_lastind + cfg['val_obs']
+    test_lastind = val_lastind + cfg['test_obs']
     X_train, X_val, X_test = X[idx[:train_lastind]], X[idx[train_lastind:val_lastind]], X[idx[val_lastind:test_lastind]]
     U_train, U_val, U_test = U[idx[:train_lastind]], U[idx[train_lastind:val_lastind]], U[idx[val_lastind:test_lastind]]
     y_train, y_val, y_test = y[idx[:train_lastind]], y[idx[train_lastind:val_lastind]], y[idx[val_lastind:test_lastind]]
@@ -112,20 +112,21 @@ for i in trange(cfg["nruns"]):
     #%%
     start = time.time()
     
-    diag_rlace_u_outfile = os.path.join(DIAG_RLACE_U_OUTDIR, f"{cfg["run_name"]}.pt")
+    diag_rlace_u_outfile = os.path.join(DIAG_RLACE_U_OUTDIR, f"{cfg['run_name']}.pt")
     
     #dim = X_train.shape[1]
 
     diag_rlace_output = solve_adv_game(
-        X_train, y_train, X_val, y_val, rank=cfg["k"], device=device, 
-        out_iters=cfg["niter"], optimizer_class=rlace_optimizer_class, 
-        optimizer_params_P=cfg["rlace_optimizer_params_P"], 
-        optimizer_params_predictor=cfg["rlace_optimizer_params_clf"], 
+        X_train, y_train, X_val, y_val, rank=cfg['k'], device=device, 
+        out_iters=cfg['niter'], optimizer_class=rlace_optimizer_class, 
+        optimizer_params_P=cfg['rlace_optimizer_params_P'], 
+        optimizer_params_predictor=cfg['rlace_optimizer_params_clf'], 
         scheduler_class=rlace_scheduler_class, 
-        scheduler_params_P=cfg["rlace_scheduler_params_P"],
-        scheduler_params_predictor=cfg["rlace_scheduler_params_clf"],
-        batch_size=cfg["batch_size"],
-        torch_outfile=diag_rlace_u_outfile, wb=WB, wb_run=i
+        scheduler_params_P=cfg['rlace_scheduler_params_P'],
+        scheduler_params_predictor=cfg['rlace_scheduler_params_clf'],
+        batch_size=cfg['batch_size'],
+        torch_outfile=diag_rlace_u_outfile, wb=WB, wb_run=i,
+        model_name=cfg["model_name"]
     )
     end = time.time()
     diag_rlace_output["runtime"] = end-start
@@ -141,13 +142,13 @@ for i in trange(cfg["nruns"]):
 
     kl_eval = compute_kls(
         X_test, diag_rlace_output["P"], diag_rlace_output["I_P"], 
-        WORD_EMB, SG_EMB, PL_EMB, VERB_PROBS
+        WORD_EMB, SG_EMB, PL_EMB, VERB_PROBS, SG_PL_PROB
     )
     kl_means = kl_eval.loc["mean",:]
 
     burn_kl_eval = compute_kls(
         X_test, diag_rlace_output["P_burn"], diag_rlace_output["I_P_burn"], 
-        WORD_EMB, SG_EMB, PL_EMB, VERB_PROBS
+        WORD_EMB, SG_EMB, PL_EMB, VERB_PROBS, SG_PL_PROB
     )
     burn_kl_means = burn_kl_eval.loc["mean",:]
 
@@ -271,7 +272,7 @@ for i in trange(cfg["nruns"]):
     )
     
     #%%
-    outfile_path = os.path.join(OUTPUT_DIR, f"run_{RUN_NAME}_{i}_{NRUNS}.pkl")
+    outfile_path = os.path.join(OUTPUT_DIR, f"run_{cfg['run_name']}_{i}_{cfg['nruns']}.pkl")
 
     with open(outfile_path, 'wb') as f:
         pickle.dump(full_results, f, protocol=pickle.HIGHEST_PROTOCOL)

@@ -20,7 +20,7 @@ def get_train_probes_args():
         "-model",
         type=str,
         choices=["gpt2", "bert-base-uncased"],
-        required=True,
+        #required=True,
         dest="model_name",
         default="bert-base-uncased",
         help="Model used to extract hidden states & embeddings"
@@ -113,11 +113,11 @@ def set_train_probes_defaults(config):
     config["dataset_name"] = "linzen"
     
     # Default LRs
-    default_P_lr, default_clf_lf = get_default_lrs(
+    default_P_lr, default_clf_lr = get_default_lrs(
         config["model_name"])
-    if not "P_lr" in config.keys():
+    if config["P_lr"] is None:
         config["P_lr"] = default_P_lr
-    if not "clf_lr" in config.keys():
+    if config["clf_lr"] is None:
         config["clf_lr"] = default_clf_lr
 
     # P Scheduler
@@ -162,12 +162,12 @@ def set_train_probes_defaults(config):
         "verbose": True
     }
     #rlace_epsilon = 0.001 # stop 0.1% from majority acc (I TURNED THIS OFF)
-    config["run_name"] = f"{config["model_name"][:4]}_k_{config["k"]}"
+    config["run_name"] = f"{config['model_name'][:4]}_k_{config['k']}"
     return config
 
 def get_train_probes_config():
     config = get_train_probes_args()
-    logging.info(args)
+    logging.info(config)
 
     config = set_train_probes_defaults(config)
     return config
