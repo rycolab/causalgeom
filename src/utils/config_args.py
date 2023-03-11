@@ -56,6 +56,11 @@ def get_train_probes_args():
         help="Number of ReduceLROnPlateau reductions for P" 
     )
     argparser.add_argument(
+        "-P_sched_patience",
+        type=int,
+        help="Patience parameter of ReduceLROnPlateau for P" 
+    )
+    argparser.add_argument(
         "-clf_lr",
         type=float,
         help="Learning rate for clf" 
@@ -63,8 +68,12 @@ def get_train_probes_args():
     argparser.add_argument(
         "-clf_n_lr_red",
         type=int,
-        default=5,
-        help="Number of ReduceLROnPlateau reductions for CLF" 
+        help="Number of ReduceLROnPlateau reductions for clf" 
+    )
+    argparser.add_argument(
+        "-clf_sched_patience",
+        type=int,
+        help="Patience parameter of ReduceLROnPlateau for clf" 
     )
     argparser.add_argument(
         "-nruns",
@@ -94,42 +103,45 @@ def get_train_probes_args():
     return vars(argparser.parse_args())
 
 #%% Helpers
-def get_default_lrs(model_name):
-    p_lr = None
-    clf_lr = None
+def get_model_defaults(model_name):
     if model_name == "gpt2":
-        p_lr = 0.001
-        clf_lr = 0.0003
+        defaults = dict(
+            P_lr = 0.001,
+            P_sched_patience=10,
+            clf_lr = 0.0003,
+            clf_n_lr_red = 5,
+            clf_sched_patience=10
+        )
     elif model_name == "bert-base-uncased":
-        p_lr = 0.003
-        clf_lr = 0.003
+        defaults = dict(
+            P_lr=0.003,
+            P_sched_patience=4,
+            clf_lr=0.003,
+            clf_n_lr_red=0,
+            clf_sched_patience=0,
+        )
     else:
         raise ValueError("Incorrect model name")
-    return p_lr, clf_lr
-
+    return defaults
 
 def set_train_probes_defaults(config):
     # Main defaults
     config["dataset_name"] = "linzen"
     
     # Default LRs
-    default_P_lr, default_clf_lr = get_default_lrs(
-        config["model_name"])
-    if config["P_lr"] is None:
-        config["P_lr"] = default_P_lr
-    if config["clf_lr"] is None:
-        config["clf_lr"] = default_clf_lr
+    model_defaults = get_model_defaults(config["model_name"])
+    for key, val in model_defaults.items():
+        if config[key] is None:
+            config[key] = val
 
     # P Scheduler
     config["P_sched_factor"] = .5
-    config["P_sched_patience"] = 4
     config["P_sched_min_lr"] = (
         config["P_lr"] * (config["P_sched_factor"]**config["P_n_lr_red"])
     )
 
     # clf Scheduler
     config["clf_sched_factor"] = .5
-    config["clf_sched_patience"] = 4
     config["clf_sched_min_lr"] = (
         config["clf_lr"] * (config["clf_sched_factor"]**config["clf_n_lr_red"])
     )

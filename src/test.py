@@ -21,7 +21,7 @@ from scipy.special import softmax, kl_div
 from paths import DATASETS, OUT
 from utils.lm_loaders import get_tokenizer, get_V
 from evals.kl_eval import load_hs, load_model_eval, load_run_output,\
-    get_all_distribs, normalize_pairs
+    get_distribs, normalize_pairs
 #from evals.usage_eval import diag_eval, usage_eval
 
 coloredlogs.install(level=logging.INFO)
@@ -35,8 +35,8 @@ warnings.filterwarnings("ignore")
 
 model_name = "bert-base-uncased"
 dataset_name = "linzen"
-gpt_run_output = os.path.join(OUT, "run_output/gpt2/230302/run_gpt2_k_1_plr_0.001_clflr_0.0003_bs_256_0_1.pkl")
-bert_run_output = os.path.join(OUT, "run_output/bert-base-uncased/230303/run_bert_k_1_plr_0.003_clflr_0.003_bs_256_0_1.pkl")
+gpt_run_output = os.path.join(OUT, "run_output/gpt2/230310/run_gpt2_k_1_0_1.pkl")
+bert_run_output = os.path.join(OUT, "run_output/bert-base-uncased/230310/run_bert_k_1_0_1.pkl")
 if model_name == "bert-base-uncased":
     run_output = bert_run_output
 elif model_name == "gpt2":
@@ -47,7 +47,7 @@ else:
 logging.info(f"Tokenizing and saving embeddings from word and verb lists for model {model_name}")
 
 hs = load_hs(dataset_name, model_name)
-word_emb, sg_emb, pl_emb, verb_probs = load_model_eval(model_name)
+word_emb, sg_emb, pl_emb, verb_probs, sg_pl_probs = load_model_eval(model_name)
 #P, I_P = load_run_output(gpt_run_output)
 
 #kls = compute_kls(hs, P, I_P, word_emb, sg_emb, pl_emb, verb_probs)
@@ -59,6 +59,24 @@ with open(run_output, 'rb') as f:
     run = pickle.load(f)
 
 #%%
+rows = []
+for k, v in run["diag_eval"]:
+    if "_I_P_" in k:
+        k.replace("_I_P_", )
+    else:
+        k.split("_")
+
+f"diag_rlace/test/P_burn/diag/{i}/diag_acc_test": diag_eval["diag_acc_P_burn_test"],
+f"diag_rlace/test/I_P_burn/diag/{i}/diag_acc_test": diag_eval["diag_acc_I_P_burn_test"],
+f"diag_rlace/test/P_burn/usage/{i}/lm_acc_test": usage_eval["lm_acc_P_burn_test"], 
+f"diag_rlace/test/I_P_burn/usage/{i}/lm_acc_test": usage_eval["lm_acc_I_P_burn_test"],
+
+
+
+
+#%%#################
+# OLD             #
+####################
 P = run["output"]["P_burn"]
 I_P = run["output"]["I_P_burn"]
 
@@ -66,7 +84,7 @@ I_P = run["output"]["I_P_burn"]
 from evals.kl_eval import compute_kls
 burn_kl_eval = compute_kls(
     hs, P, I_P, 
-    word_emb, sg_emb, pl_emb, verb_probs
+    word_emb, sg_emb, pl_emb, verb_probs, sg_pl_probs
 )
 burn_kl_means = burn_kl_eval.loc["mean",:]
 burn_kl_eval.to_csv(os.path.join(OUT, "run_kls.csv"))
@@ -112,9 +130,9 @@ from scipy.stats import entropy
 h = hs[2]
 
 #%%
-base_distribs = get_all_distribs(h, word_emb, sg_emb, pl_emb)
-P_distribs = get_all_distribs(P @ h, word_emb, sg_emb, pl_emb)
-I_P_distribs = get_all_distribs(I_P @ h, word_emb, sg_emb, pl_emb)
+base_distribs = get_distribs(h, word_emb, sg_emb, pl_emb)
+P_distribs = get_distribs(P @ h, word_emb, sg_emb, pl_emb)
+I_P_distribs = get_distribs(I_P @ h, word_emb, sg_emb, pl_emb)
 
 base_pair_probs = normalize_pairs(base_distribs["sg"], base_distribs["pl"])
 P_pair_probs = normalize_pairs(P_distribs["sg"], P_distribs["pl"])

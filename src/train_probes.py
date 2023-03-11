@@ -13,6 +13,7 @@ from tqdm import tqdm, trange
 import random
 import pandas as pd
 import time
+from datetime import datetime
 
 import torch
 import sklearn
@@ -39,6 +40,7 @@ cfg = get_train_probes_config()
 
 rlace_optimizer_class = torch.optim.SGD
 rlace_scheduler_class = torch.optim.lr_scheduler.ReduceLROnPlateau
+#rlace_scheduler_class = torch.optim.lr_scheduler.StepLR
 
 logging.info(f"Running: {cfg['run_name']}")
 
@@ -84,10 +86,11 @@ np.random.seed(cfg['seed'])
 # Wandb Logging    #
 ####################
 if cfg['wandb_name']:
+    datetimestr = datetime.today().strftime('%Y-%m-%d-%H:%M:%S')
     wandb.init(
         project="usagebasedprobing", 
         entity="cguerner",
-        name=f"{cfg['out_folder']}_{cfg['wandb_name']}_{cfg['run_name']}"
+        name=f"{datetimestr}_{cfg['out_folder']}_{cfg['wandb_name']}_{cfg['run_name']}"
     )
     wandb.config.update(cfg)
     WB = True
@@ -259,16 +262,16 @@ for i in trange(cfg['nruns']):
 
     #%%
     full_results = dict(
-        run = i,
-        run_args = run_args,
-        output = diag_rlace_output,
-        diag_eval = diag_eval,
-        usage_eval = usage_eval,
-        kl_eval = kl_means,
-        burn_kl_eval = burn_kl_means,
-        maj_acc_test = get_majority_acc(y_test),
-        maj_acc_val = get_majority_acc(y_val),
-        maj_acc_train = get_majority_acc(y_train)
+        run=i,
+        config=cfg,
+        output=diag_rlace_output,
+        diag_eval=diag_eval,
+        usage_eval=usage_eval,
+        kl_eval=kl_means,
+        burn_kl_eval=burn_kl_means,
+        maj_acc_test=get_majority_acc(y_test),
+        maj_acc_val=get_majority_acc(y_val),
+        maj_acc_train=get_majority_acc(y_train)
     )
     
     #%%
