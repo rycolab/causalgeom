@@ -39,8 +39,8 @@ device = get_device()
 cfg = get_train_probes_config()
 
 rlace_optimizer_class = torch.optim.SGD
-rlace_scheduler_class = torch.optim.lr_scheduler.ReduceLROnPlateau
-#rlace_scheduler_class = torch.optim.lr_scheduler.StepLR
+#rlace_scheduler_class = torch.optim.lr_scheduler.ReduceLROnPlateau
+rlace_scheduler_class = torch.optim.lr_scheduler.StepLR
 
 logging.info(f"Running: {cfg['run_name']}")
 
@@ -90,7 +90,7 @@ if cfg['wandb_name']:
     wandb.init(
         project="usagebasedprobing", 
         entity="cguerner",
-        name=f"{datetimestr}_{cfg['out_folder']}_{cfg['wandb_name']}_{cfg['run_name']}"
+        name=f"{cfg['out_folder']}_{cfg['wandb_name']}_{cfg['run_name']}_{datetimestr}"
     )
     wandb.config.update(cfg)
     WB = True

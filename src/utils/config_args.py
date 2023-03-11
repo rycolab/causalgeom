@@ -50,6 +50,16 @@ def get_train_probes_args():
         help="Learning rate for P" 
     )
     argparser.add_argument(
+        "-P_step_size",
+        type=int,
+        help="StepLR period of learning rate decay for P" 
+    )
+    argparser.add_argument(
+        "-P_gamma",
+        type=float,
+        help="StepLR multiplicative factor of learning rate decay for P" 
+    )
+    argparser.add_argument(
         "-P_n_lr_red",
         type=int,
         default=5,
@@ -64,6 +74,16 @@ def get_train_probes_args():
         "-clf_lr",
         type=float,
         help="Learning rate for clf" 
+    )
+    argparser.add_argument(
+        "-clf_step_size",
+        type=int,
+        help="StepLR period of learning rate decay for clf" 
+    )
+    argparser.add_argument(
+        "-clf_gamma",
+        type=float,
+        help="StepLR multiplicative factor of learning rate decay for clf" 
     )
     argparser.add_argument(
         "-clf_n_lr_red",
@@ -155,26 +175,37 @@ def set_train_probes_defaults(config):
         "lr": config["P_lr"], 
         "weight_decay": 1e-4
     }
+    #config["rlace_scheduler_params_P"] = {
+    #    "mode": "max", 
+    #    "factor": config["P_sched_factor"], 
+    #    "patience": config["P_sched_patience"], 
+    #    "min_lr": config["P_sched_min_lr"], 
+    #    "verbose": True
+    #}
     config["rlace_scheduler_params_P"] = {
-        "mode": "max", 
-        "factor": config["P_sched_factor"], 
-        "patience": config["P_sched_patience"], 
-        "min_lr": config["P_sched_min_lr"], 
+        "step_size": config["P_step_size"], 
+        "gamma": config["P_gamma"],
         "verbose": True
     }
+
     config["rlace_optimizer_params_clf"] = {
         "lr": config["clf_lr"],
         "weight_decay": 1e-4
     }
+    #config["rlace_scheduler_params_clf"] = {
+    #    "mode": "min", 
+    #    "factor": config["clf_sched_factor"], 
+    #    "patience": config["clf_sched_patience"], 
+    #    "min_lr": config["clf_sched_min_lr"], 
+    #    "verbose": True
+    #}
     config["rlace_scheduler_params_clf"] = {
-        "mode": "min", 
-        "factor": config["clf_sched_factor"], 
-        "patience": config["clf_sched_patience"], 
-        "min_lr": config["clf_sched_min_lr"], 
+        "step_size": config["clf_step_size"], 
+        "gamma": config["clf_gamma"],
         "verbose": True
     }
     #rlace_epsilon = 0.001 # stop 0.1% from majority acc (I TURNED THIS OFF)
-    config["run_name"] = f"{config['model_name'][:4]}_k_{config['k']}"
+    config["run_name"] = f"{config['model_name'][:4]}_Ps{config['P_step_size']}_Pg{config['P_gamma']}_clfs{config['clf_step_size']}_clfg{config['clf_gamma']}"
     return config
 
 def get_train_probes_config():
