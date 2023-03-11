@@ -50,6 +50,12 @@ def get_train_probes_args():
         help="Learning rate for P" 
     )
     argparser.add_argument(
+        "-P_momentum",
+        type=float,
+        default=0,
+        help="SGD momentum for P" 
+    )
+    argparser.add_argument(
         "-P_step_size",
         type=int,
         help="StepLR period of learning rate decay for P" 
@@ -74,6 +80,12 @@ def get_train_probes_args():
         "-clf_lr",
         type=float,
         help="Learning rate for clf" 
+    )
+    argparser.add_argument(
+        "-clf_momentum",
+        type=float,
+        default=0,
+        help="SGD momentum for clf" 
     )
     argparser.add_argument(
         "-clf_step_size",
@@ -172,7 +184,8 @@ def set_train_probes_defaults(config):
 
     # Constructing RLACE arg dicts (DON'T SET DEFAULTS HERE)
     config["rlace_optimizer_params_P"] = {
-        "lr": config["P_lr"], 
+        "lr": config["P_lr"],
+        "momentum": config["P_momentum"],
         "weight_decay": 1e-4
     }
     #config["rlace_scheduler_params_P"] = {
@@ -190,6 +203,7 @@ def set_train_probes_defaults(config):
 
     config["rlace_optimizer_params_clf"] = {
         "lr": config["clf_lr"],
+        "momentum": config["clf_momentum"],
         "weight_decay": 1e-4
     }
     #config["rlace_scheduler_params_clf"] = {
@@ -205,7 +219,7 @@ def set_train_probes_defaults(config):
         "verbose": True
     }
     #rlace_epsilon = 0.001 # stop 0.1% from majority acc (I TURNED THIS OFF)
-    config["run_name"] = f"{config['model_name'][:4]}_Ps{config['P_step_size']}_Pg{config['P_gamma']}_clfs{config['clf_step_size']}_clfg{config['clf_gamma']}"
+    config["run_name"] = f"{config['model_name'][:4]}_Pm{config['P_momentum']}_Ps{config['P_step_size']}_Pg{config['P_gamma']}_clfm{config['clf_momentum']}_clfs{config['clf_step_size']}_clfg{config['clf_gamma']}"
     return config
 
 def get_train_probes_config():

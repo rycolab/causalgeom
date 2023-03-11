@@ -153,6 +153,8 @@ def compute_faith_kls(base, proj, prefix="", agg_func=np.sum):
         f"{prefix}faith_kl_words": compute_kl(renormalize(base["words"]), renormalize(proj["words"]), agg_func),
         f"{prefix}faith_kl_tgt_split": compute_kl(renormalize(base["lemma_split"]), renormalize(proj["lemma_split"]), agg_func),
         f"{prefix}faith_kl_tgt_merged": compute_kl(renormalize(base["lemma_merged"]), renormalize(proj["lemma_merged"]), agg_func),
+        f"{prefix}faith_kl_words_unnorm": compute_kl(base["words"], proj["words"], agg_func),
+        f"{prefix}faith_kl_tgt_split_unnorm": compute_kl(base["lemma_split"], proj["lemma_split"], agg_func),
     }
     return kls
     
