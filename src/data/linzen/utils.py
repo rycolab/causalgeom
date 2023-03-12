@@ -2,7 +2,7 @@
 import sys
 sys.path.append('../../')
 
-import inflect
+from data.linzen import inflect
 from paths import LINZEN_VOCAB
 
 infl_eng = inflect.engine()
