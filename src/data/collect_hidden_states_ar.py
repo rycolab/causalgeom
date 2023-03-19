@@ -196,11 +196,13 @@ def get_batch_hs(batch):
             input_ids_pre_verb = ti,
             input_ids_verb = tv, 
             verb_hs = verb_hs, 
+            verb_raw_hs = verb_raw_hs,
             verb_embedding = verb_embedding,
             input_ids_iverb = tiv, 
             iverb_hs = iverb_hs,
-            iverb_embedding = iverb_embedding)
-        )
+            iverb_raw_hs=iverb_raw_hs,
+            iverb_embedding = iverb_embedding,
+        ))
     return batch_hs
 
 

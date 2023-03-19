@@ -31,6 +31,7 @@ from utils.cuda_loaders import get_device
 from utils.config_args import get_train_probes_config
 from evals.kl_eval import compute_kls, load_model_eval
 from evals.usage_eval import full_usage_eval, full_diag_eval
+from paths import DATASETS, OUT
 
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
@@ -39,8 +40,8 @@ device = get_device()
 cfg = get_train_probes_config()
 
 rlace_optimizer_class = torch.optim.SGD
-rlace_scheduler_class = torch.optim.lr_scheduler.ReduceLROnPlateau
-#rlace_scheduler_class = torch.optim.lr_scheduler.StepLR
+#rlace_scheduler_class = torch.optim.lr_scheduler.ReduceLROnPlateau
+rlace_scheduler_class = torch.optim.lr_scheduler.MultiStepLR
 
 logging.info(f"Running: {cfg['run_name']}")
 
@@ -49,7 +50,7 @@ logging.info(f"Running: {cfg['run_name']}")
 ####################
 
 # Output directory creation
-OUTPUT_DIR = f"/cluster/work/cotterell/cguerner/usagebasedprobing/out/run_output/{cfg['model_name']}/{cfg['out_folder']}/"
+OUTPUT_DIR = os.path.join(OUT, f"run_output/{cfg['model_name']}/{cfg['out_folder']}/")
 if not os.path.exists(OUTPUT_DIR):
     os.mkdir(OUTPUT_DIR)
     logging.info(f"Created output dir: {OUTPUT_DIR}")
@@ -61,13 +62,13 @@ if not os.path.exists(DIAG_RLACE_U_OUTDIR):
     os.mkdir(DIAG_RLACE_U_OUTDIR)
 
 # Loading word lists for KL eval
-WORD_EMB, SG_EMB, PL_EMB, VERB_PROBS, SG_PL_PROB = load_model_eval(cfg['model_name'])
+WORD_EMB, SG_EMB, PL_EMB, VERB_PROBS, SG_PL_PROB = load_model_eval(cfg['model_name'], add_space=cfg['model_name'] == "gpt2")
 
 # Load dataset
 if cfg['model_name'] == "gpt2":
-    DATASET = f"/cluster/work/cotterell/cguerner/usagebasedprobing/datasets/processed/{cfg['dataset_name']}_{cfg['model_name']}_ar.pkl"
+    DATASET = os.path.join(DATASETS, f"processed/{cfg['dataset_name']}_{cfg['model_name']}_ar.pkl")
 elif cfg['model_name'] == "bert-base-uncased":
-    DATASET = f"/cluster/work/cotterell/cguerner/usagebasedprobing/datasets/processed/{cfg['dataset_name']}_{cfg['model_name']}_masked.pkl"
+    DATASET = os.path.join(DATASETS, f"processed/{cfg['dataset_name']}_{cfg['model_name']}_masked.pkl")
 else:
     DATASET = None
 
@@ -90,7 +91,7 @@ if cfg['wandb_name']:
     wandb.init(
         project="usagebasedprobing", 
         entity="cguerner",
-        name=f"{datetimestr}_{cfg['out_folder']}_{cfg['wandb_name']}_{cfg['run_name']}"
+        name=f"{cfg['out_folder']}_{cfg['wandb_name']}_{cfg['run_name']}_{datetimestr}"
     )
     wandb.config.update(cfg)
     WB = True
@@ -129,7 +130,7 @@ for i in trange(cfg['nruns']):
         scheduler_params_predictor=cfg['rlace_scheduler_params_clf'],
         batch_size=cfg['batch_size'],
         torch_outfile=diag_rlace_u_outfile, wb=WB, wb_run=i,
-        model_name=cfg["model_name"]
+        model_name=cfg["model_name"], mi_eval=True
     )
     end = time.time()
     diag_rlace_output["runtime"] = end-start
@@ -157,35 +158,14 @@ for i in trange(cfg['nruns']):
 
     if WB:
         wandb.log({
-            f"diag_rlace/test/P/diag/{i}/diag_acc_test": diag_eval["diag_acc_P_test"],
-            f"diag_rlace/test/I_P/diag/{i}/diag_acc_test": diag_eval["diag_acc_I_P_test"],
-            f"diag_rlace/test/P/usage/{i}/lm_acc_test": usage_eval["lm_acc_P_test"], 
-            f"diag_rlace/test/I_P/usage/{i}/lm_acc_test": usage_eval["lm_acc_I_P_test"],
             f"diag_rlace/test/P_burn/diag/{i}/diag_acc_test": diag_eval["diag_acc_P_burn_test"],
             f"diag_rlace/test/I_P_burn/diag/{i}/diag_acc_test": diag_eval["diag_acc_I_P_burn_test"],
             f"diag_rlace/test/P_burn/usage/{i}/lm_acc_test": usage_eval["lm_acc_P_burn_test"], 
             f"diag_rlace/test/I_P_burn/usage/{i}/lm_acc_test": usage_eval["lm_acc_I_P_burn_test"],
             
-            f"diag_rlace/test/P/fth_kls/{i}/faith_kl_all_split": kl_means["P_faith_kl_all_split"],
-            f"diag_rlace/test/P/fth_kls/{i}/faith_kl_all_merged": kl_means["P_faith_kl_all_merged"],
-            f"diag_rlace/test/P/fth_kls/{i}/faith_kl_words": kl_means["P_faith_kl_words"],
-            f"diag_rlace/test/P/fth_kls/{i}/faith_kl_tgt_split": kl_means["P_faith_kl_tgt_split"],
-            f"diag_rlace/test/P/fth_kls/{i}/faith_kl_tgt_merged": kl_means["P_faith_kl_tgt_merged"],
 
             f"diag_rlace/test/base/er_mis/{i}/overall_mi": kl_means["base_overall_mi"],
             f"diag_rlace/test/base/er_mis/{i}/pairwise_mi": kl_means["base_pairwise_mi"],
-
-            f"diag_rlace/test/P/er_mis/{i}/overall_mi": kl_means["P_overall_mi"],
-            f"diag_rlace/test/P/er_mis/{i}/pairwise_mi": kl_means["P_pairwise_mi"],
-
-            f"diag_rlace/test/I_P/fth_kls/{i}/faith_kl_all_split": kl_means["I_P_faith_kl_all_split"],
-            f"diag_rlace/test/I_P/fth_kls/{i}/faith_kl_all_merged": kl_means["I_P_faith_kl_all_merged"],
-            f"diag_rlace/test/I_P/fth_kls/{i}/faith_kl_words": kl_means["I_P_faith_kl_words"],
-            f"diag_rlace/test/I_P/fth_kls/{i}/faith_kl_tgt_split": kl_means["I_P_faith_kl_tgt_split"],
-            f"diag_rlace/test/I_P/fth_kls/{i}/faith_kl_tgt_merged": kl_means["I_P_faith_kl_tgt_merged"],
-
-            f"diag_rlace/test/I_P/er_mis/{i}/overall_mi": kl_means["I_P_overall_mi"],
-            f"diag_rlace/test/I_P/er_mis/{i}/pairwise_mi": kl_means["I_P_pairwise_mi"],
 
             f"diag_rlace/test/P_burn/fth_kls/{i}/faith_kl_all_split": burn_kl_means["P_faith_kl_all_split"],
             f"diag_rlace/test/P_burn/fth_kls/{i}/faith_kl_all_merged": burn_kl_means["P_faith_kl_all_merged"],
@@ -268,7 +248,8 @@ for i in trange(cfg['nruns']):
         diag_eval=diag_eval,
         usage_eval=usage_eval,
         kl_eval=kl_means,
-        burn_kl_eval=burn_kl_means,
+        burn_kl_mean=burn_kl_eval.loc["mean",:],
+        burn_kl_std=burn_kl_eval.loc["std",:],
         maj_acc_test=get_majority_acc(y_test),
         maj_acc_val=get_majority_acc(y_val),
         maj_acc_train=get_majority_acc(y_train)

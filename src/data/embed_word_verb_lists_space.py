@@ -32,10 +32,10 @@ DATASET_NAME = "linzen"
 WORDLIST_PATH = os.path.join(DATASETS, "processed/linzen_word_lists/linzen_wordlist.csv")
 VERBLIST_PATH = os.path.join(DATASETS, "processed/linzen_word_lists/linzen_verb_list_final.pkl")
 
-WORD_EMB_OUTFILE = os.path.join(DATASETS, f"processed/linzen_word_lists/{MODEL_NAME}_word_embeds.npy")
-VERB_P_OUTFILE = os.path.join(DATASETS, f"processed/linzen_word_lists/{MODEL_NAME}_verb_p.npy")
-SG_EMB_OUTFILE = os.path.join(DATASETS, f"processed/linzen_word_lists/{MODEL_NAME}_sg_embeds.npy")
-PL_EMB_OUTFILE = os.path.join(DATASETS, f"processed/linzen_word_lists/{MODEL_NAME}_pl_embeds.npy")
+WORD_EMB_OUTFILE = os.path.join(DATASETS, f"processed/linzen_word_lists/{MODEL_NAME}_word_embeds_space.npy")
+VERB_P_OUTFILE = os.path.join(DATASETS, f"processed/linzen_word_lists/{MODEL_NAME}_verb_p_space.npy")
+SG_EMB_OUTFILE = os.path.join(DATASETS, f"processed/linzen_word_lists/{MODEL_NAME}_sg_embeds_space.npy")
+PL_EMB_OUTFILE = os.path.join(DATASETS, f"processed/linzen_word_lists/{MODEL_NAME}_pl_embeds_space.npy")
 
 logging.info(f"Tokenizing and saving embeddings from word and verb lists for model {MODEL_NAME}")
 
@@ -98,7 +98,8 @@ word_toks = get_unique_word_tokens(TOKENIZER, MASKED)
 wl = pd.read_csv(WORDLIST_PATH, index_col=0)
 wl.drop_duplicates(inplace=True)
 
-wl["input_ids_word"] = wl["word"].apply(lambda x: tokenize_word_handler(MODEL_NAME, TOKENIZER, x))
+### space
+wl["input_ids_word"] = wl["word"].apply(lambda x: tokenize_word_handler(MODEL_NAME, TOKENIZER, x, True))
 #df["input_ids_word_spc"] = df["word"].apply(lambda x: tokenize_word(x, add_space=True)[1:-1])
 wl["ntokens"] = wl["input_ids_word"].apply(lambda x: len(x))
 #df["ntokens_spc"] = df["input_ids_word_spc"].apply(lambda x: len(x))
@@ -130,7 +131,7 @@ with open(VERBLIST_PATH, 'rb') as f:
 
 for col in ["sverb", "pverb"]:
     vl[f"{col}_input_ids"] = vl[col].apply(
-        lambda x: tokenize_word(TOKENIZER, x, masked=MASKED))
+        lambda x: tokenize_word_handler(MODEL_NAME, TOKENIZER, x, True))
     vl[f"{col}_ntokens"] = vl[f"{col}_input_ids"].apply(
         lambda x: len(x))
 

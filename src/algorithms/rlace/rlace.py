@@ -187,7 +187,8 @@ def solve_adv_game(X_train, y_train, X_dev, y_dev,
                    optimizer_params_predictor={"lr": 0.005, "weight_decay": 1e-4}, 
                    scheduler_class=None, scheduler_params_P=None, 
                    scheduler_params_predictor=None,
-                   torch_outfile=None, wb=False, wb_run=None, model_name=None):
+                   torch_outfile=None, wb=False, wb_run=None, model_name=None,
+                   mi_eval=False):
     """
     :param X: The input (np array)
     :param Y: the lables (np array)
@@ -307,10 +308,6 @@ def solve_adv_game(X_train, y_train, X_dev, y_dev,
                 X_val_train, y_val_train, X_dev, y_dev, P.detach().cpu().numpy(), 
                 rank
             )
-            mis_val = compute_mis(
-                X_dev, P.detach().cpu().numpy(), rank, word_emb, sg_emb, pl_emb, 
-                verb_probs, sg_pl_prob
-            )
             #TODO: probably want to pick best_score and best_loss in the same if statement (evaluate on one)
             if loss_val > best_loss:#if np.abs(score - maj) < np.abs(best_score - maj):
                 best_P, best_loss, best_loss_acc = symmetric(P).detach().cpu().numpy().copy(), loss_val, acc_val
@@ -319,8 +316,11 @@ def solve_adv_game(X_train, y_train, X_dev, y_dev,
             if i / out_iters > .8 and loss_val > burn_loss:
                 burn_P, burn_loss = symmetric(P).detach().cpu().numpy().copy(), loss_val
 
-            scheduler_P.step(loss_val)
-            scheduler_predictor.step(loss_val)
+            logging.info(f"Adjusting LR at step {i+1} / {out_iters}, {(i+1)/evaluate_every}th validation step")
+            #scheduler_P.step(loss_val)
+            scheduler_P.step()
+            #scheduler_predictor.step(loss_val)
+            scheduler_predictor.step()
 
             if wb:
                 wandb.log({
@@ -333,12 +333,6 @@ def solve_adv_game(X_train, y_train, X_dev, y_dev,
                     f"diag_rlace/val/{wb_run}/burn_loss": burn_loss,
                     f"diag_rlace/val/lrs/{wb_run}/P_lr": optimizer_P.param_groups[0]['lr'],
                     f"diag_rlace/val/lrs/{wb_run}/clf_lr": optimizer_predictor.param_groups[0]['lr'],
-                    f"diag_rlace/val/mis/{wb_run}/base_overall_mi": mis_val["base_overall_mi"],
-                    f"diag_rlace/val/mis/{wb_run}/P_overall_mi": mis_val["P_overall_mi"],
-                    f"diag_rlace/val/mis/{wb_run}/I_P_overall_mi": mis_val["I_P_overall_mi"],
-                    f"diag_rlace/val/mis/{wb_run}/base_pairwise_mi": mis_val["base_pairwise_mi"],
-                    f"diag_rlace/val/mis/{wb_run}/P_pairwise_mi": mis_val["P_pairwise_mi"],
-                    f"diag_rlace/val/mis/{wb_run}/I_P_pairwise_mi": mis_val["I_P_pairwise_mi"],
                 })
             
             # update progress bar
@@ -352,6 +346,20 @@ def solve_adv_game(X_train, y_train, X_dev, y_dev,
             pbar.refresh()  # to show immediately the update
             time.sleep(0.01)
 
+        if mi_eval and (i+1) % 5000 == 0:
+            mis_val = compute_mis(
+                X_dev, P.detach().cpu().numpy(), rank, word_emb, sg_emb, pl_emb, 
+                verb_probs, sg_pl_prob
+            )
+            if wb:
+                wandb.log({
+                    f"diag_rlace/val/mis/{wb_run}/base_overall_mi": mis_val["base_overall_mi"],
+                    f"diag_rlace/val/mis/{wb_run}/P_overall_mi": mis_val["P_overall_mi"],
+                    f"diag_rlace/val/mis/{wb_run}/I_P_overall_mi": mis_val["I_P_overall_mi"],
+                    f"diag_rlace/val/mis/{wb_run}/base_pairwise_mi": mis_val["base_pairwise_mi"],
+                    f"diag_rlace/val/mis/{wb_run}/P_pairwise_mi": mis_val["P_pairwise_mi"],
+                    f"diag_rlace/val/mis/{wb_run}/I_P_pairwise_mi": mis_val["I_P_pairwise_mi"],
+                })
         #if i > 1 and np.abs(best_score - maj) < epsilon:
         #if i > 1 and np.abs(best_loss - label_entropy) < epsilon:
         #    break

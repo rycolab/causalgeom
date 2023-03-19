@@ -21,7 +21,9 @@ from scipy.special import softmax, kl_div
 from paths import DATASETS, OUT
 from utils.lm_loaders import get_tokenizer, get_V
 from evals.kl_eval import load_hs, load_model_eval, load_run_output,\
-    get_distribs, normalize_pairs
+    get_distribs, normalize_pairs, compute_overall_mi, compute_kl, renormalize, \
+        sample_hs
+
 #from evals.usage_eval import diag_eval, usage_eval
 
 coloredlogs.install(level=logging.INFO)
@@ -33,9 +35,9 @@ warnings.filterwarnings("ignore")
 #if __name__ == '__main__':
 
 
-model_name = "bert-base-uncased"
+model_name = "gpt2"
 dataset_name = "linzen"
-gpt_run_output = os.path.join(OUT, "run_output/gpt2/230310/run_gpt2_k_1_0_1.pkl")
+gpt_run_output = os.path.join(OUT, "run_output/gpt2/230314/run_gpt2_Pm0_Pms11,16,21,26,31_Pg0.5_clfm0_clfms21,31_clfg0.5_0_1.pkl")
 bert_run_output = os.path.join(OUT, "run_output/bert-base-uncased/230310/run_bert_k_1_0_1.pkl")
 if model_name == "bert-base-uncased":
     run_output = bert_run_output
@@ -47,36 +49,20 @@ else:
 logging.info(f"Tokenizing and saving embeddings from word and verb lists for model {model_name}")
 
 hs = load_hs(dataset_name, model_name)
-word_emb, sg_emb, pl_emb, verb_probs, sg_pl_probs = load_model_eval(model_name)
+word_emb, sg_emb, pl_emb, verb_probs, sg_pl_probs = load_model_eval(model_name, add_space=True)
 #P, I_P = load_run_output(gpt_run_output)
 
 #kls = compute_kls(hs, P, I_P, word_emb, sg_emb, pl_emb, verb_probs)
 #kls.to_csv(os.path.join(OUT, "run_kls.csv"))
 
 
-#%%
+#%%#################
+# TABLE MAKING.    #
+####################
 with open(run_output, 'rb') as f:      
     run = pickle.load(f)
 
-#%%
-rows = []
-for k, v in run["diag_eval"]:
-    if "_I_P_" in k:
-        k.replace("_I_P_", )
-    else:
-        k.split("_")
 
-f"diag_rlace/test/P_burn/diag/{i}/diag_acc_test": diag_eval["diag_acc_P_burn_test"],
-f"diag_rlace/test/I_P_burn/diag/{i}/diag_acc_test": diag_eval["diag_acc_I_P_burn_test"],
-f"diag_rlace/test/P_burn/usage/{i}/lm_acc_test": usage_eval["lm_acc_P_burn_test"], 
-f"diag_rlace/test/I_P_burn/usage/{i}/lm_acc_test": usage_eval["lm_acc_I_P_burn_test"],
-
-
-
-
-#%%#################
-# OLD             #
-####################
 P = run["output"]["P_burn"]
 I_P = run["output"]["I_P_burn"]
 

@@ -50,13 +50,18 @@ def sample_hs(hs, nsamples=200):
     ind = idx[:nsamples]
     return hs[ind]
 
-def load_model_eval(model_name):
-    WORD_EMB = os.path.join(DATASETS, f"processed/linzen_word_lists/{model_name}_word_embeds.npy")
-    VERB_P = os.path.join(DATASETS, f"processed/linzen_word_lists/{model_name}_verb_p.npy")
-    SG_EMB = os.path.join(DATASETS, f"processed/linzen_word_lists/{model_name}_sg_embeds.npy")
-    PL_EMB = os.path.join(DATASETS, f"processed/linzen_word_lists/{model_name}_pl_embeds.npy")
+def load_model_eval(model_name, add_space=False):
     SG_PL_PROB = os.path.join(DATASETS, "processed/linzen_word_lists/sg_pl_prob.pkl")
-
+    if add_space:
+        WORD_EMB = os.path.join(DATASETS, f"processed/linzen_word_lists/{model_name}_word_embeds_space.npy")
+        VERB_P = os.path.join(DATASETS, f"processed/linzen_word_lists/{model_name}_verb_p_space.npy")
+        SG_EMB = os.path.join(DATASETS, f"processed/linzen_word_lists/{model_name}_sg_embeds_space.npy")
+        PL_EMB = os.path.join(DATASETS, f"processed/linzen_word_lists/{model_name}_pl_embeds_space.npy")
+    else:
+        WORD_EMB = os.path.join(DATASETS, f"processed/linzen_word_lists/{model_name}_word_embeds.npy")
+        VERB_P = os.path.join(DATASETS, f"processed/linzen_word_lists/{model_name}_verb_p.npy")
+        SG_EMB = os.path.join(DATASETS, f"processed/linzen_word_lists/{model_name}_sg_embeds.npy")
+        PL_EMB = os.path.join(DATASETS, f"processed/linzen_word_lists/{model_name}_pl_embeds.npy")
     word_emb = np.load(WORD_EMB)
     verb_p = np.load(VERB_P)
     sg_emb = np.load(SG_EMB)
@@ -69,8 +74,8 @@ def load_run_output(run_path):
     with open(run_path, 'rb') as f:      
         run = pickle.load(f)
 
-    P = run["diag_rlace_usage_eval"]["P"]
-    I_P = run["diag_rlace_usage_eval"]["I_P"]
+    P = run["output"]["P_burn"]
+    I_P = run["output"]["I_P_burn"]
     return P, I_P
 
 #%%#################
@@ -139,7 +144,8 @@ def get_all_distribs(h, P, I_P, word_emb, sg_emb, pl_emb):
 def compute_kl(p, q, agg_func=np.sum):
     if not (np.isclose(np.sum(p), 1) and np.isclose(np.sum(q), 1)):
         logging.warn("Distribution not normalized before KL")
-        return 0
+        #return 0
+        return agg_func(kl_div(p, q))
     else:
         return agg_func(kl_div(p, q))
 
@@ -153,17 +159,19 @@ def compute_faith_kls(base, proj, prefix="", agg_func=np.sum):
         f"{prefix}faith_kl_words": compute_kl(renormalize(base["words"]), renormalize(proj["words"]), agg_func),
         f"{prefix}faith_kl_tgt_split": compute_kl(renormalize(base["lemma_split"]), renormalize(proj["lemma_split"]), agg_func),
         f"{prefix}faith_kl_tgt_merged": compute_kl(renormalize(base["lemma_merged"]), renormalize(proj["lemma_merged"]), agg_func),
+        f"{prefix}faith_kl_words_unnorm": compute_kl(base["words"], proj["words"], agg_func),
+        f"{prefix}faith_kl_tgt_split_unnorm": compute_kl(base["lemma_split"], proj["lemma_split"], agg_func),
     }
     return kls
     
-def compute_tvd(p, q, agg_func=np.mean):
+def compute_tvd(p, q, agg_func=np.sum):
     if not (np.isclose(np.sum(p), 1) and np.isclose(np.sum(q), 1)):
         logging.warn("Distribution not normalized before KL")
         return 0
     else:
         return agg_func(np.abs(p-q))
     
-def compute_faith_tvds(base, proj, prefix="", agg_func=np.mean):
+def compute_faith_tvds(base, proj, prefix="", agg_func=np.sum):
     tvds = {
         f"{prefix}faith_tvd_all_split": compute_tvd(base["all_split"], proj["all_split"], agg_func),
         f"{prefix}faith_tvd_all_merged": compute_tvd(base["all_merged"], proj["all_merged"], agg_func),
@@ -339,9 +347,9 @@ def compute_kls(hs, P, I_P, word_emb, sg_emb, pl_emb, verb_probs, sg_pl_prob,
 ####################
 if __name__ == '__main__':
 
-    model_name = "gpt2"
+    model_name = "bert-base-uncased"
     dataset_name = "linzen"
-    run_output = os.path.join(OUT, "run_output/gpt2/230302/run_gpt2_k_1_plr_0.001_clflr_0.0003_bs_256_0_1.pkl")
+    run_output = os.path.join(OUT, "run_output/bert-base-uncased/230310/run_bert_k_1_0_1.pkl")
 
     logging.info(f"Tokenizing and saving embeddings from word and verb lists for model {model_name}")
 
