@@ -70,32 +70,12 @@ def load_linzen(model_type):
 def load_udfr_ar(split_path):
     data = pd.read_pickle(split_path)
     data.drop(data[data["ar_flag"] != True].index, inplace=False)
-    data = data[
-        ["pre_tgt_text", "fact_text", "foil_text", "fact", "foil", 
-        "tgt_label"]
-    ]
-    #TODO: fix this
-        for line in tsv_file:
-            unmasked_text = line[1]
-            verb = line[3]
-            iverb = line[4]
-            verb_pos = line[5]
-            vindex = int(line[6])
-            if vindex > 0:
-                verb = " " + verb
-                iverb = " " + iverb
-            pre_verb_text = " ".join(unmasked_text.split(" ")[:vindex])
-            verb_text = " ".join(unmasked_text.split(" ")[:(vindex+1)])
-            iverb_text = " ".join(unmasked_text.split(" ")[:vindex] + [iverb])
-            sample = dict(
-                pre_tgt_text=pre_verb_text,
-                fact_text=verb_text,
-                foil_text=iverb_text,
-                fact=verb,
-                foil=iverb,
-                tgt_label=verb_pos
-            )
-            data.append(sample)
+    data["fact"] = " " + data["adj"]
+    data["foil"] = " " + data["adj_gender_foil"]
+    data = data[["pre_tgt_text", "fact_text", "foil_text", "fact", "foil", 
+        "gender"]]
+    data.columns = ["pre_tgt_text", "fact_text", "foil_text", "fact", 
+        "foil", "tgt_label"]
     return data
 
 def load_udfr_masked(split_path):

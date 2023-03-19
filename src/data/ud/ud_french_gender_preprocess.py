@@ -12,16 +12,18 @@ import pandas as pd
 from conllu import parse_incr, parse_tree_incr
 from inflecteur import inflecteur
 
-sys.path.append('../../')
-#sys.path.append('./src/')
+#sys.path.append('../../')
+sys.path.append('./src/')
 
 from paths import UD_FRENCH_GSD, DATASETS
 
 
 #%%
-SPLIT = "test"
+SPLIT = "train"
 INPUT_FILE = os.path.join(UD_FRENCH_GSD, f"fr_gsd-ud-{SPLIT}.conllu")
 OUTPUT_FILE = os.path.join(DATASETS, f"preprocessed/ud/fr/gsd/{SPLIT}.pkl")
+
+logging.info(f"Preprocessing UD French data split: {SPLIT}")
 
 #%%
 def get_feature(feats, feature_name, default_val=None):
@@ -218,7 +220,7 @@ full_df_foil.drop(
     full_df_foil[full_df_foil["adj_gender_foil"].isnull()].index, inplace=True
 )
 
-#%% Final processing
+#%% masked processing
 def flag_masked_sentence(sentence, adj, adj_index):
     try:
         find_adj_ind = sentence.split(" ").index(adj)
@@ -231,17 +233,11 @@ def flag_masked_sentence(sentence, adj, adj_index):
             return 2
 
 def get_masked_sentence(sentence, adj):
-    try:
-        split_sentence = sentence.split(" ")
-        find_adj_ind = split_sentence.index(adj)
-    except ValueError:
-        if sentence.count(adj) == 1:
-            return sentence.replace(adj, "[MASK]", 1)
-        else:
-            return None
+    if sentence.count(adj) == 1:
+        return sentence.replace(adj, "[MASK]", 1)
     else:
-        split_sentence[find_adj_ind] = "[MASK]"
-        return " ".join(split_sentence)
+        return None
+
 
 full_df_foil["masked_check"] = full_df_foil.apply(
     lambda x: flag_masked_sentence(x.text, x.adj, x.adj_index), axis=1
@@ -249,15 +245,33 @@ full_df_foil["masked_check"] = full_df_foil.apply(
 full_df_foil["masked"] = full_df_foil.apply(
     lambda x: get_masked_sentence(x.text, x.adj), axis=1
 )
-full_df_foil.drop(full_df_foil[full_df_foil["masked"].isnull()].index, inplace=True)
+
+#%% ar features
+def get_ar_sentence(sentence, adj):
+    if sentence.count(adj) == 1:
+        return sentence[:sentence.find(adj)]
+    else:
+        return None
 
 full_df_foil["ar_flag"] = (full_df_foil["noun_index"] < full_df_foil["adj_index"])
+full_df_foil["pre_tgt_text"] = full_df_foil.apply(
+    lambda x: get_ar_sentence(x.text, x.adj), axis=1
+)
 
+full_df_foil["fact_text"] = full_df_foil["pre_tgt_text"] + full_df_foil["adj"]
+full_df_foil["foil_text"] = full_df_foil["pre_tgt_text"] + full_df_foil["adj_gender_foil"]
 
 #%%
+assert full_df_foil[full_df_foil["masked"].isnull()].shape == \
+    full_df_foil[full_df_foil["pre_tgt_text"].isnull()].shape, \
+        "Number of sentences with two instances of tgt have to match"
+
+full_df_foil.drop(
+    full_df_foil[full_df_foil["masked"].isnull()].index, inplace=True)
+
 final_df = full_df_foil[
     ["level", "noun", "gender", "number", "adj", "adj_gender_foil", 
-    "text", "masked", "ar_flag"]
+    "text", "masked", "ar_flag", "pre_tgt_text", "fact_text", "foil_text"]
 ]
 final_df.to_pickle(OUTPUT_FILE)
-
+# %%
