@@ -21,7 +21,7 @@ from paths import UD_FRENCH_GSD, DATASETS
 #%%
 SPLIT = "test"
 INPUT_FILE = os.path.join(UD_FRENCH_GSD, f"fr_gsd-ud-{SPLIT}.conllu")
-OUTPUT_FILE = os.path.join(DATASETS, f"preprocessed/ud/fr/gsd/{SPLIT}.csv")
+OUTPUT_FILE = os.path.join(DATASETS, f"preprocessed/ud/fr/gsd/{SPLIT}.pkl")
 
 #%%
 def get_feature(feats, feature_name, default_val=None):
@@ -259,5 +259,5 @@ final_df = full_df_foil[
     ["level", "noun", "gender", "number", "adj", "adj_gender_foil", 
     "text", "masked", "ar_flag"]
 ]
-final_df.to_csv(OUTPUT_FILE)
+final_df.to_pickle(OUTPUT_FILE)
 
