@@ -34,7 +34,7 @@ def get_train_probes_args():
     argparser.add_argument(
         "-niter",
         type=int,
-        default=75000,
+        default=10000,
         help="Number of iterations of RLACE"
     )
     argparser.add_argument(
@@ -43,6 +43,12 @@ def get_train_probes_args():
         default=256,
         dest="batch_size",
         help="Batch size of RLACE"
+    )
+    argparser.add_argument(
+        "-pca_dim",
+        type=int,
+        default=768,
+        help="Dimension of PCA"
     )
     argparser.add_argument(
         "-P_lr",
@@ -61,8 +67,15 @@ def get_train_probes_args():
         help="StepLR period of learning rate decay for P" 
     )
     argparser.add_argument(
+        "-P_milestones",
+        default="4,9",
+        type=str,
+        help="MultiStepLR milestones of learning rate decay for P, has to have format 10,20,30..." 
+    )
+    argparser.add_argument(
         "-P_gamma",
         type=float,
+        default=0.5,
         help="StepLR multiplicative factor of learning rate decay for P" 
     )
     argparser.add_argument(
@@ -93,8 +106,15 @@ def get_train_probes_args():
         help="StepLR period of learning rate decay for clf" 
     )
     argparser.add_argument(
+        "-clf_milestones",
+        type=str,
+        default="5,10",
+        help="MultiStepLR milestones of learning rate decay for clf, has to have format 10,20,30..." 
+    )
+    argparser.add_argument(
         "-clf_gamma",
         type=float,
+        default=0.5,
         help="StepLR multiplicative factor of learning rate decay for clf" 
     )
     argparser.add_argument(
@@ -195,8 +215,12 @@ def set_train_probes_defaults(config):
     #    "min_lr": config["P_sched_min_lr"], 
     #    "verbose": True
     #}
+    def format_milestones(mstr):
+        return [int(x) for x in mstr.split(",")]
+
     config["rlace_scheduler_params_P"] = {
-        "step_size": config["P_step_size"], 
+        #"step_size": config["P_step_size"], 
+        "milestones": format_milestones(config["P_milestones"]), 
         "gamma": config["P_gamma"],
         "verbose": True
     }
@@ -214,12 +238,13 @@ def set_train_probes_defaults(config):
     #    "verbose": True
     #}
     config["rlace_scheduler_params_clf"] = {
-        "step_size": config["clf_step_size"], 
+        #"step_size": config["clf_step_size"], 
+        "milestones": format_milestones(config["clf_milestones"]), 
         "gamma": config["clf_gamma"],
         "verbose": True
     }
     #rlace_epsilon = 0.001 # stop 0.1% from majority acc (I TURNED THIS OFF)
-    config["run_name"] = f"{config['model_name'][:4]}_Pm{config['P_momentum']}_Ps{config['P_step_size']}_Pg{config['P_gamma']}_clfm{config['clf_momentum']}_clfs{config['clf_step_size']}_clfg{config['clf_gamma']}"
+    config["run_name"] = f"{config['model_name'][:4]}_Pms{config['P_milestones']}_Pg{config['P_gamma']}_clfms{config['clf_milestones']}_clfg{config['clf_gamma']}"
     return config
 
 def get_train_probes_config():

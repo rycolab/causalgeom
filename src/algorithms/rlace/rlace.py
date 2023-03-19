@@ -187,7 +187,8 @@ def solve_adv_game(X_train, y_train, X_dev, y_dev,
                    optimizer_params_predictor={"lr": 0.005, "weight_decay": 1e-4}, 
                    scheduler_class=None, scheduler_params_P=None, 
                    scheduler_params_predictor=None,
-                   torch_outfile=None, wb=False, wb_run=None, model_name=None):
+                   torch_outfile=None, wb=False, wb_run=None, model_name=None,
+                   mi_eval=False):
     """
     :param X: The input (np array)
     :param Y: the lables (np array)
@@ -315,8 +316,11 @@ def solve_adv_game(X_train, y_train, X_dev, y_dev,
             if i / out_iters > .8 and loss_val > burn_loss:
                 burn_P, burn_loss = symmetric(P).detach().cpu().numpy().copy(), loss_val
 
-            scheduler_P.step(loss_val)
-            scheduler_predictor.step(loss_val)
+            logging.info(f"Adjusting LR at step {i+1} / {out_iters}, {(i+1)/evaluate_every}th validation step")
+            #scheduler_P.step(loss_val)
+            scheduler_P.step()
+            #scheduler_predictor.step(loss_val)
+            scheduler_predictor.step()
 
             if wb:
                 wandb.log({
@@ -342,7 +346,7 @@ def solve_adv_game(X_train, y_train, X_dev, y_dev,
             pbar.refresh()  # to show immediately the update
             time.sleep(0.01)
 
-        if (i+1) % 5000 == 0:
+        if mi_eval and (i+1) % 5000 == 0:
             mis_val = compute_mis(
                 X_dev, P.detach().cpu().numpy(), rank, word_emb, sg_emb, pl_emb, 
                 verb_probs, sg_pl_prob
