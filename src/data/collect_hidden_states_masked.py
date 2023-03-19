@@ -24,16 +24,17 @@ from abc import ABC
 #sys.path.append('..')
 sys.path.append('./src/')
 
-from paths import OUT, HF_CACHE, LINZEN_PREPROCESSED
 from utils.cuda_loaders import get_device
 from utils.lm_loaders import get_model, get_tokenizer, get_V
+from data.dataset_loaders import load_dataset
+from paths import OUT, HF_CACHE
 
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
 
 #%%
 DATASET_NAME = "linzen"
-DATASET_PATH = LINZEN_PREPROCESSED
+DATASET_PATH = get_dataset_path(DATASET_NAME)
 MODEL_NAME = "bert-base-uncased"
 OUTPUT_DIR = f"/cluster/work/cotterell/cguerner/usagebasedprobing/out/hidden_states/{DATASET_NAME}/{MODEL_NAME}"
 BATCH_SIZE = 64
@@ -42,6 +43,7 @@ assert not os.path.exists(OUTPUT_DIR), \
     f"Hidden state export dir exists: {OUTPUT_DIR}"
 
 os.mkdir(OUTPUT_DIR)
+
 
 #%%
 device = get_device()
@@ -53,24 +55,9 @@ MODEL = MODEL.to(device)
 
 MASK_TOKEN_ID = TOKENIZER.mask_token_id
 
-
-
 #%%
-data = []
-with open(DATASET_PATH) as file:
-    tsv_file = csv.reader(file, delimiter="\t")
-    for line in tsv_file:
-        #masked = line[2].replace("***mask***", "[MASK]")
-        masked = line[2]
-        #mask_index = masked.split().index("[MASK]")
-        sample = dict(
-            masked=masked,
-            #mask_index=mask_index,
-            verb=line[3],
-            iverb=line[4],
-            verb_pos=line[5]
-        )
-        data.append(sample)
+#TODO: need to add this split thing for UD
+data = load_dataset(DATASET_NAME, MODEL_NAME)
 
 #%%
 class CustomDataset(Dataset, ABC):
@@ -91,38 +78,35 @@ dl = DataLoader(dataset = ds, batch_size=BATCH_SIZE)
 #%%
 def format_batch_data(batch_data):
     """ after obtaining hidden states, goes sentence by sentence and fetches
-    verb and foil embeddings. 
+    fact and foil embeddings. 
     - adds a 1 to the hidden state
     """
     data = []
-    for i, tup in enumerate(zip(batch_data["verb"], 
-                                batch_data["iverb"], 
+    for fact, foil, hs, tgt_label in zip(batch_data["fact"], 
+                                batch_data["foil"], 
                                 batch_data["hidden_states"],
-                                batch_data["verb_pos"])):
-        verb = tup[0]
-        iverb = tup[1]
-        hidden_state = np.append(tup[2], 1)
-        verb_pos = tup[3]
+                                batch_data["tgt_label"]):
+        full_hs = np.append(hs, 1)
 
-        verb_tok_ids = TOKENIZER.encode(verb)[1:-1]
-        iverb_tok_ids = TOKENIZER.encode(iverb)[1:-1]
+        fact_tok_ids = TOKENIZER.encode(fact)[1:-1]
+        foil_tok_ids = TOKENIZER.encode(foil)[1:-1]
 
-        if len(verb_tok_ids) == 1 and len(iverb_tok_ids) == 1:
-            verb_embedding = V[verb_tok_ids,:].flatten()
-            iverb_embedding = V[iverb_tok_ids,:].flatten()
+        if len(fact_tok_ids) == 1 and len(foil_tok_ids) == 1:
+            fact_embedding = V[fact_tok_ids,:].flatten()
+            foil_embedding = V[foil_tok_ids,:].flatten()
         else:
-            verb_embedding = None
-            iverb_embedding = None
+            fact_embedding = None
+            foil_embedding = None
         
         data.append(dict(
-            verb = verb,
-            iverb = iverb,
-            verb_pos = verb_pos,
-            input_ids_verb = verb_tok_ids,
-            verb_embedding = verb_embedding,
-            input_ids_iverb = iverb_tok_ids,
-            iverb_embedding = iverb_embedding,
-            hs = hidden_state
+            fact = fact,
+            foil = foil,
+            tgt_label = tgt_label,
+            input_ids_fact = fact_tok_ids,
+            fact_embedding = fact_embedding,
+            input_ids_foil = foil_tok_ids,
+            foil_embedding = foil_embedding,
+            hs = full_hs
         ))
     return data
 

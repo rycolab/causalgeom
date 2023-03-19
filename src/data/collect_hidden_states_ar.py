@@ -24,16 +24,17 @@ from abc import ABC
 #sys.path.append('..')
 sys.path.append('./src/')
 
-from paths import OUT, HF_CACHE, LINZEN_PREPROCESSED
+from paths import OUT, HF_CACHE
 from utils.cuda_loaders import get_device
 from utils.lm_loaders import get_model, get_tokenizer, get_V
+from data.dataset_loaders import load_dataset
 
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
 
 #%%
 DATASET_NAME = "linzen"
-DATASET_PATH = LINZEN_PREPROCESSED
+DATASET_PATH = get_dataset_path(DATASET_NAME)
 MODEL_NAME = "gpt2"
 OUTPUT_DIR = f"/cluster/work/cotterell/cguerner/usagebasedprobing/out/hidden_states/{DATASET_NAME}/{MODEL_NAME}"
 BATCH_SIZE = 64
@@ -57,30 +58,8 @@ V = get_V(MODEL_NAME, MODEL)
 MODEL = MODEL.to(device)
 
 #%%
-data = []
-with open(DATASET_PATH) as file:
-    tsv_file = csv.reader(file, delimiter="\t")
-    for line in tsv_file:
-        unmasked_text = line[1]
-        verb = line[3]
-        iverb = line[4]
-        verb_pos = line[5]
-        vindex = int(line[6])
-        if vindex > 0:
-            verb = " " + verb
-            iverb = " " + iverb
-        pre_verb_text = " ".join(unmasked_text.split(" ")[:vindex])
-        verb_text = " ".join(unmasked_text.split(" ")[:(vindex+1)])
-        iverb_text = " ".join(unmasked_text.split(" ")[:vindex] + [iverb])
-        sample = dict(
-            pre_verb_text=pre_verb_text,
-            verb_text=verb_text,
-            iverb_text=iverb_text,
-            verb=verb,
-            iverb=iverb,
-            verb_pos=verb_pos
-        )
-        data.append(sample)
+#TODO: need to add this split thing for UD
+data = load_dataset(DATASET_NAME, MODEL_NAME)
 
 #%%
 class CustomDataset(Dataset, ABC):
@@ -98,7 +77,6 @@ class CustomDataset(Dataset, ABC):
 ds = CustomDataset(data)
 dl = DataLoader(dataset = ds, batch_size=BATCH_SIZE)
 
-
 #%% Helpers
 def export_batch(output_dir, batch_num, batch_data):
     export_path = os.path.join(output_dir, f"batch_{batch_num}.pkl")
@@ -106,16 +84,8 @@ def export_batch(output_dir, batch_num, batch_data):
     with open(export_path, 'wb') as file:
         pickle.dump(batch_data, file, protocol=pickle.HIGHEST_PROTOCOL)
 
-"""
-def batch_tokenize_verbs(verbs):
-    list_output = TOKENIZER(verbs)["input_ids"]
-    tensor_list = [torch.LongTensor(x) for x in list_output]
-    return torch.nn.utils.rnn.pad_sequence(
-        tensor_list, batch_first=True, padding_value=PAD_TOKEN_ID
-    )
-"""
-def batch_tokenize_verbs(verbs):
-    return TOKENIZER(verbs)["input_ids"]
+def batch_tokenize_tgts(tgts):
+    return TOKENIZER(tgts)["input_ids"]
 
 def batch_tokenize_text(text):
     return TOKENIZER(
@@ -123,85 +93,71 @@ def batch_tokenize_text(text):
         padding="max_length", truncation=True
     )
 
-"""
-def get_raw_sample_hs(pre_verb_ids, attention_mask, verb_ids):
-    nopad_ti = pre_verb_ids[attention_mask == 1]
-    #nopad_verb_ids = verb_ids[verb_ids != PAD_TOKEN_ID]
-    verb_ti = torch.cat((nopad_ti, verb_ids), 0)
+def get_raw_sample_hs(pre_tgt_ids, attention_mask, tgt_ids):
+    nopad_ti = pre_tgt_ids[attention_mask == 1]
+    tgt_ti = torch.cat((nopad_ti, torch.LongTensor(tgt_ids)), 0)
+    tgt_ti_dev = tgt_ti.to(device)
     with torch.no_grad():
         output = MODEL(
-            input_ids=verb_ti, 
+            input_ids=tgt_ti_dev, 
             #attention_mask=attention_mask, 
-            labels=verb_ti,
+            labels=tgt_ti_dev,
             output_hidden_states=True
         )
-    return verb_ti, output.hidden_states[-1]
-"""
-def get_raw_sample_hs(pre_verb_ids, attention_mask, verb_ids):
-    nopad_ti = pre_verb_ids[attention_mask == 1]
-    verb_ti = torch.cat((nopad_ti, torch.LongTensor(verb_ids)), 0)
-    verb_ti_dev = verb_ti.to(device)
-    with torch.no_grad():
-        output = MODEL(
-            input_ids=verb_ti_dev, 
-            #attention_mask=attention_mask, 
-            labels=verb_ti_dev,
-            output_hidden_states=True
-        )
-    return verb_ti.numpy(), output.hidden_states[-1].cpu().numpy()
+    return tgt_ti.numpy(), output.hidden_states[-1].cpu().numpy()
 
 
-def get_verb_hs(raw_hs, verb_tokens):
-    #pre_verb_hs = raw_hs[:-(len(verb_tokens) + 1)]
-    #verb_hs = raw_hs[-(verb_tokens.shape[0]+1):]
-    verb_hs = raw_hs[-(len(verb_tokens)+1):]
-    return verb_hs
+def get_tgt_hs(raw_hs, tgt_tokens):
+    #pre_verb_hs = raw_hs[:-(len(tgt_tokens) + 1)]
+    #verb_hs = raw_hs[-(tgt_tokens.shape[0]+1):]
+    tgt_hs = raw_hs[-(len(tgt_tokens)+1):]
+    return tgt_hs
 
 def get_batch_hs(batch):
     batch_hs = []
-    tok_verbs = batch_tokenize_verbs(batch["verb"])
-    tok_iverbs = batch_tokenize_verbs(batch["iverb"])
-    tok_text = batch_tokenize_text(batch["pre_verb_text"])
+    tok_facts = batch_tokenize_tgts(batch["fact"])
+    tok_foils = batch_tokenize_tgts(batch["foil"])
+    tok_text = batch_tokenize_text(batch["pre_tgt_text"])
 
-    for ti, am, tv, tiv, verb, iverb, verb_pos in zip(
+    for ti, am, tfa, tfo, fact, foil, tgt_label in zip(
         tok_text["input_ids"], 
         tok_text["attention_mask"], 
-        tok_verbs,
-        tok_iverbs,
-        batch["verb"], 
-        batch["iverb"], 
-        batch["verb_pos"]):
+        tok_facts,
+        tok_foils,
+        batch["fact"], 
+        batch["foil"], 
+        batch["tgt_label"]):
         
         ######################
         # Get hidden states
         ######################
         # NOTE: for dynamic program will need to separately
         # loop through all tokenizations of verb and iverb
-        verb_ti, verb_raw_hs = get_raw_sample_hs(ti, am, tv)
-        verb_hs = get_verb_hs(verb_raw_hs, tv)
+        fact_ti, fact_raw_hs = get_raw_sample_hs(ti, am, tfa)
+        fact_hs = get_verb_hs(fact_raw_hs, tfa)
 
-        iverb_ti, iverb_raw_hs = get_raw_sample_hs(ti, am, tiv)
-        iverb_hs = get_verb_hs(iverb_raw_hs, tiv)
+        foil_ti, foil_raw_hs = get_raw_sample_hs(ti, am, tfo)
+        foil_hs = get_verb_hs(foil_raw_hs, tfo)
 
         ######################
         # Get verb embeddings
         ######################
-        verb_embedding = V[tv,:]
-        iverb_embedding = V[tiv,:]
+        fact_embedding = V[tfa,:]
+        foil_embedding = V[tfo,:]
 
         batch_hs.append(dict(
-            verb = verb,
-            iverb = iverb,
-            verb_pos = verb_pos,
-            input_ids_pre_verb = ti,
-            input_ids_verb = tv, 
-            verb_hs = verb_hs, 
-            verb_raw_hs = verb_raw_hs,
-            verb_embedding = verb_embedding,
-            input_ids_iverb = tiv, 
-            iverb_hs = iverb_hs,
-            iverb_raw_hs=iverb_raw_hs,
-            iverb_embedding = iverb_embedding,
+            fact = fact,
+            foil = foil,
+            tgt_label = tgt_label,
+            input_ids_pre_tgt = ti,
+            input_ids_fact = tfa, 
+            fact_hs = fact_hs, 
+            #verb_raw_hs = fact_raw_hs,
+            fact_embedding = fact_embedding,
+            input_ids_foil = tfo, 
+            foil_hs = foil_hs,
+            #iverb_raw_hs=iverb_raw_hs,
+            foil_embedding = foil_embedding,
         ))
     return batch_hs
 
