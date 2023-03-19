@@ -29,6 +29,11 @@ from evals.kl_eval import load_hs, load_model_eval, load_run_output,\
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
 
+#%%
+filepath=os.path.join(OUT, "wordlist/temp_fr/temp0.pkl")
+with open(filepath, 'rb') as f:      
+    data = pickle.load(f)
+
 #%%#################
 # Main             #
 ####################

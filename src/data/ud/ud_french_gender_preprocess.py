@@ -19,9 +19,9 @@ from paths import UD_FRENCH_GSD, DATASETS
 
 
 #%%
-SPLIT = "train"
+SPLIT = "dev"
 INPUT_FILE = os.path.join(UD_FRENCH_GSD, f"fr_gsd-ud-{SPLIT}.conllu")
-OUTPUT_FILE = os.path.join(DATASETS, f"preprocessed/ud/fr/gsd/{SPLIT}.pkl")
+OUTPUT_FILE = os.path.join(DATASETS, f"preprocessed/ud_fr_gsd/{SPLIT}.pkl")
 
 logging.info(f"Preprocessing UD French data split: {SPLIT}")
 

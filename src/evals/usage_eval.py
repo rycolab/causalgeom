@@ -37,17 +37,26 @@ def diag_eval(P, P_type, X_train, y_train, X_val, y_val, X_test, y_test):
     )
     return results
     
-def usage_eval(P, P_type, X_train, U_train, y_train, X_test, U_test, y_test):
+def usage_eval(P, P_type, X_train, U_train, y_train, X_test, U_test, y_test, X_pca):
     results = {}
     
-    train_clf = BinaryParamFreeClf(X_train @ P, U_train, y_train, "cpu")
-    test_clf = BinaryParamFreeClf(X_test @ P, U_test, y_test, "cpu")
+    if X_pca is None:
+        train_clf = BinaryParamFreeClf(X_train @ P, U_train, y_train, "cpu")
+        test_clf = BinaryParamFreeClf(X_test @ P, U_test, y_test, "cpu")
+    else:
+        train_clf = BinaryParamFreeClf(
+            X_pca.inverse_transform(X_pca.transform(X_train) @ P), 
+            U_train, y_train, "cpu")
+        test_clf = BinaryParamFreeClf(
+            X_pca.inverse_transform(X_pca.transform(X_test) @ P), 
+            U_test, y_test, "cpu")
 
     results[f"lm_acc_{P_type}_train"] = train_clf.score()
     results[f"lm_loss_{P_type}_train"] = train_clf.loss()
 
     results[f"lm_acc_{P_type}_test"] = test_clf.score()
     results[f"lm_loss_{P_type}_test"] = test_clf.loss()
+
     return results
 
 def full_diag_eval(output, X_train, y_train, X_val, y_val, X_test, y_test):
@@ -70,7 +79,7 @@ def full_diag_eval(output, X_train, y_train, X_val, y_val, X_test, y_test):
     
     return diag_orig | diag_P | diag_I_P | diag_P_acc | diag_I_P_acc | diag_P_burn | diag_I_P_burn
 
-def full_usage_eval(output, X_train, U_train, y_train, X_test, U_test, y_test):
+def full_usage_eval(output, X_train, U_train, y_train, X_test, U_test, y_test, X_pca=None):
     P = output["P"]
     I_P = output["I_P"]
     P_acc = output["P_acc"]
@@ -79,13 +88,13 @@ def full_usage_eval(output, X_train, U_train, y_train, X_test, U_test, y_test):
     I_P_burn = output["I_P_burn"]
     
     usage_orig = usage_eval(np.eye(P.shape[0], P.shape[1]), "original", X_train, U_train, y_train, X_test, U_test, y_test)
-    usage_P = usage_eval(P, "P", X_train, U_train, y_train, X_test, U_test, y_test)
-    usage_I_P = usage_eval(I_P, "I_P", X_train, U_train, y_train, X_test, U_test, y_test)
+    usage_P = usage_eval(P, "P", X_train, U_train, y_train, X_test, U_test, y_test, X_pca)
+    usage_I_P = usage_eval(I_P, "I_P", X_train, U_train, y_train, X_test, U_test, y_test, X_pca)
 
-    usage_P_acc = usage_eval(P_acc, "P_acc", X_train, U_train, y_train, X_test, U_test, y_test)
-    usage_I_P_acc = usage_eval(I_P_acc, "I_P_acc", X_train, U_train, y_train, X_test, U_test, y_test)
+    usage_P_acc = usage_eval(P_acc, "P_acc", X_train, U_train, y_train, X_test, U_test, y_test, X_pca)
+    usage_I_P_acc = usage_eval(I_P_acc, "I_P_acc", X_train, U_train, y_train, X_test, U_test, y_test, X_pca)
 
-    usage_P_burn = usage_eval(P_burn, "P_burn", X_train, U_train, y_train, X_test, U_test, y_test)
-    usage_I_P_burn = usage_eval(I_P_burn, "I_P_burn", X_train, U_train, y_train, X_test, U_test, y_test)
+    usage_P_burn = usage_eval(P_burn, "P_burn", X_train, U_train, y_train, X_test, U_test, y_test, X_pca)
+    usage_I_P_burn = usage_eval(I_P_burn, "I_P_burn", X_train, U_train, y_train, X_test, U_test, y_test, X_pca)
 
     return usage_orig | usage_P | usage_I_P | usage_P_acc | usage_I_P_acc | usage_P_burn | usage_I_P_burn

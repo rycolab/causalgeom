@@ -135,10 +135,22 @@ def get_distribs(h, word_emb, sg_emb, pl_emb):
         lemma_merged=lemma_merged
     )
 
-def get_all_distribs(h, P, I_P, word_emb, sg_emb, pl_emb):
+def get_all_distribs(h, P, I_P, word_emb, sg_emb, pl_emb, X_pca=None):
     base_distribs = get_distribs(h, word_emb, sg_emb, pl_emb)
-    P_distribs = get_distribs(P @ h, word_emb, sg_emb, pl_emb)
-    I_P_distribs = get_distribs(I_P @ h, word_emb, sg_emb, pl_emb)
+    if X_pca is None:
+        P_distribs = get_distribs(P @ h, word_emb, sg_emb, pl_emb)
+        I_P_distribs = get_distribs(I_P @ h, word_emb, sg_emb, pl_emb)
+    else:
+        #TODO: debug into this
+        h = h.reshape((1, h.shape[0]))
+        P_distribs = get_distribs(
+            X_pca.inverse_transform(P @ X_pca.transform(h)), 
+            word_emb, sg_emb, pl_emb
+        )
+        I_P_distribs = get_distribs(
+            X_pca.inverse_transform(I_P @ X_pca.transform(h)), 
+            word_emb, sg_emb, pl_emb
+        )
     return base_distribs, P_distribs, I_P_distribs
 
 def compute_kl(p, q, agg_func=np.sum):
@@ -301,9 +313,9 @@ def compute_all_erasure_mis(base_distribs, P_distribs, I_P_distribs, verb_probs,
     return pairwise_mis | overall_mis
 
 def compute_kls_one_sample(h, P, I_P, word_emb, sg_emb, pl_emb, verb_probs, 
-    sg_pl_probs, faith=True, er_kls=True, er_mis=True):
+    sg_pl_probs, faith=True, er_kls=True, er_mis=True, X_pca=None):
     base_distribs, P_distribs, I_P_distribs = get_all_distribs(
-        h, P, I_P, word_emb, sg_emb, pl_emb
+        h, P, I_P, word_emb, sg_emb, pl_emb, X_pca
     )
 
     faith_metrics, er_kl_metrics, er_mis_metrics = {},{},{}
@@ -327,7 +339,7 @@ def get_hs_sample_index(hs, nsamples=200):
     return idx[:nsamples]
 
 def compute_kls(hs, P, I_P, word_emb, sg_emb, pl_emb, verb_probs, sg_pl_prob, 
-    nsamples=200, faith=True, er_kls=True, er_mis=True):
+    nsamples=200, faith=True, er_kls=True, er_mis=True, X_pca = None):
     ind = get_hs_sample_index(hs, nsamples)    
 
     pbar = tqdm(ind)
@@ -336,7 +348,7 @@ def compute_kls(hs, P, I_P, word_emb, sg_emb, pl_emb, verb_probs, sg_pl_prob,
     for i in pbar:
         kls.append(compute_kls_one_sample(
             hs[i], P, I_P, word_emb, sg_emb, pl_emb, verb_probs, sg_pl_prob,
-            faith, er_kls, er_mis
+            faith, er_kls, er_mis, X_pca
         ))
     kls = pd.DataFrame(kls).describe()
     return kls

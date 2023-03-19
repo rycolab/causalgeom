@@ -21,8 +21,8 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 from abc import ABC
 
-#sys.path.append('..')
-sys.path.append('./src/')
+sys.path.append('..')
+#sys.path.append('./src/')
 
 from paths import OUT, HF_CACHE
 from utils.cuda_loaders import get_device
@@ -33,10 +33,10 @@ coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
 
 #%%
-DATASET_NAME = "linzen"
-DATASET_PATH = get_dataset_path(DATASET_NAME)
+DATASET_NAME = "ud_fr_gsd"
+SPLIT = "train"
 MODEL_NAME = "gpt2"
-OUTPUT_DIR = f"/cluster/work/cotterell/cguerner/usagebasedprobing/out/hidden_states/{DATASET_NAME}/{MODEL_NAME}"
+OUTPUT_DIR = os.path.join(OUT, f"hidden_states/{DATASET_NAME}/{MODEL_NAME}")
 BATCH_SIZE = 64
 
 assert not os.path.exists(OUTPUT_DIR), \
@@ -58,8 +58,7 @@ V = get_V(MODEL_NAME, MODEL)
 MODEL = MODEL.to(device)
 
 #%%
-#TODO: need to add this split thing for UD
-data = load_dataset(DATASET_NAME, MODEL_NAME)
+data = load_dataset(DATASET_NAME, MODEL_NAME, SPLIT)
 
 #%%
 class CustomDataset(Dataset, ABC):
@@ -134,10 +133,10 @@ def get_batch_hs(batch):
         # NOTE: for dynamic program will need to separately
         # loop through all tokenizations of verb and iverb
         fact_ti, fact_raw_hs = get_raw_sample_hs(ti, am, tfa)
-        fact_hs = get_verb_hs(fact_raw_hs, tfa)
+        fact_hs = get_tgt_hs(fact_raw_hs, tfa)
 
         foil_ti, foil_raw_hs = get_raw_sample_hs(ti, am, tfo)
-        foil_hs = get_verb_hs(foil_raw_hs, tfo)
+        foil_hs = get_tgt_hs(foil_raw_hs, tfo)
 
         ######################
         # Get verb embeddings
@@ -162,6 +161,7 @@ def get_batch_hs(batch):
     return batch_hs
 
 
+#%%
 for i, batch in enumerate(pbar:=tqdm(dl)):
     pbar.set_description(f"Generating hidden states")
 
@@ -183,3 +183,4 @@ def get_ar_hs(batch_mlm_hs, batch_masked_token_indices):
         masked_hs.append(batch_mlm_hs[k,masked_index,:])
     return torch.stack(masked_hs,axis=0).cpu().detach().numpy() 
 """
+# %%

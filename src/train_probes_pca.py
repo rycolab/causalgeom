@@ -19,6 +19,7 @@ import torch
 import sklearn
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import SGDClassifier
+from sklearn.decomposition import PCA
 import wandb
 
 #from rlace import solve_adv_game, solve_adv_game_param_free, \
@@ -50,9 +51,7 @@ logging.info(f"Running: {cfg['run_name']}")
 ####################
 
 # Output directory creation
-OUTPUT_DIR = os.path.join(OUT, 
-    f"run_output/{cfg['dataset_name']}/{cfg['model_name']}/"
-    f"{cfg['out_folder']}/")
+OUTPUT_DIR = os.path.join(OUT, f"run_output/{cfg['model_name']}/{cfg['out_folder']}/")
 if not os.path.exists(OUTPUT_DIR):
     os.mkdir(OUTPUT_DIR)
     logging.info(f"Created output dir: {OUTPUT_DIR}")
@@ -116,6 +115,18 @@ for i in trange(cfg['nruns']):
     y_train, y_val, y_test = y[idx[:train_lastind]], y[idx[train_lastind:val_lastind]], y[idx[val_lastind:test_lastind]]
 
     #%%
+    logging.info(f"Applying PCA with dimension {cfg['pca_dim']}")
+    X_pca = PCA(n_components=cfg['pca_dim']) 
+    X_train_pca = X_pca.fit_transform(X_train)
+    #U_pca = PCA(n_components=cfg['pca_dim'])
+    #U_train = U_pca.fit_transform(U_train)
+
+    X_val_pca = X_pca.transform(X_val)
+    X_test_pca = X_pca.transform(X_test)
+    #U_val = U_pca.transform(U_val)
+    #U_test = U_pca.transform(U_test)
+
+    #%%
     start = time.time()
     
     diag_rlace_u_outfile = os.path.join(DIAG_RLACE_U_OUTDIR, f"{cfg['run_name']}.pt")
@@ -123,7 +134,7 @@ for i in trange(cfg['nruns']):
     #dim = X_train.shape[1]
 
     diag_rlace_output = solve_adv_game(
-        X_train, y_train, X_val, y_val, rank=cfg['k'], device=device, 
+        X_train_pca, y_train, X_val_pca, y_val, rank=cfg['k'], device=device, 
         out_iters=cfg['niter'], optimizer_class=rlace_optimizer_class, 
         optimizer_params_P=cfg['rlace_optimizer_params_P'], 
         optimizer_params_predictor=cfg['rlace_optimizer_params_clf'], 
@@ -132,7 +143,8 @@ for i in trange(cfg['nruns']):
         scheduler_params_predictor=cfg['rlace_scheduler_params_clf'],
         batch_size=cfg['batch_size'],
         torch_outfile=diag_rlace_u_outfile, wb=WB, wb_run=i,
-        model_name=cfg["model_name"], mi_eval=True
+        model_name=cfg["model_name"],
+        X_pca=X_pca
     )
     end = time.time()
     diag_rlace_output["runtime"] = end-start
@@ -140,34 +152,56 @@ for i in trange(cfg['nruns']):
     logging.info("Computing evals")
 
     diag_eval = full_diag_eval(
-        diag_rlace_output, X_train, y_train, X_val, y_val, X_test, y_test
+        diag_rlace_output, X_train, y_train, X_val, y_val, X_test_pca, y_test
     )
     usage_eval = full_usage_eval(
-        diag_rlace_output, X_train, U_train, y_train, X_test, U_test, y_test
+        diag_rlace_output, X_train, U_train, y_train, X_test, U_test, 
+        y_test, X_pca=X_pca
     )
 
     kl_eval = compute_kls(
         X_test, diag_rlace_output["P"], diag_rlace_output["I_P"], 
-        WORD_EMB, SG_EMB, PL_EMB, VERB_PROBS, SG_PL_PROB
+        WORD_EMB, SG_EMB, PL_EMB, VERB_PROBS, SG_PL_PROB, X_pca=X_pca
     )
     kl_means = kl_eval.loc["mean",:]
 
     burn_kl_eval = compute_kls(
         X_test, diag_rlace_output["P_burn"], diag_rlace_output["I_P_burn"], 
-        WORD_EMB, SG_EMB, PL_EMB, VERB_PROBS, SG_PL_PROB
+        WORD_EMB, SG_EMB, PL_EMB, VERB_PROBS, SG_PL_PROB, X_pca=X_pca
     )
     burn_kl_means = burn_kl_eval.loc["mean",:]
 
     if WB:
         wandb.log({
+            f"diag_rlace/test/P/diag/{i}/diag_acc_test": diag_eval["diag_acc_P_test"],
+            f"diag_rlace/test/I_P/diag/{i}/diag_acc_test": diag_eval["diag_acc_I_P_test"],
+            f"diag_rlace/test/P/usage/{i}/lm_acc_test": usage_eval["lm_acc_P_test"], 
+            f"diag_rlace/test/I_P/usage/{i}/lm_acc_test": usage_eval["lm_acc_I_P_test"],
             f"diag_rlace/test/P_burn/diag/{i}/diag_acc_test": diag_eval["diag_acc_P_burn_test"],
             f"diag_rlace/test/I_P_burn/diag/{i}/diag_acc_test": diag_eval["diag_acc_I_P_burn_test"],
             f"diag_rlace/test/P_burn/usage/{i}/lm_acc_test": usage_eval["lm_acc_P_burn_test"], 
             f"diag_rlace/test/I_P_burn/usage/{i}/lm_acc_test": usage_eval["lm_acc_I_P_burn_test"],
             
+            f"diag_rlace/test/P/fth_kls/{i}/faith_kl_all_split": kl_means["P_faith_kl_all_split"],
+            f"diag_rlace/test/P/fth_kls/{i}/faith_kl_all_merged": kl_means["P_faith_kl_all_merged"],
+            f"diag_rlace/test/P/fth_kls/{i}/faith_kl_words": kl_means["P_faith_kl_words"],
+            f"diag_rlace/test/P/fth_kls/{i}/faith_kl_tgt_split": kl_means["P_faith_kl_tgt_split"],
+            f"diag_rlace/test/P/fth_kls/{i}/faith_kl_tgt_merged": kl_means["P_faith_kl_tgt_merged"],
 
             f"diag_rlace/test/base/er_mis/{i}/overall_mi": kl_means["base_overall_mi"],
             f"diag_rlace/test/base/er_mis/{i}/pairwise_mi": kl_means["base_pairwise_mi"],
+
+            f"diag_rlace/test/P/er_mis/{i}/overall_mi": kl_means["P_overall_mi"],
+            f"diag_rlace/test/P/er_mis/{i}/pairwise_mi": kl_means["P_pairwise_mi"],
+
+            f"diag_rlace/test/I_P/fth_kls/{i}/faith_kl_all_split": kl_means["I_P_faith_kl_all_split"],
+            f"diag_rlace/test/I_P/fth_kls/{i}/faith_kl_all_merged": kl_means["I_P_faith_kl_all_merged"],
+            f"diag_rlace/test/I_P/fth_kls/{i}/faith_kl_words": kl_means["I_P_faith_kl_words"],
+            f"diag_rlace/test/I_P/fth_kls/{i}/faith_kl_tgt_split": kl_means["I_P_faith_kl_tgt_split"],
+            f"diag_rlace/test/I_P/fth_kls/{i}/faith_kl_tgt_merged": kl_means["I_P_faith_kl_tgt_merged"],
+
+            f"diag_rlace/test/I_P/er_mis/{i}/overall_mi": kl_means["I_P_overall_mi"],
+            f"diag_rlace/test/I_P/er_mis/{i}/pairwise_mi": kl_means["I_P_pairwise_mi"],
 
             f"diag_rlace/test/P_burn/fth_kls/{i}/faith_kl_all_split": burn_kl_means["P_faith_kl_all_split"],
             f"diag_rlace/test/P_burn/fth_kls/{i}/faith_kl_all_merged": burn_kl_means["P_faith_kl_all_merged"],

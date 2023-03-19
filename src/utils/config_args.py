@@ -17,6 +17,14 @@ def get_train_probes_args():
         help="Directory for exporting run eval"
     )
     argparser.add_argument(
+        "-dataset",
+        type=str,
+        choices=["linzen", "ud_fr_gsd"],
+        dest="dataset_name",
+        default="linzen",
+        help="Dataset to train on"
+    )
+    argparser.add_argument(
         "-model",
         type=str,
         choices=["gpt2", "bert-base-uncased"],
@@ -177,9 +185,6 @@ def get_model_defaults(model_name):
     return defaults
 
 def set_train_probes_defaults(config):
-    # Main defaults
-    config["dataset_name"] = "linzen"
-    
     # Default LRs
     model_defaults = get_model_defaults(config["model_name"])
     for key, val in model_defaults.items():

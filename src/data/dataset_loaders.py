@@ -7,8 +7,10 @@ import pandas as pd
 #sys.path.append('..')
 sys.path.append('./src/')
 
+from paths import DATASETS
+
 LINZEN_PREPROCESSED = os.path.join(DATASETS, "preprocessed/linzen_preprocessed.tsv")
-UD_FRENCH_GSD = os.path.join(DATASETS, "preprocessed/ud/fr/gsd")
+UD_FRENCH_GSD = os.path.join(DATASETS, "preprocessed/ud_fr_gsd")
 
 
 #%% LINZEN LOADERS
@@ -76,13 +78,13 @@ def load_udfr_ar(split_path):
         "gender"]]
     data.columns = ["pre_tgt_text", "fact_text", "foil_text", "fact", 
         "foil", "tgt_label"]
-    return data
+    return data.to_dict("records")
 
 def load_udfr_masked(split_path):
     data = pd.read_pickle(split_path)
     data = data[["masked", "adj", "adj_gender_foil", "gender"]]
     data.columns = ["masked", "fact", "foil", "tgt_label"]
-    return data
+    return data.to_dict("records")
 
 def load_udfr(model_type, split_path):
     if model_type == "ar":
