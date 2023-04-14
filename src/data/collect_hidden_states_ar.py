@@ -1,6 +1,3 @@
-#TODO:
-# - debug the new device, get_tokenizer, etc. functions
-
 #%%
 import warnings
 import logging
@@ -21,21 +18,22 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 from abc import ABC
 
-sys.path.append('..')
-#sys.path.append('./src/')
+#sys.path.append('..')
+sys.path.append('./src/')
 
 from paths import OUT, HF_CACHE
 from utils.cuda_loaders import get_device
 from utils.lm_loaders import get_model, get_tokenizer, get_V
 from data.dataset_loaders import load_dataset
+import ipdb
 
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
 
 #%%
-DATASET_NAME = "ud_fr_gsd"
+DATASET_NAME = "linzen"
 SPLIT = "train"
-MODEL_NAME = "gpt2"
+MODEL_NAME = "gpt2-large"
 OUTPUT_DIR = os.path.join(OUT, f"hidden_states/{DATASET_NAME}/{MODEL_NAME}")
 BATCH_SIZE = 64
 
@@ -109,6 +107,7 @@ def get_raw_sample_hs(pre_tgt_ids, attention_mask, tgt_ids):
 def get_tgt_hs(raw_hs, tgt_tokens):
     #pre_verb_hs = raw_hs[:-(len(tgt_tokens) + 1)]
     #verb_hs = raw_hs[-(tgt_tokens.shape[0]+1):]
+    #ipdb.set_trace()
     tgt_hs = raw_hs[-(len(tgt_tokens)+1):]
     return tgt_hs
 

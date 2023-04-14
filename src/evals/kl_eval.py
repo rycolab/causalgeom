@@ -50,18 +50,13 @@ def sample_hs(hs, nsamples=200):
     ind = idx[:nsamples]
     return hs[ind]
 
-def load_model_eval(model_name, add_space=False):
-    SG_PL_PROB = os.path.join(DATASETS, "processed/linzen_word_lists/sg_pl_prob.pkl")
-    if add_space:
-        WORD_EMB = os.path.join(DATASETS, f"processed/linzen_word_lists/{model_name}_word_embeds_space.npy")
-        VERB_P = os.path.join(DATASETS, f"processed/linzen_word_lists/{model_name}_verb_p_space.npy")
-        SG_EMB = os.path.join(DATASETS, f"processed/linzen_word_lists/{model_name}_sg_embeds_space.npy")
-        PL_EMB = os.path.join(DATASETS, f"processed/linzen_word_lists/{model_name}_pl_embeds_space.npy")
-    else:
-        WORD_EMB = os.path.join(DATASETS, f"processed/linzen_word_lists/{model_name}_word_embeds.npy")
-        VERB_P = os.path.join(DATASETS, f"processed/linzen_word_lists/{model_name}_verb_p.npy")
-        SG_EMB = os.path.join(DATASETS, f"processed/linzen_word_lists/{model_name}_sg_embeds.npy")
-        PL_EMB = os.path.join(DATASETS, f"processed/linzen_word_lists/{model_name}_pl_embeds.npy")
+def load_model_eval(dataset_name, model_name):
+    SG_PL_PROB = os.path.join(DATASETS, f"processed/{dataset_name}/word_lists/sg_pl_prob.pkl")
+    WORD_EMB = os.path.join(DATASETS, f"processed/{dataset_name}/word_lists/{model_name}_word_embeds.npy")
+    VERB_P = os.path.join(DATASETS, f"processed/{dataset_name}/word_lists/{model_name}_verb_p.npy")
+    SG_EMB = os.path.join(DATASETS, f"processed/{dataset_name}/word_lists/{model_name}_sg_embeds.npy")
+    PL_EMB = os.path.join(DATASETS, f"processed/{dataset_name}/word_lists/{model_name}_pl_embeds.npy")
+
     word_emb = np.load(WORD_EMB)
     verb_p = np.load(VERB_P)
     sg_emb = np.load(SG_EMB)
@@ -142,13 +137,15 @@ def get_all_distribs(h, P, I_P, word_emb, sg_emb, pl_emb, X_pca=None):
         I_P_distribs = get_distribs(I_P @ h, word_emb, sg_emb, pl_emb)
     else:
         #TODO: debug into this
-        h = h.reshape((1, h.shape[0]))
+        h = h.reshape(1,-1)
         P_distribs = get_distribs(
-            X_pca.inverse_transform(P @ X_pca.transform(h)), 
+            X_pca.inverse_transform(
+                (P @ X_pca.transform(h).reshape(-1)).reshape(1, -1)).reshape(-1), 
             word_emb, sg_emb, pl_emb
         )
         I_P_distribs = get_distribs(
-            X_pca.inverse_transform(I_P @ X_pca.transform(h)), 
+            X_pca.inverse_transform(
+                (I_P @ X_pca.transform(h).reshape(-1)).reshape(1, -1)).reshape(-1), 
             word_emb, sg_emb, pl_emb
         )
     return base_distribs, P_distribs, I_P_distribs

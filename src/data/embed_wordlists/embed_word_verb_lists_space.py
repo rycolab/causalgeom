@@ -118,10 +118,6 @@ word_emb = V[word_tok_unq]
 np.save(WORD_EMB_OUTFILE, word_emb)
 
 logging.info(f"Tokenized and exported word embeds to: {WORD_EMB_OUTFILE}")
-"""
-
-(word_tok_unq == res).all()
-"""
 
 #%%#################
 # Verblist         #
@@ -169,3 +165,5 @@ logging.info(f"Tokenized and exported pl verb embeds to: {PL_EMB_OUTFILE}")
 #count_sort_ind = np.argsort(-vl_pl_tok_counts)
 #vl_pl_tok_unq[count_sort_ind]
 #vl_pl_tok_counts[count_sort_ind]
+
+# %%

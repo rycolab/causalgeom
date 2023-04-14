@@ -16,40 +16,69 @@ from classifiers.classifiers import BinaryParamFreeClf, BinaryParamFreeClfTwoPs
 from algorithms.rlace.rlace import init_classifier, get_majority_acc
 
 #%% Diagnostic probe performance before and after
-def diag_eval(P, P_type, X_train, y_train, X_val, y_val, X_test, y_test):
+def diag_eval(P, P_type, X_train, y_train, X_val, y_val, X_test, y_test, X_pca=None):
     results = {}
-    
     svm = init_classifier()
-    svm.fit(X_train @ P, y_train)
 
-    results[f"diag_acc_{P_type}_train"] = svm.score(X_train @ P, y_train)
-    results[f"diag_acc_{P_type}_val"] = svm.score(X_val @ P, y_val)
-    results[f"diag_acc_{P_type}_test"] = svm.score(X_test @ P, y_test)
+    if X_pca is None:
+        X_train_proj = X_train @ P
+        X_val_proj = X_val @ P
+        X_test_proj = X_test @ P
+    else:
+        X_train_proj = X_pca.inverse_transform(X_pca.transform(X_train) @ P)
+        X_val_proj = X_pca.inverse_transform(X_pca.transform(X_val) @ P)
+        X_test_proj = X_pca.inverse_transform(X_pca.transform(X_test) @ P)
+    
+    svm.fit(X_train_proj, y_train)
+
+    results[f"diag_acc_{P_type}_train"] = svm.score(X_train_proj, y_train)
+    results[f"diag_acc_{P_type}_val"] = svm.score(X_val_proj, y_val)
+    results[f"diag_acc_{P_type}_test"] = svm.score(X_test_proj, y_test)
     
     results[f"diag_loss_{P_type}_train"] = log_loss(
-        y_train, svm.predict_proba(X_train @ P)
+        y_train, svm.predict_proba(X_train_proj)
     )
     results[f"diag_loss_{P_type}_val"] = log_loss(
-        y_val, svm.predict_proba(X_val @ P)
+        y_val, svm.predict_proba(X_val_proj)
     )
     results[f"diag_loss_{P_type}_test"] = log_loss(
-        y_test, svm.predict_proba(X_test @ P)
+        y_test, svm.predict_proba(X_test_proj)
     )
     return results
+
+def full_diag_eval(output, X_train, y_train, X_val, y_val, X_test, y_test, X_pca=None):
+    P = output["P"]
+    I_P = output["I_P"]
+    P_acc = output["P_acc"]
+    I_P_acc = output["I_P_acc"]
+    P_burn = output["P_burn"]
+    I_P_burn = output["I_P_burn"]
+    I = np.eye(P.shape[0], P.shape[1])
+
+    diag_orig = diag_eval(I, "original", X_train, y_train, X_val, y_val, X_test, y_test)
+    diag_P = diag_eval(P, "P", X_train, y_train, X_val, y_val, X_test, y_test, X_pca=X_pca)
+    diag_I_P = diag_eval(I_P, "I_P", X_train, y_train, X_val, y_val, X_test, y_test, X_pca=X_pca)
+
+    diag_P_acc = diag_eval(P_acc, "P_acc", X_train, y_train, X_val, y_val, X_test, y_test, X_pca=X_pca)
+    diag_I_P_acc = diag_eval(I_P_acc, "I_P_acc", X_train, y_train, X_val, y_val, X_test, y_test, X_pca=X_pca)
+
+    diag_P_burn = diag_eval(P_burn, "P_burn", X_train, y_train, X_val, y_val, X_test, y_test, X_pca=X_pca)
+    diag_I_P_burn = diag_eval(I_P_burn, "I_P_burn", X_train, y_train, X_val, y_val, X_test, y_test, X_pca=X_pca)
     
-def usage_eval(P, P_type, X_train, U_train, y_train, X_test, U_test, y_test, X_pca):
+    return diag_orig | diag_P | diag_I_P | diag_P_acc | diag_I_P_acc | diag_P_burn | diag_I_P_burn
+
+def usage_eval(P, P_type, X_train, U_train, y_train, X_test, U_test, y_test, X_pca=None):
     results = {}
     
     if X_pca is None:
-        train_clf = BinaryParamFreeClf(X_train @ P, U_train, y_train, "cpu")
-        test_clf = BinaryParamFreeClf(X_test @ P, U_test, y_test, "cpu")
+        X_train_proj = X_train @ P
+        X_test_proj = X_test @ P
     else:
-        train_clf = BinaryParamFreeClf(
-            X_pca.inverse_transform(X_pca.transform(X_train) @ P), 
-            U_train, y_train, "cpu")
-        test_clf = BinaryParamFreeClf(
-            X_pca.inverse_transform(X_pca.transform(X_test) @ P), 
-            U_test, y_test, "cpu")
+        X_train_proj = X_pca.inverse_transform(X_pca.transform(X_train) @ P)
+        X_test_proj = X_pca.inverse_transform(X_pca.transform(X_test) @ P)
+        
+    train_clf = BinaryParamFreeClf(X_train_proj, U_train, y_train, "cpu")
+    test_clf = BinaryParamFreeClf(X_test_proj, U_test, y_test, "cpu")
 
     results[f"lm_acc_{P_type}_train"] = train_clf.score()
     results[f"lm_loss_{P_type}_train"] = train_clf.loss()
@@ -58,26 +87,6 @@ def usage_eval(P, P_type, X_train, U_train, y_train, X_test, U_test, y_test, X_p
     results[f"lm_loss_{P_type}_test"] = test_clf.loss()
 
     return results
-
-def full_diag_eval(output, X_train, y_train, X_val, y_val, X_test, y_test):
-    P = output["P"]
-    I_P = output["I_P"]
-    P_acc = output["P_acc"]
-    I_P_acc = output["I_P_acc"]
-    P_burn = output["P_burn"]
-    I_P_burn = output["I_P_burn"]
-    
-    diag_orig = diag_eval(np.eye(P.shape[0], P.shape[1]), "original", X_train, y_train, X_val, y_val, X_test, y_test)
-    diag_P = diag_eval(P, "P", X_train, y_train, X_val, y_val, X_test, y_test)
-    diag_I_P = diag_eval(I_P, "I_P", X_train, y_train, X_val, y_val, X_test, y_test)
-
-    diag_P_acc = diag_eval(P_acc, "P_acc", X_train, y_train, X_val, y_val, X_test, y_test)
-    diag_I_P_acc = diag_eval(I_P_acc, "I_P_acc", X_train, y_train, X_val, y_val, X_test, y_test)
-
-    diag_P_burn = diag_eval(P_burn, "P_burn", X_train, y_train, X_val, y_val, X_test, y_test)
-    diag_I_P_burn = diag_eval(I_P_burn, "I_P_burn", X_train, y_train, X_val, y_val, X_test, y_test)
-    
-    return diag_orig | diag_P | diag_I_P | diag_P_acc | diag_I_P_acc | diag_P_burn | diag_I_P_burn
 
 def full_usage_eval(output, X_train, U_train, y_train, X_test, U_test, y_test, X_pca=None):
     P = output["P"]

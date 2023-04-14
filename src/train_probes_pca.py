@@ -51,7 +51,9 @@ logging.info(f"Running: {cfg['run_name']}")
 ####################
 
 # Output directory creation
-OUTPUT_DIR = os.path.join(OUT, f"run_output/{cfg['model_name']}/{cfg['out_folder']}/")
+OUTPUT_DIR = os.path.join(OUT, 
+    f"run_output/{cfg['dataset_name']}/{cfg['model_name']}/"
+    f"{cfg['out_folder']}/")
 if not os.path.exists(OUTPUT_DIR):
     os.mkdir(OUTPUT_DIR)
     logging.info(f"Created output dir: {OUTPUT_DIR}")
@@ -63,13 +65,14 @@ if not os.path.exists(DIAG_RLACE_U_OUTDIR):
     os.mkdir(DIAG_RLACE_U_OUTDIR)
 
 # Loading word lists for KL eval
-WORD_EMB, SG_EMB, PL_EMB, VERB_PROBS, SG_PL_PROB = load_model_eval(cfg['model_name'], add_space=cfg['model_name'] == "gpt2")
+WORD_EMB, SG_EMB, PL_EMB, VERB_PROBS, SG_PL_PROB = load_model_eval(
+    cfg['dataset_name'], cfg['model_name'])
 
 # Load dataset
-if cfg['model_name'] == "gpt2":
-    DATASET = os.path.join(DATASETS, f"processed/{cfg['dataset_name']}_{cfg['model_name']}_ar.pkl")
+if cfg['model_name'].startswith("gpt2"):
+    DATASET = os.path.join(DATASETS, f"processed/{cfg['dataset_name']}/ar/{cfg['dataset_name']}_{cfg['model_name']}_ar.pkl")
 elif cfg['model_name'] == "bert-base-uncased":
-    DATASET = os.path.join(DATASETS, f"processed/{cfg['dataset_name']}_{cfg['model_name']}_masked.pkl")
+    DATASET = os.path.join(DATASETS, f"processed/{cfg['dataset_name']}/masked/{cfg['dataset_name']}_{cfg['model_name']}_masked.pkl")
 else:
     DATASET = None
 
@@ -143,7 +146,7 @@ for i in trange(cfg['nruns']):
         scheduler_params_predictor=cfg['rlace_scheduler_params_clf'],
         batch_size=cfg['batch_size'],
         torch_outfile=diag_rlace_u_outfile, wb=WB, wb_run=i,
-        model_name=cfg["model_name"],
+        dataset_name=cfg["dataset_name"], model_name=cfg["model_name"],
         X_pca=X_pca
     )
     end = time.time()
@@ -152,7 +155,8 @@ for i in trange(cfg['nruns']):
     logging.info("Computing evals")
 
     diag_eval = full_diag_eval(
-        diag_rlace_output, X_train, y_train, X_val, y_val, X_test_pca, y_test
+        diag_rlace_output, X_train[:50000], y_train[:50000], X_val, y_val, 
+        X_test, y_test, X_pca=X_pca
     )
     usage_eval = full_usage_eval(
         diag_rlace_output, X_train, U_train, y_train, X_test, U_test, 
@@ -288,7 +292,8 @@ for i in trange(cfg['nruns']):
         burn_kl_std=burn_kl_eval.loc["std",:],
         maj_acc_test=get_majority_acc(y_test),
         maj_acc_val=get_majority_acc(y_val),
-        maj_acc_train=get_majority_acc(y_train)
+        maj_acc_train=get_majority_acc(y_train),
+        X_pca=X_pca
     )
     
     #%%

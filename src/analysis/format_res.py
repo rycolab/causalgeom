@@ -9,7 +9,7 @@ from datetime import datetime
 import csv
 
 import numpy as np
-from tqdm import tqdm
+from tqdm import tqdm, trange
 import pandas as pd
 import pickle
 
@@ -34,9 +34,9 @@ warnings.filterwarnings("ignore")
 ####################
 #if __name__ == '__main__':
 
-model_name = "bert-base-uncased"
+model_name = "gpt2"
 dataset_name = "linzen"
-gpt_run_output = os.path.join(OUT, "run_output/gpt2/230310/run_gpt2_k_1_0_1.pkl")
+gpt_run_output = os.path.join(OUT, "run_output/gpt2/230411_pca/run_gpt2_Pms11,16,21,26,31,36_Pg0.5_clfms21,31_clfg0.5_0_1.pkl")
 bert_run_output = os.path.join(OUT, "run_output/bert-base-uncased/230310/run_bert_k_1_0_1.pkl")
 if model_name == "bert-base-uncased":
     run_output = bert_run_output
@@ -75,7 +75,7 @@ usage_acc_keys = [
     "lm_acc_I_P_burn_test", "lm_loss_I_P_burn_test"
 ]
 
-res1 = dict(
+diag_usage_res = dict(
     orig=dict(
         test_diag_loss=run["diag_eval"]["diag_loss_original_test"],
         test_diag_acc=run["diag_eval"]["diag_acc_original_test"],
@@ -96,84 +96,90 @@ res1 = dict(
     ),
 )
 
-res1df = pd.DataFrame(res1).T
-res1df.to_csv(os.path.join(OUT, f"results/{model_name}/diag_usage_eval.csv"))
-
+diag_usage_res_df = pd.DataFrame(diag_usage_res).T
+diag_usage_res_path = os.path.join(OUT, f"results/{model_name}/diag_usage_res.csv")
+diag_usage_res_df.to_csv(diag_usage_res_path)
+logging.info(f"Exported diag_usage results to: {diag_usage_res_path}")
 
 #%%
 P_fth_res = dict(
     kl=dict(
-        all_split=run["burn_kl_eval"]["P_faith_kl_all_split"],
-        all_merged=run["burn_kl_eval"]["P_faith_kl_all_merged"],
-        tgt_split=run["burn_kl_eval"]["P_faith_kl_tgt_split"],
-        tgt_merged=run["burn_kl_eval"]["P_faith_kl_tgt_merged"],
-        other=run["burn_kl_eval"]["P_faith_kl_words"],
+        all_split=run["burn_kl_mean"]["P_faith_kl_all_split"],
+        all_merged=run["burn_kl_mean"]["P_faith_kl_all_merged"],
+        tgt_split=run["burn_kl_mean"]["P_faith_kl_tgt_split"],
+        tgt_merged=run["burn_kl_mean"]["P_faith_kl_tgt_merged"],
+        other=run["burn_kl_mean"]["P_faith_kl_words"],
     ),
     tvd=dict(
-        all_split=run["burn_kl_eval"]["P_faith_tvd_all_split"],
-        all_merged=run["burn_kl_eval"]["P_faith_tvd_all_merged"],
-        tgt_split=run["burn_kl_eval"]["P_faith_tvd_tgt_split"],
-        tgt_merged=run["burn_kl_eval"]["P_faith_tvd_tgt_merged"],
-        other=run["burn_kl_eval"]["P_faith_tvd_words"],
+        all_split=run["burn_kl_mean"]["P_faith_tvd_all_split"],
+        all_merged=run["burn_kl_mean"]["P_faith_tvd_all_merged"],
+        tgt_split=run["burn_kl_mean"]["P_faith_tvd_tgt_split"],
+        tgt_merged=run["burn_kl_mean"]["P_faith_tvd_tgt_merged"],
+        other=run["burn_kl_mean"]["P_faith_tvd_words"],
     ),
     pct_chg=dict(
-        all_split=run["burn_kl_eval"]["P_faith_pct_chg_all_split"],
-        all_merged=run["burn_kl_eval"]["P_faith_pct_chg_all_merged"],
-        tgt_split=run["burn_kl_eval"]["P_faith_pct_chg_tgt_split"],
-        tgt_merged=run["burn_kl_eval"]["P_faith_pct_chg_tgt_merged"],
-        other=run["burn_kl_eval"]["P_faith_pct_chg_words"],
+        all_split=run["burn_kl_mean"]["P_faith_pct_chg_all_split"],
+        all_merged=run["burn_kl_mean"]["P_faith_pct_chg_all_merged"],
+        tgt_split=run["burn_kl_mean"]["P_faith_pct_chg_tgt_split"],
+        tgt_merged=run["burn_kl_mean"]["P_faith_pct_chg_tgt_merged"],
+        other=run["burn_kl_mean"]["P_faith_pct_chg_words"],
     ),
 )
  
 P_fth_res_df = pd.DataFrame(P_fth_res).T
-P_fth_res_df.to_csv(os.path.join(OUT, f"results/{model_name}/fth_res_P.csv"))
+P_fth_res_path = os.path.join(OUT, f"results/{model_name}/fth_res_P.csv")
+P_fth_res_df.to_csv(P_fth_res_path)
+logging.info(f"Exported P_fth results to: {P_fth_res_path}")
 
 #%%
 I_P_fth_res = dict(
     kl=dict(
-        all_split=run["burn_kl_eval"]["I_P_faith_kl_all_split"],
-        all_merged=run["burn_kl_eval"]["I_P_faith_kl_all_merged"],
-        tgt_split=run["burn_kl_eval"]["I_P_faith_kl_tgt_split"],
-        tgt_merged=run["burn_kl_eval"]["I_P_faith_kl_tgt_merged"],
-        other=run["burn_kl_eval"]["I_P_faith_kl_words"],
+        all_split=run["burn_kl_mean"]["I_P_faith_kl_all_split"],
+        all_merged=run["burn_kl_mean"]["I_P_faith_kl_all_merged"],
+        tgt_split=run["burn_kl_mean"]["I_P_faith_kl_tgt_split"],
+        tgt_merged=run["burn_kl_mean"]["I_P_faith_kl_tgt_merged"],
+        other=run["burn_kl_mean"]["I_P_faith_kl_words"],
     ),
     tvd=dict(
-        all_split=run["burn_kl_eval"]["I_P_faith_tvd_all_split"],
-        all_merged=run["burn_kl_eval"]["I_P_faith_tvd_all_merged"],
-        tgt_split=run["burn_kl_eval"]["I_P_faith_tvd_tgt_split"],
-        tgt_merged=run["burn_kl_eval"]["I_P_faith_tvd_tgt_merged"],
-        other=run["burn_kl_eval"]["I_P_faith_tvd_words"],
+        all_split=run["burn_kl_mean"]["I_P_faith_tvd_all_split"],
+        all_merged=run["burn_kl_mean"]["I_P_faith_tvd_all_merged"],
+        tgt_split=run["burn_kl_mean"]["I_P_faith_tvd_tgt_split"],
+        tgt_merged=run["burn_kl_mean"]["I_P_faith_tvd_tgt_merged"],
+        other=run["burn_kl_mean"]["I_P_faith_tvd_words"],
     ),
     pct_chg=dict(
-        all_split=run["burn_kl_eval"]["I_P_faith_pct_chg_all_split"],
-        all_merged=run["burn_kl_eval"]["I_P_faith_pct_chg_all_merged"],
-        tgt_split=run["burn_kl_eval"]["I_P_faith_pct_chg_tgt_split"],
-        tgt_merged=run["burn_kl_eval"]["I_P_faith_pct_chg_tgt_merged"],
-        other=run["burn_kl_eval"]["I_P_faith_pct_chg_words"],
+        all_split=run["burn_kl_mean"]["I_P_faith_pct_chg_all_split"],
+        all_merged=run["burn_kl_mean"]["I_P_faith_pct_chg_all_merged"],
+        tgt_split=run["burn_kl_mean"]["I_P_faith_pct_chg_tgt_split"],
+        tgt_merged=run["burn_kl_mean"]["I_P_faith_pct_chg_tgt_merged"],
+        other=run["burn_kl_mean"]["I_P_faith_pct_chg_words"],
     ),
 )
 I_P_fth_res_df = pd.DataFrame(I_P_fth_res).T
-I_P_fth_res_df.to_csv(os.path.join(OUT, f"results/{model_name}/fth_res_I_P.csv"))
+I_P_fth_res_path = os.path.join(OUT, f"results/{model_name}/fth_res_I_P.csv")
+I_P_fth_res_df.to_csv(I_P_fth_res_path)
+logging.info(f"Exported I_P_fth results to: {I_P_fth_res_path}")
 
 #%%
 er_res = dict(
     base=dict(
-        overall_mi=run["burn_kl_eval"]["base_overall_mi"],
-        pairwise_mi=run["burn_kl_eval"]["base_pairwise_mi"],
+        overall_mi=run["burn_kl_mean"]["base_overall_mi"],
+        pairwise_mi=run["burn_kl_mean"]["base_pairwise_mi"],
     ),
     P=dict(
-        overall_mi=run["burn_kl_eval"]["P_overall_mi"],
-        pairwise_mi=run["burn_kl_eval"]["P_pairwise_mi"],
+        overall_mi=run["burn_kl_mean"]["P_overall_mi"],
+        pairwise_mi=run["burn_kl_mean"]["P_pairwise_mi"],
     ),
     I_P=dict(
-        overall_mi=run["burn_kl_eval"]["I_P_overall_mi"],
-        pairwise_mi=run["burn_kl_eval"]["I_P_pairwise_mi"],
+        overall_mi=run["burn_kl_mean"]["I_P_overall_mi"],
+        pairwise_mi=run["burn_kl_mean"]["I_P_pairwise_mi"],
     ),
 )
 
 er_res_df = pd.DataFrame(er_res).T
-er_res_df.to_csv(os.path.join(OUT, f"results/{model_name}/er_res.csv"))
-
+er_res_path = os.path.join(OUT, f"results/{model_name}/er_res.csv")
+er_res_df.to_csv(er_res_path)
+logging.info(f"Exported erasure results to: {er_res_path}")
 
 #%%#################
 # BASELINE       #
@@ -184,7 +190,7 @@ hs_sub = sample_hs(hs, nsamples*2)
 word_emb, sg_emb, pl_emb, verb_probs, sg_pl_prob = load_model_eval(model_name)
 
 kls = []
-for i in range(nsamples):
+for i in trange(nsamples):
     h1 = hs_sub[i]
     h2 = hs_sub[nsamples + i]
     h1_base_distribs = get_distribs(h1, word_emb, sg_emb, pl_emb)
@@ -199,4 +205,6 @@ for i in range(nsamples):
     kls.append(res)
     
 desc_kls = pd.DataFrame(kls).describe()
-desc_kls.to_csv(os.path.join(OUT,f"results/{model_name}/fth_baseline.csv"))
+desc_kls_path = os.path.join(OUT,f"results/{model_name}/fth_baseline.csv")
+desc_kls.to_csv(desc_kls_path)
+logging.info(f"Exported baseline KL results to: {desc_kls_path}")

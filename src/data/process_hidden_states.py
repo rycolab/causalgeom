@@ -11,6 +11,11 @@ import pickle
 from tqdm import tqdm
 import shutil
 
+#sys.path.append('..')
+sys.path.append('./src/')
+
+from paths import OUT, DATASETS
+
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
 
@@ -24,13 +29,13 @@ def count_tgt_tokens(sample):
         len(sample["input_ids_foil"])
     )
 
-def define_target(sample_tgt_label):
+def define_target(tgt_label):
     if (tgt_label == "VBZ" or tgt_label == "Masc"):
         return 0
     elif (tgt_label == "VBP" or tgt_label == "Fem"):
         return 1
     else:
-        raise ValueError(f"Incorrect tgt label {sample_tgt_label}")
+        raise ValueError(f"Incorrect tgt label {tgt_label}")
 
 ## MASKED 
 def format_sample_masked(sample):
@@ -192,7 +197,7 @@ def get_args():
     argparser.add_argument(
         "-model",
         type=str,
-        choices=["bert-base-uncased", "gpt2"],
+        choices=["bert-base-uncased", "gpt2", "gpt2-medium", "gpt2-large"],
         help="MultiBERTs checkpoint for tokenizer and model"
     )
     argparser.add_argument(
@@ -220,11 +225,11 @@ if __name__=="__main__":
     OUT_TYPE = args.outtype
     NBATCHES = args.nbatches
     #DATASET_NAME = "linzen"
-    #MODEL_NAME = "gpt2"
+    #MODEL_NAME = "gpt2-medium"
     #OUT_TYPE = "full"
     #NBATCHES = 10
 
-    if MODEL_NAME == "gpt2" and OUT_TYPE == "full":
+    if MODEL_NAME in ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl"] and OUT_TYPE == "full":
         OUT_TYPE = "ar"
     elif MODEL_NAME == "bert-base-uncased" and OUT_TYPE == "full":
         OUT_TYPE = "masked"
@@ -236,20 +241,20 @@ if __name__=="__main__":
         f"{DATASET_NAME}, model {MODEL_NAME}."
     )
 
-    FILEDIR = (f"/cluster/work/cotterell/cguerner/usagebasedprobing/"
-                f"out/hidden_states/{DATASET_NAME}/{MODEL_NAME}")
+    FILEDIR = os.path.join(OUT, f"hidden_states/{DATASET_NAME}/{MODEL_NAME}")
 
     assert os.path.exists(FILEDIR), \
         f"Hidden state filedir doesn't exist: {FILEDIR}"
 
-    OUTFILE = (f"/cluster/work/cotterell/cguerner/usagebasedprobing/"
-                f"datasets/processed/{DATASET_NAME}_{MODEL_NAME}_{OUT_TYPE}.pkl")
+    OUTFILE = os.path.join(DATASETS, f"processed/{DATASET_NAME}/{OUT_TYPE}/{DATASET_NAME}_{MODEL_NAME}_{OUT_TYPE}.pkl")
     
-    assert not os.path.isfile(OUTFILE), \
-        f"Output file {OUTFILE} already exists"
+    #assert not os.path.isfile(OUTFILE), \
+    #    f"Output file {OUTFILE} already exists"
 
     OUTPUT_DIR = os.path.dirname(OUTFILE)
     TEMPDIR = os.path.join(OUTPUT_DIR, f"temp_{MODEL_NAME}_{OUT_TYPE}")
+    
+    assert not os.path.exists(TEMPDIR), f"Temp dir {TEMPDIR} already exists"
     os.mkdir(TEMPDIR)
 
     process_hidden_states(FILEDIR, OUTFILE, TEMPDIR, OUT_TYPE, nbatches=NBATCHES)

@@ -187,7 +187,8 @@ def solve_adv_game(X_train, y_train, X_dev, y_dev,
                    optimizer_params_predictor={"lr": 0.005, "weight_decay": 1e-4}, 
                    scheduler_class=None, scheduler_params_P=None, 
                    scheduler_params_predictor=None,
-                   torch_outfile=None, wb=False, wb_run=None, model_name=None,
+                   torch_outfile=None, wb=False, wb_run=None, 
+                   dataset_name=None, model_name=None,
                    X_pca=None):
     """
     :param X: The input (np array)
@@ -346,7 +347,7 @@ def solve_adv_game(X_train, y_train, X_dev, y_dev,
             pbar.refresh()  # to show immediately the update
             time.sleep(0.01)
 
-        if (i+1) % 1000 == 0:
+        if (i+1) % 5000 == 0:
             mis_val = compute_mis(
                 X_dev, P.detach().cpu().numpy(), rank, word_emb, sg_emb, pl_emb, 
                 verb_probs, sg_pl_prob, X_pca

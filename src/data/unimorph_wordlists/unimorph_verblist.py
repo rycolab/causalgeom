@@ -25,13 +25,13 @@ warnings.filterwarnings("ignore")
 #%% PARAMETERS -- note that there is no difference for this portion between different models (same dataset)
 MODEL_NAME = "bert-base-uncased"
 DATASET_NAME = "linzen"
-DATASET = os.path.join(DATASETS, f"processed/{DATASET_NAME}_{MODEL_NAME}_verbs.pkl")
+DATASET = os.path.join(DATASETS, f"processed/{DATASET_NAME}/{DATASET_NAME}_{MODEL_NAME}_verbs.pkl")
 
 # MANUAL_VERBLIST is a cleaned up version of the full verb list
 # with manual drops.
-MANUAL_VERBLIST_PATH = os.path.join(DATASETS, "processed/linzen_word_lists/linzen_verb_list_drop.csv")
-OUTFILE = os.path.join(DATASETS, "processed/linzen_word_lists/linzen_verb_list_final.pkl")
-SG_PL_OUTFILE = os.path.join(DATASETS, "processed/linzen_word_lists/sg_pl_prob.pkl")
+MANUAL_VERBLIST_PATH = os.path.join(DATASETS, f"processed/{DATASET_NAME}/word_lists/linzen_verb_list_drop.csv")
+OUTFILE = os.path.join(DATASETS, f"processed/{DATASET_NAME}/word_lists/verb_list_final.pkl")
+SG_PL_OUTFILE = os.path.join(DATASETS, f"processed/{DATASET_NAME}/word_lists/sg_pl_prob.pkl")
 
 #%%#################
 # Unimorph         #

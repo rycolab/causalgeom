@@ -1,27 +1,34 @@
 #%%
 import sys
+import os
 sys.path.append('../../')
+#sys.path.append('..')
+#sys.path.append('./src/')
 
 import csv
 from tqdm import tqdm
-from utils import vinfl
+from data.linzen.utils import vinfl
 
-from paths import LINZEN_RAW, LINZEN_PREPROCESSED
+from paths import LINZEN_RAW, DATASETS
 
 def inflect(verb):
     return vinfl[verb]
+
+LINZEN_PREPROCESSED = os.path.join(DATASETS, "preprocessed/linzen_preprocessed.tsv")
 
 #%% 
 # Commented out bits inherited from Yoav code
 #cases_we_care_about=['1','2','3','4']
 
 data = []
+ns = []
 with open(LINZEN_RAW,'r') as f:
     raw = csv.DictReader(f, delimiter='\t')
     for i, record in enumerate(tqdm(raw)):
         orig = record['orig_sentence']
         n_i  = record['n_intervening']
         n_di = record['n_diff_intervening']
+        ns.append((n_i, n_di))
         vpos = record['verb_pos']
         vindex = int(record['verb_index'])-1
         #if n_i != n_di: continue
