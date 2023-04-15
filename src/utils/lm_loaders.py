@@ -15,7 +15,7 @@ warnings.filterwarnings("ignore")
 
 
 def get_tokenizer(model_name):
-    if model_name == "gpt2":
+    if model_name in ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl"]:
         tokenizer = GPT2TokenizerFast.from_pretrained(
             model_name, model_max_length=512
         )
@@ -30,7 +30,7 @@ def get_tokenizer(model_name):
 
 
 def get_model(model_name):
-    if model_name == "gpt2":
+    if model_name in ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl"]:
         return GPT2LMHeadModel.from_pretrained(
             model_name, 
             cache_dir=HF_CACHE
@@ -49,7 +49,7 @@ def get_V(model_name, model=None):
     if model is None:
         model = get_model(model_name)
 
-    if model_name == "gpt2":
+    if model_name in ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl"]:
         return model.lm_head.weight.detach().numpy()
     elif model_name == "bert-base-uncased":
         word_embeddings = model.bert.embeddings.word_embeddings.weight

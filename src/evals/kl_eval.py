@@ -21,6 +21,7 @@ sys.path.append('./src/')
 
 from paths import DATASETS, OUT
 from utils.lm_loaders import get_tokenizer, get_V
+from data.dataset_loaders import load_hs, load_model_eval
 
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
@@ -29,47 +30,6 @@ warnings.filterwarnings("ignore")
 #%%#################
 # Loading          #
 ####################
-
-def load_hs(dataset_name, model_name):
-    if model_name == "gpt2":
-        DATASET = os.path.join(DATASETS, f"processed/{dataset_name}_{model_name}_ar.pkl")
-    elif model_name == "bert-base-uncased":
-        DATASET = os.path.join(DATASETS, f"processed/{dataset_name}_{model_name}_masked.pkl")
-    else:
-        DATASET = None
-
-    with open(DATASET, 'rb') as f:      
-        data = pd.DataFrame(pickle.load(f), columns = ["h", "u", "y"])
-        h = np.array([x for x in data["h"]])
-        del data
-    return h
-
-def sample_hs(hs, nsamples=200):
-    idx = np.arange(0, hs.shape[0])
-    np.random.shuffle(idx)
-    ind = idx[:nsamples]
-    return hs[ind]
-
-def load_model_eval(model_name, add_space=False):
-    SG_PL_PROB = os.path.join(DATASETS, "processed/linzen_word_lists/sg_pl_prob.pkl")
-    if add_space:
-        WORD_EMB = os.path.join(DATASETS, f"processed/linzen_word_lists/{model_name}_word_embeds_space.npy")
-        VERB_P = os.path.join(DATASETS, f"processed/linzen_word_lists/{model_name}_verb_p_space.npy")
-        SG_EMB = os.path.join(DATASETS, f"processed/linzen_word_lists/{model_name}_sg_embeds_space.npy")
-        PL_EMB = os.path.join(DATASETS, f"processed/linzen_word_lists/{model_name}_pl_embeds_space.npy")
-    else:
-        WORD_EMB = os.path.join(DATASETS, f"processed/linzen_word_lists/{model_name}_word_embeds.npy")
-        VERB_P = os.path.join(DATASETS, f"processed/linzen_word_lists/{model_name}_verb_p.npy")
-        SG_EMB = os.path.join(DATASETS, f"processed/linzen_word_lists/{model_name}_sg_embeds.npy")
-        PL_EMB = os.path.join(DATASETS, f"processed/linzen_word_lists/{model_name}_pl_embeds.npy")
-    word_emb = np.load(WORD_EMB)
-    verb_p = np.load(VERB_P)
-    sg_emb = np.load(SG_EMB)
-    pl_emb = np.load(PL_EMB)
-    with open(SG_PL_PROB, 'rb') as f:      
-        sg_pl_prob = pickle.load(f).to_numpy()
-    return word_emb, sg_emb, pl_emb, verb_p, sg_pl_prob
-
 def load_run_output(run_path):
     with open(run_path, 'rb') as f:      
         run = pickle.load(f)
@@ -135,10 +95,24 @@ def get_distribs(h, word_emb, sg_emb, pl_emb):
         lemma_merged=lemma_merged
     )
 
-def get_all_distribs(h, P, I_P, word_emb, sg_emb, pl_emb):
+def get_all_distribs(h, P, I_P, word_emb, sg_emb, pl_emb, X_pca=None):
     base_distribs = get_distribs(h, word_emb, sg_emb, pl_emb)
-    P_distribs = get_distribs(P @ h, word_emb, sg_emb, pl_emb)
-    I_P_distribs = get_distribs(I_P @ h, word_emb, sg_emb, pl_emb)
+    if X_pca is None:
+        P_distribs = get_distribs(P @ h, word_emb, sg_emb, pl_emb)
+        I_P_distribs = get_distribs(I_P @ h, word_emb, sg_emb, pl_emb)
+    else:
+        #TODO: debug into this
+        h = h.reshape(1,-1)
+        P_distribs = get_distribs(
+            X_pca.inverse_transform(
+                (P @ X_pca.transform(h).reshape(-1)).reshape(1, -1)).reshape(-1), 
+            word_emb, sg_emb, pl_emb
+        )
+        I_P_distribs = get_distribs(
+            X_pca.inverse_transform(
+                (I_P @ X_pca.transform(h).reshape(-1)).reshape(1, -1)).reshape(-1), 
+            word_emb, sg_emb, pl_emb
+        )
     return base_distribs, P_distribs, I_P_distribs
 
 def compute_kl(p, q, agg_func=np.sum):
@@ -301,9 +275,9 @@ def compute_all_erasure_mis(base_distribs, P_distribs, I_P_distribs, verb_probs,
     return pairwise_mis | overall_mis
 
 def compute_kls_one_sample(h, P, I_P, word_emb, sg_emb, pl_emb, verb_probs, 
-    sg_pl_probs, faith=True, er_kls=True, er_mis=True):
+    sg_pl_probs, faith=True, er_kls=True, er_mis=True, X_pca=None):
     base_distribs, P_distribs, I_P_distribs = get_all_distribs(
-        h, P, I_P, word_emb, sg_emb, pl_emb
+        h, P, I_P, word_emb, sg_emb, pl_emb, X_pca
     )
 
     faith_metrics, er_kl_metrics, er_mis_metrics = {},{},{}
@@ -327,7 +301,7 @@ def get_hs_sample_index(hs, nsamples=200):
     return idx[:nsamples]
 
 def compute_kls(hs, P, I_P, word_emb, sg_emb, pl_emb, verb_probs, sg_pl_prob, 
-    nsamples=200, faith=True, er_kls=True, er_mis=True):
+    nsamples=200, faith=True, er_kls=True, er_mis=True, X_pca = None):
     ind = get_hs_sample_index(hs, nsamples)    
 
     pbar = tqdm(ind)
@@ -336,7 +310,7 @@ def compute_kls(hs, P, I_P, word_emb, sg_emb, pl_emb, verb_probs, sg_pl_prob,
     for i in pbar:
         kls.append(compute_kls_one_sample(
             hs[i], P, I_P, word_emb, sg_emb, pl_emb, verb_probs, sg_pl_prob,
-            faith, er_kls, er_mis
+            faith, er_kls, er_mis, X_pca
         ))
     kls = pd.DataFrame(kls).describe()
     return kls
@@ -354,7 +328,7 @@ if __name__ == '__main__':
     logging.info(f"Tokenizing and saving embeddings from word and verb lists for model {model_name}")
 
     hs = load_hs(dataset_name, model_name)
-    word_emb, sg_emb, pl_emb, verb_probs, sg_pl_prob = load_model_eval(model_name)
+    word_emb, sg_emb, pl_emb, verb_probs, sg_pl_prob = load_model_eval(dataset_name, model_name)
     P, I_P = load_run_output(run_output)
     
     kls = compute_kls(hs, P, I_P, word_emb, sg_emb, pl_emb, verb_probs, sg_pl_prob)

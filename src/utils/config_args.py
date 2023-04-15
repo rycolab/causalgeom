@@ -17,9 +17,17 @@ def get_train_probes_args():
         help="Directory for exporting run eval"
     )
     argparser.add_argument(
+        "-dataset",
+        type=str,
+        choices=["linzen", "ud_fr_gsd"],
+        dest="dataset_name",
+        default="linzen",
+        help="Dataset to train on"
+    )
+    argparser.add_argument(
         "-model",
         type=str,
-        choices=["gpt2", "bert-base-uncased"],
+        choices=["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl", "bert-base-uncased"],
         #required=True,
         dest="model_name",
         default="bert-base-uncased",
@@ -47,7 +55,7 @@ def get_train_probes_args():
     argparser.add_argument(
         "-pca_dim",
         type=int,
-        default=768,
+        default=0,
         help="Dimension of PCA"
     )
     argparser.add_argument(
@@ -156,7 +164,7 @@ def get_train_probes_args():
 
 #%% Helpers
 def get_model_defaults(model_name):
-    if model_name == "gpt2":
+    if model_name.startswith("gpt2"):
         defaults = dict(
             P_lr = 0.001,
             P_sched_patience=10,
@@ -177,9 +185,6 @@ def get_model_defaults(model_name):
     return defaults
 
 def set_train_probes_defaults(config):
-    # Main defaults
-    config["dataset_name"] = "linzen"
-    
     # Default LRs
     model_defaults = get_model_defaults(config["model_name"])
     for key, val in model_defaults.items():
@@ -244,7 +249,7 @@ def set_train_probes_defaults(config):
         "verbose": True
     }
     #rlace_epsilon = 0.001 # stop 0.1% from majority acc (I TURNED THIS OFF)
-    config["run_name"] = f"{config['model_name'][:4]}_Pms{config['P_milestones']}_Pg{config['P_gamma']}_clfms{config['clf_milestones']}_clfg{config['clf_gamma']}"
+    config["run_name"] = f"{config['model_name']}_k{config['k']}_Pms{config['P_milestones']}_Pg{config['P_gamma']}_clfms{config['clf_milestones']}_clfg{config['clf_gamma']}"
     return config
 
 def get_train_probes_config():

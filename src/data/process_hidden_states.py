@@ -11,6 +11,11 @@ import pickle
 from tqdm import tqdm
 import shutil
 
+#sys.path.append('..')
+sys.path.append('./src/')
+
+from paths import OUT, DATASETS
+
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
 
@@ -18,68 +23,71 @@ warnings.filterwarnings("ignore")
 #%% BATCH and SAMPLE processing
 
 ## HELPERS
-def count_verb_tokens(sample):
+def count_tgt_tokens(sample):
     return max(
-        len(sample["input_ids_verb"]), 
-        len(sample["input_ids_iverb"])
+        len(sample["input_ids_fact"]), 
+        len(sample["input_ids_foil"])
     )
+
+def define_target(tgt_label):
+    if (tgt_label == "VBZ" or tgt_label == "Masc"):
+        return 0
+    elif (tgt_label == "VBP" or tgt_label == "Fem"):
+        return 1
+    else:
+        raise ValueError(f"Incorrect tgt label {tgt_label}")
 
 ## MASKED 
 def format_sample_masked(sample):
     hs = sample["hs"]
-    verb = sample["verb_embedding"]
-    iverb = sample["iverb_embedding"]
-    verb_pos = sample["verb_pos"]
-    max_tokens = count_verb_tokens(sample)
-    if verb_pos == "VBZ" and max_tokens == 1:
+    fact = sample["fact_embedding"]
+    foil = sample["foil_embedding"]
+    tgt_label = define_target(sample["tgt_label"])
+    max_tokens = count_tgt_tokens(sample)
+    if tgt_label == 0 and max_tokens == 1:
         y = 0
-        u = iverb - verb
+        u = foil - fact
         return (hs, u, y)
-    elif verb_pos == "VBP" and max_tokens == 1:
+    elif tgt_label == 1 and max_tokens == 1:
         y = 1
-        u = verb - iverb
+        u = fact - foil
         return (hs, u, y)
-    elif max_tokens > 1:
+    else: # max_tokens > 1:
         return None 
-    else:
-        raise ValueError(f"Unknown verb POS tag: {verb_pos}")
-
+    
 ## AR
 def format_sample_ar(sample):
-    hs = sample["verb_hs"][0,:]
-    verb = sample["verb_embedding"]
-    iverb = sample["iverb_embedding"]
-    verb_pos = sample["verb_pos"]
-    max_tokens = count_verb_tokens(sample)
-    if verb_pos == "VBZ" and max_tokens == 1:
+    hs = sample["fact_hs"][0,:]
+    fact = sample["fact_embedding"]
+    foil = sample["foil_embedding"]
+    tgt_label = define_target(sample["tgt_label"])
+    max_tokens = count_tgt_tokens(sample)
+    if tgt_label == 0 and max_tokens == 1:
         y = 0
-        u = iverb.flatten() - verb.flatten()
+        u = foil.flatten() - fact.flatten()
         return (hs, u, y)
-    elif verb_pos == "VBP" and max_tokens == 1:
+    elif tgt_label == 1 and max_tokens == 1:
         y = 1
-        u = verb.flatten() - iverb.flatten()
+        u = fact.flatten() - foil.flatten()
         return (hs, u, y)
-    elif max_tokens > 1:
+    else: # max_tokens > 1
         return None
-    else:
-        raise ValueError(f"Unknown verb POS tag: {verb_pos}")
-
+    
 ## VERBS
-def format_sample_verbs(sample):
-    """ Returns verb and iverb input ids: (singular, plural)
+def format_sample_tgt(sample):
+    """ Returns fact and foil input ids: 
+        (singular, plural), (Masc, Fem)
     """
-    verb_pos = sample["verb_pos"]
-    verb = sample["verb"]
-    iverb = sample["iverb"]
-    id_verb = sample["input_ids_verb"]
-    id_iverb = sample["input_ids_iverb"]
-    if verb_pos == "VBZ":
-        return (verb, id_verb, iverb, id_iverb, verb_pos)
-    elif verb_pos == "VBP":
-        return (iverb, id_iverb, verb, id_verb, verb_pos)
+    tgt_label = define_target(sample["tgt_label"])
+    fact = sample["fact"]
+    foil = sample["foil"]
+    id_fact = sample["input_ids_fact"]
+    id_foil = sample["input_ids_foil"]
+    if tgt_label == 0:
+        return (fact, id_fact, foil, id_foil, fact_pos)
     else:
-        raise ValueError(f"Unknown verb POS tag: {verb_pos}")
-
+        return (foil, id_foil, fact, id_fact, fact_pos)
+    
 ## HANDLER
 def format_batch_handler(batch_data, out_type):
     formatted_batch = []
@@ -90,7 +98,7 @@ def format_batch_handler(batch_data, out_type):
         elif out_type == "masked":
             formatted_sample = format_sample_masked(sample)
         else:
-            formatted_sample = format_sample_verbs(sample)
+            formatted_sample = format_sample_tgt(sample)
         # NOTE: this is only needed for AR, mb adapt MASKED
         if formatted_sample is None:
             count_drops+=1
@@ -159,9 +167,6 @@ def concat_temp_files(tempdir):
 
 #%%
 def process_hidden_states(batch_file_dir, output_file, temp_dir, out_type, nbatches=None, delete_batch_dir=False):
-    """ Reads batch files containing hidden states and saves concatenated
-    H matrix. Optionally deletes directory containing batch files.
-    """
     create_temp_files(batch_file_dir, temp_dir, out_type, nbatches=nbatches)
     data = concat_temp_files(temp_dir)
 
@@ -185,21 +190,21 @@ def get_args():
     argparser.add_argument(
         "-dataset", 
         type=str,
-        choices=["linzen"],
+        choices=["linzen", "ud_fr_gsd"],
         default="linzen",
         help="Dataset to extract counts from"
     )
     argparser.add_argument(
         "-model",
         type=str,
-        choices=["bert-base-uncased", "gpt2"],
+        choices=["bert-base-uncased", "gpt2", "gpt2-medium", "gpt2-large"],
         help="MultiBERTs checkpoint for tokenizer and model"
     )
     argparser.add_argument(
         "-outtype",
         type=str,
-        choices=["full", "verbs"],
-        help="Export full dataset for probe training or just verbs"
+        choices=["full", "tgt"],
+        help="Export full dataset for probe training or just tgt"
     )
     argparser.add_argument(
         "-nbatches",
@@ -220,33 +225,36 @@ if __name__=="__main__":
     OUT_TYPE = args.outtype
     NBATCHES = args.nbatches
     #DATASET_NAME = "linzen"
-    #MODEL_NAME = "gpt2"
+    #MODEL_NAME = "gpt2-medium"
     #OUT_TYPE = "full"
     #NBATCHES = 10
 
-    if MODEL_NAME == "gpt2" and OUT_TYPE == "full":
+    if MODEL_NAME in ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl"] and OUT_TYPE == "full":
         OUT_TYPE = "ar"
     elif MODEL_NAME == "bert-base-uncased" and OUT_TYPE == "full":
         OUT_TYPE = "masked"
 
-    assert OUT_TYPE in ["ar", "masked", "verbs"], "Wrong outtype"
+    assert OUT_TYPE in ["ar", "masked", "tgt"], "Wrong outtype"
 
-    logging.info(f"Creating {OUT_TYPE} dataset for raw data: {DATASET_NAME}, model {MODEL_NAME}.")
+    logging.info(
+        f"Creating {OUT_TYPE} dataset for raw data: "
+        f"{DATASET_NAME}, model {MODEL_NAME}."
+    )
 
-    FILEDIR = (f"/cluster/work/cotterell/cguerner/usagebasedprobing/"
-                f"out/hidden_states/{DATASET_NAME}/{MODEL_NAME}")
+    FILEDIR = os.path.join(OUT, f"hidden_states/{DATASET_NAME}/{MODEL_NAME}")
 
     assert os.path.exists(FILEDIR), \
         f"Hidden state filedir doesn't exist: {FILEDIR}"
 
-    OUTFILE = (f"/cluster/work/cotterell/cguerner/usagebasedprobing/"
-                f"datasets/processed/{DATASET_NAME}_{MODEL_NAME}_{OUT_TYPE}.pkl")
+    OUTFILE = os.path.join(DATASETS, f"processed/{DATASET_NAME}/{OUT_TYPE}/{DATASET_NAME}_{MODEL_NAME}_{OUT_TYPE}.pkl")
     
-    assert not os.path.isfile(OUTFILE), \
-        f"Output file {OUTFILE} already exists"
+    #assert not os.path.isfile(OUTFILE), \
+    #    f"Output file {OUTFILE} already exists"
 
     OUTPUT_DIR = os.path.dirname(OUTFILE)
     TEMPDIR = os.path.join(OUTPUT_DIR, f"temp_{MODEL_NAME}_{OUT_TYPE}")
+    
+    assert not os.path.exists(TEMPDIR), f"Temp dir {TEMPDIR} already exists"
     os.mkdir(TEMPDIR)
 
     process_hidden_states(FILEDIR, OUTFILE, TEMPDIR, OUT_TYPE, nbatches=NBATCHES)

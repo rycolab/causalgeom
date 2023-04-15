@@ -23,8 +23,11 @@ coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
 
 #%% ARGS
+DATASET_NAME = "linzen"
 VERBLIST_PATH = os.path.join(DATASETS, 
-    "processed/linzen_word_lists/linzen_verb_list_final.pkl")
+    f"processed/{DATASET_NAME}/word_lists/verb_list_final.pkl"
+)
+WORDLIST_PATH = os.path.join(DATASETS, f"processed/{DATASET_NAME}/word_lists/wordlist.csv")
 
 #%%#################
 # Unimorph         #
@@ -109,7 +112,8 @@ wordlist = wordlist[["word"]]
 #wordlist["input_id"] = wordlist["input_ids_word"].apply(lambda x: x[0])
 #wordlist["input_id_spc"] = wordlist["input_ids_word_spc"].apply(lambda x: x[0])
 #wordlist[["word", "input_id"]].to_csv("../../datasets/processed/wordlists/bert-base-uncased_wordlist.csv")
-wordlist.to_csv("../../datasets/processed/linzen_word_lists/linzen_wordlist.csv")
+
+wordlist.to_csv(WORDLIST_PATH)
 
 """
 #%%

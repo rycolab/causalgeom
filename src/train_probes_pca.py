@@ -19,6 +19,7 @@ import torch
 import sklearn
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import SGDClassifier
+from sklearn.decomposition import PCA
 import wandb
 
 #from rlace import solve_adv_game, solve_adv_game_param_free, \
@@ -70,7 +71,7 @@ WORD_EMB, SG_EMB, PL_EMB, VERB_PROBS, SG_PL_PROB = load_model_eval(
     cfg['dataset_name'], cfg['model_name'])
 
 # Load dataset
-X, U, y = load_processed_data(dataset_name, model_name)
+X, U, y = load_processed_data(cfg['dataset_name'], cfg['model_name'])
 
 # Set seed
 np.random.seed(cfg['seed'])
@@ -106,12 +107,32 @@ for i in trange(cfg['nruns']):
     y_train, y_val, y_test = y[idx[:train_lastind]], y[idx[train_lastind:val_lastind]], y[idx[val_lastind:test_lastind]]
 
     #%%
+    if cfg['pca_dim'] > 0:
+        logging.info(f"Applying PCA with dimension {cfg['pca_dim']}")
+        X_pca = PCA(n_components=cfg['pca_dim']) 
+        X_train_pca = X_pca.fit_transform(X_train)
+        #U_pca = PCA(n_components=cfg['pca_dim'])
+        #U_train = U_pca.fit_transform(U_train)
+
+        X_val_pca = X_pca.transform(X_val)
+        X_test_pca = X_pca.transform(X_test)
+        #U_val = U_pca.transform(U_val)
+        #U_test = U_pca.transform(U_test)
+    else:
+        X_pca = None
+        X_train_pca = X_train
+        X_val_pca = X_val
+        X_test_pca = X_test
+
+    #%%
     start = time.time()
     
     diag_rlace_u_outfile = os.path.join(DIAG_RLACE_U_OUTDIR, f"{cfg['run_name']}.pt")
+    
+    #dim = X_train.shape[1]
 
     diag_rlace_output = solve_adv_game(
-        X_train, y_train, X_val, y_val, rank=cfg['k'], device=device, 
+        X_train_pca, y_train, X_val_pca, y_val, rank=cfg['k'], device=device, 
         out_iters=cfg['niter'], optimizer_class=rlace_optimizer_class, 
         optimizer_params_P=cfg['rlace_optimizer_params_P'], 
         optimizer_params_predictor=cfg['rlace_optimizer_params_clf'], 
@@ -120,7 +141,8 @@ for i in trange(cfg['nruns']):
         scheduler_params_predictor=cfg['rlace_scheduler_params_clf'],
         batch_size=cfg['batch_size'],
         torch_outfile=diag_rlace_u_outfile, wb=WB, wb_run=i,
-        dataset_name=cfg["dataset_name"], model_name=cfg["model_name"]
+        dataset_name=cfg["dataset_name"], model_name=cfg["model_name"],
+        X_pca=X_pca
     )
     end = time.time()
     diag_rlace_output["runtime"] = end-start
@@ -128,35 +150,57 @@ for i in trange(cfg['nruns']):
     logging.info("Computing evals")
 
     diag_eval = full_diag_eval(
-        diag_rlace_output, X_train[:50000], y_train[:50000], 
-        X_val, y_val, X_test, y_test
+        diag_rlace_output, X_train[:50000], y_train[:50000], X_val, y_val, 
+        X_test, y_test, X_pca=X_pca
     )
     usage_eval = full_usage_eval(
-        diag_rlace_output, X_train, U_train, y_train, X_test, U_test, y_test
+        diag_rlace_output, X_train, U_train, y_train, X_test, U_test, 
+        y_test, X_pca=X_pca
     )
 
     kl_eval = compute_kls(
         X_test, diag_rlace_output["P"], diag_rlace_output["I_P"], 
-        WORD_EMB, SG_EMB, PL_EMB, VERB_PROBS, SG_PL_PROB
+        WORD_EMB, SG_EMB, PL_EMB, VERB_PROBS, SG_PL_PROB, X_pca=X_pca
     )
     kl_means = kl_eval.loc["mean",:]
 
     burn_kl_eval = compute_kls(
         X_test, diag_rlace_output["P_burn"], diag_rlace_output["I_P_burn"], 
-        WORD_EMB, SG_EMB, PL_EMB, VERB_PROBS, SG_PL_PROB
+        WORD_EMB, SG_EMB, PL_EMB, VERB_PROBS, SG_PL_PROB, X_pca=X_pca
     )
     burn_kl_means = burn_kl_eval.loc["mean",:]
 
     if WB:
         wandb.log({
+            f"diag_rlace/test/P/diag/{i}/diag_acc_test": diag_eval["diag_acc_P_test"],
+            f"diag_rlace/test/I_P/diag/{i}/diag_acc_test": diag_eval["diag_acc_I_P_test"],
+            f"diag_rlace/test/P/usage/{i}/lm_acc_test": usage_eval["lm_acc_P_test"], 
+            f"diag_rlace/test/I_P/usage/{i}/lm_acc_test": usage_eval["lm_acc_I_P_test"],
             f"diag_rlace/test/P_burn/diag/{i}/diag_acc_test": diag_eval["diag_acc_P_burn_test"],
             f"diag_rlace/test/I_P_burn/diag/{i}/diag_acc_test": diag_eval["diag_acc_I_P_burn_test"],
             f"diag_rlace/test/P_burn/usage/{i}/lm_acc_test": usage_eval["lm_acc_P_burn_test"], 
             f"diag_rlace/test/I_P_burn/usage/{i}/lm_acc_test": usage_eval["lm_acc_I_P_burn_test"],
             
+            f"diag_rlace/test/P/fth_kls/{i}/faith_kl_all_split": kl_means["P_faith_kl_all_split"],
+            f"diag_rlace/test/P/fth_kls/{i}/faith_kl_all_merged": kl_means["P_faith_kl_all_merged"],
+            f"diag_rlace/test/P/fth_kls/{i}/faith_kl_words": kl_means["P_faith_kl_words"],
+            f"diag_rlace/test/P/fth_kls/{i}/faith_kl_tgt_split": kl_means["P_faith_kl_tgt_split"],
+            f"diag_rlace/test/P/fth_kls/{i}/faith_kl_tgt_merged": kl_means["P_faith_kl_tgt_merged"],
 
             f"diag_rlace/test/base/er_mis/{i}/overall_mi": kl_means["base_overall_mi"],
             f"diag_rlace/test/base/er_mis/{i}/pairwise_mi": kl_means["base_pairwise_mi"],
+
+            f"diag_rlace/test/P/er_mis/{i}/overall_mi": kl_means["P_overall_mi"],
+            f"diag_rlace/test/P/er_mis/{i}/pairwise_mi": kl_means["P_pairwise_mi"],
+
+            f"diag_rlace/test/I_P/fth_kls/{i}/faith_kl_all_split": kl_means["I_P_faith_kl_all_split"],
+            f"diag_rlace/test/I_P/fth_kls/{i}/faith_kl_all_merged": kl_means["I_P_faith_kl_all_merged"],
+            f"diag_rlace/test/I_P/fth_kls/{i}/faith_kl_words": kl_means["I_P_faith_kl_words"],
+            f"diag_rlace/test/I_P/fth_kls/{i}/faith_kl_tgt_split": kl_means["I_P_faith_kl_tgt_split"],
+            f"diag_rlace/test/I_P/fth_kls/{i}/faith_kl_tgt_merged": kl_means["I_P_faith_kl_tgt_merged"],
+
+            f"diag_rlace/test/I_P/er_mis/{i}/overall_mi": kl_means["I_P_overall_mi"],
+            f"diag_rlace/test/I_P/er_mis/{i}/pairwise_mi": kl_means["I_P_pairwise_mi"],
 
             f"diag_rlace/test/P_burn/fth_kls/{i}/faith_kl_all_split": burn_kl_means["P_faith_kl_all_split"],
             f"diag_rlace/test/P_burn/fth_kls/{i}/faith_kl_all_merged": burn_kl_means["P_faith_kl_all_merged"],
@@ -243,7 +287,8 @@ for i in trange(cfg['nruns']):
         burn_kl_std=burn_kl_eval.loc["std",:],
         maj_acc_test=get_majority_acc(y_test),
         maj_acc_val=get_majority_acc(y_val),
-        maj_acc_train=get_majority_acc(y_train)
+        maj_acc_train=get_majority_acc(y_train),
+        X_pca=X_pca
     )
     
     #%%

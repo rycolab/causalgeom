@@ -70,12 +70,12 @@ def run_validation(X_train, y_train, X_dev, y_dev, P, rank):
     i = np.argmin(loss_vals)
     return loss_vals[i], accs[i]
 
-def compute_mis(X_dev, P, rank, word_emb, sg_emb, pl_emb, verb_probs, sg_pl_prob):
+def compute_mis(X_dev, P, rank, word_emb, sg_emb, pl_emb, verb_probs, sg_pl_prob, X_pca=None):
     P_svd, I_P_svd = get_projection(P, rank)
 
     mis = compute_kls(
         X_dev, P_svd, I_P_svd, word_emb, sg_emb, pl_emb, verb_probs, sg_pl_prob,
-        faith=False, er_kls=False, er_mis=True
+        faith=False, er_kls=False, er_mis=True, X_pca=X_pca
     )
     return mis.loc["mean",:]
 
@@ -187,8 +187,9 @@ def solve_adv_game(X_train, y_train, X_dev, y_dev,
                    optimizer_params_predictor={"lr": 0.005, "weight_decay": 1e-4}, 
                    scheduler_class=None, scheduler_params_P=None, 
                    scheduler_params_predictor=None,
-                   torch_outfile=None, wb=False, wb_run=None, model_name=None,
-                   mi_eval=False):
+                   torch_outfile=None, wb=False, wb_run=None, 
+                   dataset_name=None, model_name=None,
+                   X_pca=None):
     """
     :param X: The input (np array)
     :param Y: the lables (np array)
@@ -199,7 +200,7 @@ def solve_adv_game(X_train, y_train, X_dev, y_dev,
     :param out_iters: Number of batches to run
     :param in_iters_adv: number of iterations for adversary's optimization
     :param in_iters_clf: number of iterations from the predictor's optimization
-    #:param epsilon: stopping criterion .Stops if abs(acc - majority) < epsilon. -- REMOVED TO AVOID EARLY STOPPING BEFORE CONVERGENCE
+    :param epsilon: stopping criterion .Stops if abs(acc - majority) < epsilon. -- REMOVED TO AVOID EARLY STOPPING BEFORE CONVERGENCE
     :param batch_size:
     :param evaluate_every: After how many batches to evaluate the current adversary.
     :param optimizer_class: SGD/Adam etc.
@@ -258,7 +259,7 @@ def solve_adv_game(X_train, y_train, X_dev, y_dev,
 
     burn_P, burn_loss = None, -1
 
-    word_emb, sg_emb, pl_emb, verb_probs, sg_pl_prob = load_model_eval(model_name)
+    word_emb, sg_emb, pl_emb, verb_probs, sg_pl_prob = load_model_eval(dataset_name, model_name)
 
     if wb:
         if wb_run is None:
@@ -346,10 +347,10 @@ def solve_adv_game(X_train, y_train, X_dev, y_dev,
             pbar.refresh()  # to show immediately the update
             time.sleep(0.01)
 
-        if mi_eval and (i+1) % 5000 == 0:
+        if (i+1) % 5000 == 0:
             mis_val = compute_mis(
                 X_dev, P.detach().cpu().numpy(), rank, word_emb, sg_emb, pl_emb, 
-                verb_probs, sg_pl_prob
+                verb_probs, sg_pl_prob, X_pca
             )
             if wb:
                 wandb.log({

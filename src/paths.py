@@ -11,7 +11,6 @@ BERT_SYNTAX_LINZEN_GOLDBERG = "../bert-syntax/lgd_dataset.tsv"
 
 LINZEN_RAW = os.path.join(DATASETS, "raw/linzen/agr_50_mostcommon_10k.tsv")
 LINZEN_VOCAB = os.path.join(DATASETS, "raw/linzen/wiki.vocab")
-LINZEN_PREPROCESSED = os.path.join(DATASETS, "preprocessed/linzen_preprocessed.tsv")
 
 UNIMORPH_ENG = "/cluster/work/cotterell/cguerner/eng/eng"
 
