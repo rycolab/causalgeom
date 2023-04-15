@@ -200,7 +200,7 @@ def solve_adv_game(X_train, y_train, X_dev, y_dev,
     :param out_iters: Number of batches to run
     :param in_iters_adv: number of iterations for adversary's optimization
     :param in_iters_clf: number of iterations from the predictor's optimization
-    #:param epsilon: stopping criterion .Stops if abs(acc - majority) < epsilon. -- REMOVED TO AVOID EARLY STOPPING BEFORE CONVERGENCE
+    :param epsilon: stopping criterion .Stops if abs(acc - majority) < epsilon. -- REMOVED TO AVOID EARLY STOPPING BEFORE CONVERGENCE
     :param batch_size:
     :param evaluate_every: After how many batches to evaluate the current adversary.
     :param optimizer_class: SGD/Adam etc.
@@ -259,7 +259,7 @@ def solve_adv_game(X_train, y_train, X_dev, y_dev,
 
     burn_P, burn_loss = None, -1
 
-    word_emb, sg_emb, pl_emb, verb_probs, sg_pl_prob = load_model_eval(model_name)
+    word_emb, sg_emb, pl_emb, verb_probs, sg_pl_prob = load_model_eval(dataset_name, model_name)
 
     if wb:
         if wb_run is None:

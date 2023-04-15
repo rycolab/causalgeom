@@ -25,6 +25,12 @@ def get_args():
         choices=["en", "fr"],
         help="Which language to extract from"
     )
+    argparser.add_argument(
+        "-backup_batches", 
+        type=int,
+        default=100,
+        help="Number of batches before temp export"
+    )
     return argparser.parse_args()
 
 #%%
@@ -88,8 +94,7 @@ def export_token_dict(token_dict, outfile):
     logging.info(f"Token dict exported to: {outfile}")
 
 
-def create_token_dict(data, outfile):
-    backup_batches = 1000
+def create_token_dict(data, outfile, backup_batches):
     nsamples = len(data)
     token_dict = {}
     for i, obs in enumerate(tqdm(data)):
@@ -104,8 +109,9 @@ if __name__=="__main__":
     args = get_args()
     logging.info(args)
 
-    #language = args.language 
-    language = "fr"
+    language = args.language 
+    backup_batches = args.backup_batches 
+    #language = "fr"
     data = load_dataset(
         "wikipedia", f"20220301.{language}", cache_dir=HF_CACHE
     )["train"]
@@ -125,6 +131,6 @@ if __name__=="__main__":
     #os.mkdir(TEMPDIR)
 
     #create_temp_files(data)
-    token_dict = create_token_dict(data, OUT_FILE)
+    token_dict = create_token_dict(data, OUT_FILE, backup_batches)
     export_token_dict(token_dict, OUT_FILE)
     

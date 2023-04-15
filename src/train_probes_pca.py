@@ -32,6 +32,8 @@ from utils.cuda_loaders import get_device
 from utils.config_args import get_train_probes_config
 from evals.kl_eval import compute_kls, load_model_eval
 from evals.usage_eval import full_usage_eval, full_diag_eval
+from data.dataset_loaders import load_processed_data
+
 from paths import DATASETS, OUT
 
 coloredlogs.install(level=logging.INFO)
@@ -69,20 +71,7 @@ WORD_EMB, SG_EMB, PL_EMB, VERB_PROBS, SG_PL_PROB = load_model_eval(
     cfg['dataset_name'], cfg['model_name'])
 
 # Load dataset
-if cfg['model_name'].startswith("gpt2"):
-    DATASET = os.path.join(DATASETS, f"processed/{cfg['dataset_name']}/ar/{cfg['dataset_name']}_{cfg['model_name']}_ar.pkl")
-elif cfg['model_name'] == "bert-base-uncased":
-    DATASET = os.path.join(DATASETS, f"processed/{cfg['dataset_name']}/masked/{cfg['dataset_name']}_{cfg['model_name']}_masked.pkl")
-else:
-    DATASET = None
-
-with open(DATASET, 'rb') as f:      
-    data = pd.DataFrame(pickle.load(f), columns = ["h", "u", "y"])
-
-X = np.array([x for x in data["h"]])
-U = np.array([x for x in data["u"]])
-y = np.array([yi for yi in data["y"]])
-del data
+X, U, y = load_processed_data(cfg['dataset_name'], cfg['model_name'])
 
 # Set seed
 np.random.seed(cfg['seed'])
@@ -90,8 +79,8 @@ np.random.seed(cfg['seed'])
 #%%#################
 # Wandb Logging    #
 ####################
+datetimestr = datetime.today().strftime('%Y-%m-%d-%H:%M:%S')
 if cfg['wandb_name']:
-    datetimestr = datetime.today().strftime('%Y-%m-%d-%H:%M:%S')
     wandb.init(
         project="usagebasedprobing", 
         entity="cguerner",
@@ -118,16 +107,22 @@ for i in trange(cfg['nruns']):
     y_train, y_val, y_test = y[idx[:train_lastind]], y[idx[train_lastind:val_lastind]], y[idx[val_lastind:test_lastind]]
 
     #%%
-    logging.info(f"Applying PCA with dimension {cfg['pca_dim']}")
-    X_pca = PCA(n_components=cfg['pca_dim']) 
-    X_train_pca = X_pca.fit_transform(X_train)
-    #U_pca = PCA(n_components=cfg['pca_dim'])
-    #U_train = U_pca.fit_transform(U_train)
+    if cfg['pca_dim'] > 0:
+        logging.info(f"Applying PCA with dimension {cfg['pca_dim']}")
+        X_pca = PCA(n_components=cfg['pca_dim']) 
+        X_train_pca = X_pca.fit_transform(X_train)
+        #U_pca = PCA(n_components=cfg['pca_dim'])
+        #U_train = U_pca.fit_transform(U_train)
 
-    X_val_pca = X_pca.transform(X_val)
-    X_test_pca = X_pca.transform(X_test)
-    #U_val = U_pca.transform(U_val)
-    #U_test = U_pca.transform(U_test)
+        X_val_pca = X_pca.transform(X_val)
+        X_test_pca = X_pca.transform(X_test)
+        #U_val = U_pca.transform(U_val)
+        #U_test = U_pca.transform(U_test)
+    else:
+        X_pca = None
+        X_train_pca = X_train
+        X_val_pca = X_val
+        X_test_pca = X_test
 
     #%%
     start = time.time()
@@ -297,7 +292,7 @@ for i in trange(cfg['nruns']):
     )
     
     #%%
-    outfile_path = os.path.join(OUTPUT_DIR, f"run_{cfg['run_name']}_{i}_{cfg['nruns']}.pkl")
+    outfile_path = os.path.join(OUTPUT_DIR, f"run_{cfg['run_name']}_{datetimestr}_{i}_{cfg['nruns']}.pkl")
 
     with open(outfile_path, 'wb') as f:
         pickle.dump(full_results, f, protocol=pickle.HIGHEST_PROTOCOL)

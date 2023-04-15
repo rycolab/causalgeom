@@ -31,6 +31,8 @@ from utils.cuda_loaders import get_device
 from utils.config_args import get_train_probes_config
 from evals.kl_eval import compute_kls, load_model_eval
 from evals.usage_eval import full_usage_eval, full_diag_eval
+from data.dataset_loaders import load_processed_data
+
 from paths import DATASETS, OUT
 
 coloredlogs.install(level=logging.INFO)
@@ -68,20 +70,7 @@ WORD_EMB, SG_EMB, PL_EMB, VERB_PROBS, SG_PL_PROB = load_model_eval(
     cfg['dataset_name'], cfg['model_name'])
 
 # Load dataset
-if cfg['model_name'] == "gpt2":
-    DATASET = os.path.join(DATASETS, f"processed/{cfg['dataset_name']}/ar/{cfg['dataset_name']}_{cfg['model_name']}_ar.pkl")
-elif cfg['model_name'] == "bert-base-uncased":
-    DATASET = os.path.join(DATASETS, f"processed/{cfg['dataset_name']}/masked/{cfg['dataset_name']}_{cfg['model_name']}_masked.pkl")
-else:
-    DATASET = None
-
-with open(DATASET, 'rb') as f:      
-    data = pd.DataFrame(pickle.load(f), columns = ["h", "u", "y"])
-
-X = np.array([x for x in data["h"]])
-U = np.array([x for x in data["u"]])
-y = np.array([yi for yi in data["y"]])
-del data
+X, U, y = load_processed_data(dataset_name, model_name)
 
 # Set seed
 np.random.seed(cfg['seed'])
@@ -89,8 +78,8 @@ np.random.seed(cfg['seed'])
 #%%#################
 # Wandb Logging    #
 ####################
+datetimestr = datetime.today().strftime('%Y-%m-%d-%H:%M:%S')
 if cfg['wandb_name']:
-    datetimestr = datetime.today().strftime('%Y-%m-%d-%H:%M:%S')
     wandb.init(
         project="usagebasedprobing", 
         entity="cguerner",
@@ -120,8 +109,6 @@ for i in trange(cfg['nruns']):
     start = time.time()
     
     diag_rlace_u_outfile = os.path.join(DIAG_RLACE_U_OUTDIR, f"{cfg['run_name']}.pt")
-    
-    #dim = X_train.shape[1]
 
     diag_rlace_output = solve_adv_game(
         X_train, y_train, X_val, y_val, rank=cfg['k'], device=device, 
@@ -133,8 +120,7 @@ for i in trange(cfg['nruns']):
         scheduler_params_predictor=cfg['rlace_scheduler_params_clf'],
         batch_size=cfg['batch_size'],
         torch_outfile=diag_rlace_u_outfile, wb=WB, wb_run=i,
-        dataset_name=cfg["dataset_name"], model_name=cfg["model_name"], 
-        mi_eval=True
+        dataset_name=cfg["dataset_name"], model_name=cfg["model_name"]
     )
     end = time.time()
     diag_rlace_output["runtime"] = end-start
@@ -261,7 +247,7 @@ for i in trange(cfg['nruns']):
     )
     
     #%%
-    outfile_path = os.path.join(OUTPUT_DIR, f"run_{cfg['run_name']}_{i}_{cfg['nruns']}.pkl")
+    outfile_path = os.path.join(OUTPUT_DIR, f"run_{cfg['run_name']}_{datetimestr}_{i}_{cfg['nruns']}.pkl")
 
     with open(outfile_path, 'wb') as f:
         pickle.dump(full_results, f, protocol=pickle.HIGHEST_PROTOCOL)

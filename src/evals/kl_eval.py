@@ -21,6 +21,7 @@ sys.path.append('./src/')
 
 from paths import DATASETS, OUT
 from utils.lm_loaders import get_tokenizer, get_V
+from data.dataset_loaders import load_hs, load_model_eval
 
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
@@ -29,42 +30,6 @@ warnings.filterwarnings("ignore")
 #%%#################
 # Loading          #
 ####################
-
-def load_hs(dataset_name, model_name):
-    if model_name == "gpt2":
-        DATASET = os.path.join(DATASETS, f"processed/{dataset_name}_{model_name}_ar.pkl")
-    elif model_name == "bert-base-uncased":
-        DATASET = os.path.join(DATASETS, f"processed/{dataset_name}_{model_name}_masked.pkl")
-    else:
-        DATASET = None
-
-    with open(DATASET, 'rb') as f:      
-        data = pd.DataFrame(pickle.load(f), columns = ["h", "u", "y"])
-        h = np.array([x for x in data["h"]])
-        del data
-    return h
-
-def sample_hs(hs, nsamples=200):
-    idx = np.arange(0, hs.shape[0])
-    np.random.shuffle(idx)
-    ind = idx[:nsamples]
-    return hs[ind]
-
-def load_model_eval(dataset_name, model_name):
-    SG_PL_PROB = os.path.join(DATASETS, f"processed/{dataset_name}/word_lists/sg_pl_prob.pkl")
-    WORD_EMB = os.path.join(DATASETS, f"processed/{dataset_name}/word_lists/{model_name}_word_embeds.npy")
-    VERB_P = os.path.join(DATASETS, f"processed/{dataset_name}/word_lists/{model_name}_verb_p.npy")
-    SG_EMB = os.path.join(DATASETS, f"processed/{dataset_name}/word_lists/{model_name}_sg_embeds.npy")
-    PL_EMB = os.path.join(DATASETS, f"processed/{dataset_name}/word_lists/{model_name}_pl_embeds.npy")
-
-    word_emb = np.load(WORD_EMB)
-    verb_p = np.load(VERB_P)
-    sg_emb = np.load(SG_EMB)
-    pl_emb = np.load(PL_EMB)
-    with open(SG_PL_PROB, 'rb') as f:      
-        sg_pl_prob = pickle.load(f).to_numpy()
-    return word_emb, sg_emb, pl_emb, verb_p, sg_pl_prob
-
 def load_run_output(run_path):
     with open(run_path, 'rb') as f:      
         run = pickle.load(f)
@@ -363,7 +328,7 @@ if __name__ == '__main__':
     logging.info(f"Tokenizing and saving embeddings from word and verb lists for model {model_name}")
 
     hs = load_hs(dataset_name, model_name)
-    word_emb, sg_emb, pl_emb, verb_probs, sg_pl_prob = load_model_eval(model_name)
+    word_emb, sg_emb, pl_emb, verb_probs, sg_pl_prob = load_model_eval(dataset_name, model_name)
     P, I_P = load_run_output(run_output)
     
     kls = compute_kls(hs, P, I_P, word_emb, sg_emb, pl_emb, verb_probs, sg_pl_prob)
