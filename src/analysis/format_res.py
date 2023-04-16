@@ -34,15 +34,20 @@ warnings.filterwarnings("ignore")
 ####################
 #if __name__ == '__main__':
 
-model_name = "gpt2"
+model_name = "gpt2-large"
 dataset_name = "linzen"
 suffix = "nopca"
 gpt_run_output = os.path.join(OUT, "run_output/linzen/gpt2/230415/run_gpt2_k1_Pms11,16,21,26,31,36_Pg0.5_clfms21,31_clfg0.5_2023-04-15-15:02:02_0_1.pkl")
+gpt2_large_run_output = os.path.join(OUT, "run_output/linzen/gpt2-large/230415/run_gpt2-large_k1_Pms31_Pg0.5_clfms31_clfg0.5_2023-04-15-20:20:45_0_1.pkl")
 bert_run_output = os.path.join(OUT, "run_output/bert-base-uncased/230310/run_bert_k_1_0_1.pkl")
 if model_name == "bert-base-uncased":
     run_output = bert_run_output
 elif model_name == "gpt2":
     run_output = gpt_run_output
+elif model_name == "gpt2-large":
+    run_output = gpt2_large_run_output
+elif model_name == "gpt2-medium":
+    run_output = None
 else:
     run_output = None
 
