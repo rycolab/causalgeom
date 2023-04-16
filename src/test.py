@@ -47,3 +47,4 @@ t1 = X_pca.inverse_transform(P @ h_pca)
 t2 = X_pca.inverse_transform((P @ h_pca).reshape(1,-1))
 
 data_pca @ P
+

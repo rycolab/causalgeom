@@ -274,4 +274,3 @@ final_df = full_df_foil[
     "text", "masked", "ar_flag", "pre_tgt_text", "fact_text", "foil_text"]
 ]
 final_df.to_pickle(OUTPUT_FILE)
-# %%
