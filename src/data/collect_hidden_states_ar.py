@@ -174,12 +174,77 @@ logging.info(f"Finished exporting data to {OUTPUT_DIR}.")
 #             f"{total_tokenizer_drops*100 / len(ds)} percent of obs")
 
 
+#%%
+def get_args():
+    argparser = argparse.ArgumentParser(description='Process hidden states')
+    argparser.add_argument(
+        "-dataset", 
+        type=str,
+        choices=["linzen", "ud_fr_gsd"],
+        default="linzen",
+        help="Dataset to extract counts from"
+    )
+    argparser.add_argument(
+        "-model",
+        type=str,
+        choices=["bert-base-uncased", "gpt2", "gpt2-medium", "gpt2-large", "gpt2-base-french"],
+        help="MultiBERTs checkpoint for tokenizer and model"
+    )
+    argparser.add_argument(
+        "-outtype",
+        type=str,
+        choices=["full", "tgt"],
+        help="Export full dataset for probe training or just tgt"
+    )
+    argparser.add_argument(
+        "-nbatches",
+        type=int,
+        required=False,
+        default=None,
+        help="Number of batches to process"
+    )
+    return argparser.parse_args()
 
-""" OLD CODE
-def get_ar_hs(batch_mlm_hs, batch_masked_token_indices):
-    masked_hs = []
-    for k, masked_index in enumerate(batch_masked_token_indices):
-        masked_hs.append(batch_mlm_hs[k,masked_index,:])
-    return torch.stack(masked_hs,axis=0).cpu().detach().numpy() 
-"""
-# %%
+
+if __name__=="__main__":
+    args = get_args()
+    logging.info(args)
+
+    DATASET_NAME = args.dataset
+    MODEL_NAME = args.model
+    OUT_TYPE = args.outtype
+    NBATCHES = args.nbatches
+    #DATASET_NAME = "linzen"
+    #MODEL_NAME = "gpt2-medium"
+    #OUT_TYPE = "full"
+    #NBATCHES = 10
+
+    if MODEL_NAME in ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl"] and OUT_TYPE == "full":
+        OUT_TYPE = "ar"
+    elif MODEL_NAME == "bert-base-uncased" and OUT_TYPE == "full":
+        OUT_TYPE = "masked"
+
+    assert OUT_TYPE in ["ar", "masked", "tgt"], "Wrong outtype"
+
+    logging.info(
+        f"Creating {OUT_TYPE} dataset for raw data: "
+        f"{DATASET_NAME}, model {MODEL_NAME}."
+    )
+
+    FILEDIR = os.path.join(OUT, f"hidden_states/{DATASET_NAME}/{MODEL_NAME}")
+
+    assert os.path.exists(FILEDIR), \
+        f"Hidden state filedir doesn't exist: {FILEDIR}"
+
+    OUTFILE = os.path.join(DATASETS, f"processed/{DATASET_NAME}/{OUT_TYPE}/{DATASET_NAME}_{MODEL_NAME}_{OUT_TYPE}.pkl")
+    
+    #assert not os.path.isfile(OUTFILE), \
+    #    f"Output file {OUTFILE} already exists"
+
+    OUTPUT_DIR = os.path.dirname(OUTFILE)
+    TEMPDIR = os.path.join(OUTPUT_DIR, f"temp_{MODEL_NAME}_{OUT_TYPE}")
+    
+    assert not os.path.exists(TEMPDIR), f"Temp dir {TEMPDIR} already exists"
+    os.mkdir(TEMPDIR)
+
+    process_hidden_states(FILEDIR, OUTFILE, TEMPDIR, OUT_TYPE, nbatches=NBATCHES)

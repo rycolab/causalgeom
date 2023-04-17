@@ -23,7 +23,7 @@ with open(DATA_FILE, 'rb') as f:
 #%%
 language = "fr"
 OUT_DIR = os.path.join(OUT, f"wordlist")
-OUT_FILE = os.path.join(OUT_DIR, f"{language}_new.pkl")
+OUT_FILE = os.path.join(OUT_DIR, f"{language}_new_0.pkl")
 
 with open(OUT_FILE, 'rb') as f:
     token_data = pickle.load(f)
@@ -37,10 +37,26 @@ def find_substr(fullstr, substr):
     else:
         return ""
 
+def format_gender(gender):
+    if gender == "Masc":
+        return "m"
+    elif gender == "Fem|":
+        return "f"
+    else:
+        return ""
+
+def format_number(number):
+    if number == "Sing":
+        return "sg"
+    elif number == "Plur":
+        return "pl"
+    else:
+        return ""
+
 def get_gender_number(morphodict):
     gennumstr = max(morphodict, key=morphodict.get)
-    gender = find_substr(gennumstr, "Gender=")
-    number = find_substr(gennumstr, "Number=")
+    gender = format_gender(find_substr(gennumstr, "Gender="))
+    number = format_number(find_substr(gennumstr, "Number="))
     return gennumstr, gender, number
 
 def get_lemma(lemmadict):
@@ -83,23 +99,29 @@ for k, v in ADJ_dict.items():
 import pandas as pd
 df = pd.DataFrame(adj_list)
 
-mascpl = df[(df["gender"] == "Masc") & (df["number"] == "Plur")]
-mascsg = df[(df["gender"] == "Masc") & (df["number"] == "Sing")]
-masc = df[(df["gender"] == "Masc") & (df["number"] == "")]
-fempl = df[(df["gender"] == "Fem|") & (df["number"] == "Plur")]
-femsg = df[(df["gender"] == "Fem|") & (df["number"] == "Sing")]
-fem = df[(df["gender"] == "Fem|") & (df["number"] == "")]
-pl = df[(df["gender"] == "") & (df["number"] == "Plur")]
-sg = df[(df["gender"] == "") & (df["number"] == "Sing")]
+mascpl = df[(df["gender"] == "m") & (df["number"] == "pl")]
+mascsg = df[(df["gender"] == "m") & (df["number"] == "sg")]
+masc = df[(df["gender"] == "m") & (df["number"] == "")]
+fempl = df[(df["gender"] == "f") & (df["number"] == "pl")]
+femsg = df[(df["gender"] == "f") & (df["number"] == "sg")]
+fem = df[(df["gender"] == "f") & (df["number"] == "")]
+pl = df[(df["gender"] == "") & (df["number"] == "pl")]
+sg = df[(df["gender"] == "") & (df["number"] == "sg")]
 
 #%%
-vc = mascsg["lemma"].value_counts()
-dup_lemmas = vc[vc>1].index.to_numpy()
-mascsg_dedup = mascsg[~mascsg["lemma"].isin(dup_lemmas)]
+def dedup_lemma(df):
+    vc = df["lemma"].value_counts()
+    dup_lemmas = vc[vc>1].index.to_numpy()
+    df_dedup = df[~df["lemma"].isin(dup_lemmas)]
+    df_dup = df[df["lemma"].isin(dup_lemmas)]
+    return df_dedup, df_dup
 
-vc = femsg["lemma"].value_counts()
-dup_lemmas = vc[vc>1].index.to_numpy()
-femsg_dedup = femsg[~femsg["lemma"].isin(dup_lemmas)]
+mascsg_dedup, mascsg_dup = dedup_lemma(mascsg)
+femsg_dedup, femsg_dup = dedup_lemma(femsg)
+mascpl_dedup, mascpl_dup = dedup_lemma(mascpl)
+fempl_dedup, fempl_dup = dedup_lemma(fempl)
+masc_dedup, masc_dup = dedup_lemma(masc)
+fem_dedup, fem_dup = dedup_lemma(fem)
 
 sg_mascfem = pd.merge(
     left=mascsg_dedup,
@@ -109,15 +131,6 @@ sg_mascfem = pd.merge(
     suffixes=("_masc", "_fem")
 )
 
-#%%
-vc = mascpl["lemma"].value_counts()
-dup_lemmas = vc[vc>1].index.to_numpy()
-mascpl_dedup = mascpl[~mascpl["lemma"].isin(dup_lemmas)]
-
-vc = fempl["lemma"].value_counts()
-dup_lemmas = vc[vc>1].index.to_numpy()
-fempl_dedup = fempl[~fempl["lemma"].isin(dup_lemmas)]
-
 pl_mascfem = pd.merge(
     left=mascpl_dedup,
     right=fempl_dedup,
@@ -126,15 +139,6 @@ pl_mascfem = pd.merge(
     suffixes=("_masc", "_fem")
 )
 
-#%%
-vc = masc["lemma"].value_counts()
-dup_lemmas = vc[vc>1].index.to_numpy()
-masc_dedup = masc[~masc["lemma"].isin(dup_lemmas)]
-
-vc = fem["lemma"].value_counts()
-dup_lemmas = vc[vc>1].index.to_numpy()
-fem_dedup = fem[~fem["lemma"].isin(dup_lemmas)]
-
 na_mascfem = pd.merge(
     left=masc_dedup,
     right=fem_dedup,
@@ -142,9 +146,10 @@ na_mascfem = pd.merge(
     how="outer",
     suffixes=("_masc", "_fem")
 )
+
 #%%
 # TODO: 
-# - merged sg, pl masc and fem lists
-# - clean up said lists -- tgt list done
+# - once enough data gathered, clean up said lists
+# - handle dup lists manually
 # - take all other tokens and filter out the ones that are in the tgt list
 # done :)
