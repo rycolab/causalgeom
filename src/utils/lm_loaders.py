@@ -13,6 +13,7 @@ from paths import HF_CACHE
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
 
+GPT2_LIST = ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl", "gpt2-base-french", "gpt2-french-small"]
 
 def get_tokenizer(model_name):
     if model_name in ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl"]:
@@ -25,6 +26,18 @@ def get_tokenizer(model_name):
         return BertTokenizerFast.from_pretrained(
             model_name, model_max_length=512
         )
+    elif model_name == "gpt2-base-french":
+        tokenizer = GPT2TokenizerFast.from_pretrained(
+            "ClassCat/gpt2-base-french", model_max_length=512
+        )
+        tokenizer.pad_token = tokenizer.eos_token
+        return tokenizer
+    elif model_name == "gpt2-french-small":
+        tokenizer = GPT2TokenizerFast.from_pretrained(
+            "dbddv01/gpt2-french-small", model_max_length=512
+        )
+        tokenizer.pad_token = tokenizer.eos_token
+        return tokenizer
     else:
         raise ValueError(f"Model name {model_name} not supported")
 
@@ -41,6 +54,16 @@ def get_model(model_name):
             cache_dir=HF_CACHE, 
             is_decoder=False
         )
+    elif model_name == "gpt2-base-french":
+        return GPT2LMHeadModel.from_pretrained(
+            "ClassCat/gpt2-base-french", 
+            cache_dir=HF_CACHE
+        )
+    elif model_name == "gpt2-french-small":
+        return GPT2LMHeadModel.from_pretrained(
+            "dbddv01/gpt2-french-small", 
+            cache_dir=HF_CACHE
+        )
     else:
         raise ValueError(f"Model name {model_name} not supported")
 
@@ -49,7 +72,7 @@ def get_V(model_name, model=None):
     if model is None:
         model = get_model(model_name)
 
-    if model_name in ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl"]:
+    if model_name in GPT2_LIST:
         return model.lm_head.weight.detach().numpy()
     elif model_name == "bert-base-uncased":
         word_embeddings = model.bert.embeddings.word_embeddings.weight

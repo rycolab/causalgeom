@@ -27,7 +27,7 @@ def get_train_probes_args():
     argparser.add_argument(
         "-model",
         type=str,
-        choices=["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl", "bert-base-uncased"],
+        choices=["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl", "bert-base-uncased", "gpt2-base-french"],
         #required=True,
         dest="model_name",
         default="bert-base-uncased",

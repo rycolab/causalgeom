@@ -13,6 +13,7 @@ from tqdm import tqdm
 import pickle
 
 from transformers import GPT2TokenizerFast, GPT2LMHeadModel
+from transformers import BertTokenizerFast, BertForMaskedLM
 
 import torch
 from torch.utils.data import DataLoader, Dataset
@@ -30,35 +31,10 @@ import ipdb
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
 
-#%%
-DATASET_NAME = "linzen"
-SPLIT = "train"
-MODEL_NAME = "gpt2-large"
-OUTPUT_DIR = os.path.join(OUT, f"hidden_states/{DATASET_NAME}/{MODEL_NAME}")
-BATCH_SIZE = 64
 
-assert not os.path.exists(OUTPUT_DIR), \
-    f"Hidden state export dir exists: {OUTPUT_DIR}"
-
-os.mkdir(OUTPUT_DIR)
-
-#%%
-device = get_device()
-
-TOKENIZER = get_tokenizer(MODEL_NAME)
-TOKENIZER.pad_token = TOKENIZER.eos_token
-PAD_TOKEN_ID = TOKENIZER.encode(TOKENIZER.pad_token)[0]
-
-MODEL = get_model(MODEL_NAME)
-
-V = get_V(MODEL_NAME, MODEL)
-
-MODEL = MODEL.to(device)
-
-#%%
-data = load_dataset(DATASET_NAME, MODEL_NAME, SPLIT)
-
-#%%
+#%%#################
+# General Helpers  #
+####################
 class CustomDataset(Dataset, ABC):
     def __init__(self, list_of_samples):
         self.data = list_of_samples
@@ -70,32 +46,30 @@ class CustomDataset(Dataset, ABC):
     def __getitem__(self, index):
         return self.data[index]
 
-#%%
-ds = CustomDataset(data)
-dl = DataLoader(dataset = ds, batch_size=BATCH_SIZE)
-
-#%% Helpers
 def export_batch(output_dir, batch_num, batch_data):
     export_path = os.path.join(output_dir, f"batch_{batch_num}.pkl")
     
     with open(export_path, 'wb') as file:
         pickle.dump(batch_data, file, protocol=pickle.HIGHEST_PROTOCOL)
 
-def batch_tokenize_tgts(tgts):
-    return TOKENIZER(tgts)["input_ids"]
+#%%#################
+# AR Helpers       #
+####################
+def batch_tokenize_tgts(tgts, tokenizer):
+    return tokenizer(tgts)["input_ids"]
 
-def batch_tokenize_text(text):
-    return TOKENIZER(
+def batch_tokenize_text(text, tokenizer):
+    return tokenizer(
         text, return_tensors='pt', 
         padding="max_length", truncation=True
     )
 
-def get_raw_sample_hs(pre_tgt_ids, attention_mask, tgt_ids):
+def get_raw_sample_hs(pre_tgt_ids, attention_mask, tgt_ids, model):
     nopad_ti = pre_tgt_ids[attention_mask == 1]
     tgt_ti = torch.cat((nopad_ti, torch.LongTensor(tgt_ids)), 0)
     tgt_ti_dev = tgt_ti.to(device)
     with torch.no_grad():
-        output = MODEL(
+        output = model(
             input_ids=tgt_ti_dev, 
             #attention_mask=attention_mask, 
             labels=tgt_ti_dev,
@@ -111,11 +85,11 @@ def get_tgt_hs(raw_hs, tgt_tokens):
     tgt_hs = raw_hs[-(len(tgt_tokens)+1):]
     return tgt_hs
 
-def get_batch_hs(batch):
+def get_batch_hs_ar(batch, model, tokenizer, V):
     batch_hs = []
-    tok_facts = batch_tokenize_tgts(batch["fact"])
-    tok_foils = batch_tokenize_tgts(batch["foil"])
-    tok_text = batch_tokenize_text(batch["pre_tgt_text"])
+    tok_facts = batch_tokenize_tgts(batch["fact"], tokenizer)
+    tok_foils = batch_tokenize_tgts(batch["foil"], tokenizer)
+    tok_text = batch_tokenize_text(batch["pre_tgt_text"], tokenizer)
 
     for ti, am, tfa, tfo, fact, foil, tgt_label in zip(
         tok_text["input_ids"], 
@@ -131,10 +105,10 @@ def get_batch_hs(batch):
         ######################
         # NOTE: for dynamic program will need to separately
         # loop through all tokenizations of verb and iverb
-        fact_ti, fact_raw_hs = get_raw_sample_hs(ti, am, tfa)
+        fact_ti, fact_raw_hs = get_raw_sample_hs(ti, am, tfa, model)
         fact_hs = get_tgt_hs(fact_raw_hs, tfa)
 
-        foil_ti, foil_raw_hs = get_raw_sample_hs(ti, am, tfo)
+        foil_ti, foil_raw_hs = get_raw_sample_hs(ti, am, tfo, model)
         foil_hs = get_tgt_hs(foil_raw_hs, tfo)
 
         ######################
@@ -159,19 +133,88 @@ def get_batch_hs(batch):
         ))
     return batch_hs
 
+def collect_hs_ar(dl, model, tokenizer, V, output_dir):
+    for i, batch in enumerate(pbar:=tqdm(dl)):
+        pbar.set_description(f"Generating hidden states")
 
-#%%
-for i, batch in enumerate(pbar:=tqdm(dl)):
-    pbar.set_description(f"Generating hidden states")
+        batch_data = get_batch_hs_ar(batch, model, tokenizer, V)
+        export_batch(output_dir, i, batch_data)
 
-    batch_data = get_batch_hs(batch)
-    export_batch(OUTPUT_DIR, i, batch_data)
+        torch.cuda.empty_cache()
+    logging.info(f"Finished exporting data to {output_dir}.")
 
-    torch.cuda.empty_cache()
+#%%#################
+# Masked Helpers   #
+####################
+def format_batch_masked(batch_data, tokenizer, V):
+    """ after obtaining hidden states, goes sentence by sentence and fetches
+    fact and foil embeddings. 
+    - adds a 1 to the hidden state
+    """
+    data = []
+    for fact, foil, hs, tgt_label in zip(batch_data["fact"], 
+                                batch_data["foil"], 
+                                batch_data["hidden_states"],
+                                batch_data["tgt_label"]):
+        full_hs = np.append(hs, 1)
 
-logging.info(f"Finished exporting data to {OUTPUT_DIR}.")
-#logging.info(f"Dropped {total_tokenizer_drops} obs cuz of token issue, "
-#             f"{total_tokenizer_drops*100 / len(ds)} percent of obs")
+        fact_tok_ids = TOKENIZER.encode(fact)[1:-1]
+        foil_tok_ids = TOKENIZER.encode(foil)[1:-1]
+
+        if len(fact_tok_ids) == 1 and len(foil_tok_ids) == 1:
+            fact_embedding = V[fact_tok_ids,:].flatten()
+            foil_embedding = V[foil_tok_ids,:].flatten()
+        else:
+            fact_embedding = None
+            foil_embedding = None
+        
+        data.append(dict(
+            fact = fact,
+            foil = foil,
+            tgt_label = tgt_label,
+            input_ids_fact = fact_tok_ids,
+            fact_embedding = fact_embedding,
+            input_ids_foil = foil_tok_ids,
+            foil_embedding = foil_embedding,
+            hs = full_hs
+        ))
+    return data
+
+def collect_hs_masked(dl, model, tokenizer, mask_token_id, V, output_dir):
+    for i, batch in enumerate(pbar:=tqdm(dl)):
+        pbar.set_description(f"Generating hidden states")
+
+        # Compute MASK hidden state
+        tokenized_text = tokenizer(
+            batch["masked"], return_tensors='pt', 
+            padding="max_length", truncation=True
+        )
+        batch_mask_indices = torch.where(
+            (tokenized_text["input_ids"] == mask_token_id)
+        )
+        input_ids = tokenized_text["input_ids"].to(device)
+        token_type_ids = tokenized_text["token_type_ids"].to(device)
+        attention_mask = tokenized_text["attention_mask"].to(device)
+
+        with torch.no_grad():
+            output = model(
+                input_ids=input_ids, token_type_ids=token_type_ids, 
+                attention_mask=attention_mask, output_hidden_states=True
+            )
+            mlm_hs = model.cls.predictions.transform(
+                output["hidden_states"][-1]
+            )
+
+        #TODO:sanity check this with prob dist
+        batch["hidden_states"] = mlm_hs[batch_mask_indices].cpu().detach().numpy()
+
+        # Format and export batch
+        batch = format_batch_masked(batch, tokenizer, V)
+        export_batch(output_dir, i, batch)
+
+        torch.cuda.empty_cache()
+
+    logging.info(f"Finished exporting data to {output_dir}.")
 
 
 #%%
@@ -191,17 +234,11 @@ def get_args():
         help="MultiBERTs checkpoint for tokenizer and model"
     )
     argparser.add_argument(
-        "-outtype",
+        "-split",
         type=str,
-        choices=["full", "tgt"],
-        help="Export full dataset for probe training or just tgt"
-    )
-    argparser.add_argument(
-        "-nbatches",
-        type=int,
-        required=False,
+        choices=["train", "dev", "test"],
         default=None,
-        help="Number of batches to process"
+        help="For UD data, specifies which split to collect hs for"
     )
     return argparser.parse_args()
 
@@ -210,41 +247,47 @@ if __name__=="__main__":
     args = get_args()
     logging.info(args)
 
-    DATASET_NAME = args.dataset
-    MODEL_NAME = args.model
-    OUT_TYPE = args.outtype
-    NBATCHES = args.nbatches
-    #DATASET_NAME = "linzen"
-    #MODEL_NAME = "gpt2-medium"
-    #OUT_TYPE = "full"
-    #NBATCHES = 10
+    #dataset_name = args.dataset
+    #model_name = args.model
+    #split = args.split
+    dataset_name = "ud_fr_gsd"
+    model_name = "gpt2-base-french"
+    split = "dev"
+    batch_size = 64
 
-    if MODEL_NAME in ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl"] and OUT_TYPE == "full":
-        OUT_TYPE = "ar"
-    elif MODEL_NAME == "bert-base-uncased" and OUT_TYPE == "full":
-        OUT_TYPE = "masked"
+    # Load model, tokenizer
+    device = get_device()
 
-    assert OUT_TYPE in ["ar", "masked", "tgt"], "Wrong outtype"
+    tokenizer = get_tokenizer(model_name)
+    #pad_token_id = tokenizer.encode(tokenizer.pad_token)[0]
+    model = get_model(model_name)
+    V = get_V(model_name, model)
 
-    logging.info(
-        f"Creating {OUT_TYPE} dataset for raw data: "
-        f"{DATASET_NAME}, model {MODEL_NAME}."
-    )
+    model = model.to(device)
 
-    FILEDIR = os.path.join(OUT, f"hidden_states/{DATASET_NAME}/{MODEL_NAME}")
+    # load data
+    data = load_dataset(dataset_name, model_name, split)
+    ds = CustomDataset(data)
+    dl = DataLoader(dataset = ds, batch_size=batch_size)
 
-    assert os.path.exists(FILEDIR), \
-        f"Hidden state filedir doesn't exist: {FILEDIR}"
+    # Output dir
+    output_dir = os.path.join(OUT, f"hidden_states/{dataset_name}/{model_name}")
 
-    OUTFILE = os.path.join(DATASETS, f"processed/{DATASET_NAME}/{OUT_TYPE}/{DATASET_NAME}_{MODEL_NAME}_{OUT_TYPE}.pkl")
+    assert not os.path.exists(output_dir), \
+        f"Hidden state export dir exists: {output_dir}"
+
+    os.mkdir(output_dir)
+
+    # Collect HS
+    if model_name.startswith("gpt2"):
+        logging.info(f"Collecting hs for model {model_name} in AR mode.")
+        collect_hs_ar(dl, model, tokenizer, V, output_dir)
+    elif model_name in ["bert-base-uncased"]:
+        logging.info(f"Collecting hs for model {model_name} in MASKED mode.")
+        collect_hs_masked(dl, model, tokenizer, 
+            tokenizer.mask_token_id, V, output_dir)
+    else:
+        raise ValueError(f"Model name {model_name} incorrect.")
     
-    #assert not os.path.isfile(OUTFILE), \
-    #    f"Output file {OUTFILE} already exists"
 
-    OUTPUT_DIR = os.path.dirname(OUTFILE)
-    TEMPDIR = os.path.join(OUTPUT_DIR, f"temp_{MODEL_NAME}_{OUT_TYPE}")
-    
-    assert not os.path.exists(TEMPDIR), f"Temp dir {TEMPDIR} already exists"
-    os.mkdir(TEMPDIR)
 
-    process_hidden_states(FILEDIR, OUTFILE, TEMPDIR, OUT_TYPE, nbatches=NBATCHES)

@@ -69,9 +69,10 @@ def get_lemma(lemmadict):
 
 ADJ_dict = {}
 adj_list = []
+other_list = []
 for k, v in token_data.items():
     for kp, vp in v["token_tag"].items():
-        if kp.strip()=="ADJ" and (vp / v["count"]) > .5 and v["count"] > 500:
+        if kp.strip()=="ADJ" and (vp / v["count"]) > .5 and v["count"] > 50:
             gennumstr, gender, number = get_gender_number(v["token_morph"])
             lemma, lemmacount = get_lemma(v["token_lemma"])
             res = dict(
@@ -87,8 +88,13 @@ for k, v in token_data.items():
             adj_list.append(res)
         else:
             continue
+    other_list.append(
+        dict(
+            word=k,
+            count=v["count"]
+        )
+    )
 
-#%%
 gender_vals = set()
 number_vals = set()
 for k, v in ADJ_dict.items():
@@ -108,7 +114,7 @@ fem = df[(df["gender"] == "f") & (df["number"] == "")]
 pl = df[(df["gender"] == "") & (df["number"] == "pl")]
 sg = df[(df["gender"] == "") & (df["number"] == "sg")]
 
-#%%
+
 def dedup_lemma(df):
     vc = df["lemma"].value_counts()
     dup_lemmas = vc[vc>1].index.to_numpy()
@@ -153,3 +159,56 @@ na_mascfem = pd.merge(
 # - handle dup lists manually
 # - take all other tokens and filter out the ones that are in the tgt list
 # done :)
+
+#%%
+def filter_adjs(df, drop_threshold=5000):
+    filtered_df = df.dropna(subset=["adj_masc", "adj_fem"], inplace=False)
+    drop_df = filtered_df.drop(
+        filtered_df[(filtered_df["count_masc"] < drop_threshold) & 
+                (filtered_df["count_fem"] < drop_threshold)].index, 
+        axis=0
+    )
+    return drop_df
+
+#%%
+drop_threshold = 5000
+sglist = filter_adjs(sg_mascfem, drop_threshold)
+pllist = filter_adjs(pl_mascfem, drop_threshold)
+nalist = filter_adjs(na_mascfem, drop_threshold)
+
+lemma_list = pd.concat([sglist, pllist, nalist], axis=0)
+lemma_list["total_count"] = lemma_list["count_masc"] + lemma_list["count_fem"]
+lemma_list["p_0"] = lemma_list["count_masc"] / lemma_list["total_count"]
+lemma_list["p_1"] = lemma_list["count_fem"] / lemma_list["total_count"]
+lemma_final = lemma_list[["adj_masc", "adj_fem", "p_0", "p_1"]] # "count_masc", "count_fem", "number_masc"]]
+lemma_final.rename(
+    {"adj_masc":"lemma_0",
+     "adj_fem": "lemma_1"}, 
+    axis=1,
+    inplace=True
+)
+
+# %%
+#init_list_outpath = os.path.join(DATASETS, "processed/ud_fr_gsd/word_lists/init_adjlist.tsv")
+#final_list.to_csv(init_list_outpath, sep="\t")
+adj_list_outpath = os.path.join(DATASETS, "processed/fr/word_lists/adj_list.tsv")
+lemma_final.to_csv(adj_list_outpath, sep="\t")
+
+
+# %%
+other_df = pd.DataFrame(other_list)
+
+other_sub = other_df[other_df["count"]>10000]
+other_sub.sort_values(by="count", inplace=True, ascending=False)
+
+#%%
+masc_adj_list = lemma_final["lemma_0"].unique()
+fem_adj_list = lemma_final["lemma_1"].unique()
+
+other_sub["adj_flag"] = other_sub["word"].apply(lambda x: 1 if ((x in masc_adj_list) or (x in fem_adj_list)) else 0)
+other_sub.drop(other_sub[other_sub["adj_flag"]==1].index, axis=0, inplace=True)
+#%%
+other_list_outpath = os.path.join(DATASETS, "processed/fr/word_lists/other_list.tsv")
+other_sub[["word"]].to_csv(other_list_outpath, sep="\t")
+
+# %%

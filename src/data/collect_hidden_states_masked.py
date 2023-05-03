@@ -76,7 +76,7 @@ ds = CustomDataset(data)
 dl = DataLoader(dataset = ds, batch_size=BATCH_SIZE)
 
 #%%
-def format_batch_data(batch_data):
+def format_batch_masked(batch_data, tokenizer, V):
     """ after obtaining hidden states, goes sentence by sentence and fetches
     fact and foil embeddings. 
     - adds a 1 to the hidden state
@@ -145,37 +145,38 @@ formattedbatch, tokenizer_drops = format_batch_data(batch)
 """
 
 #%%
-for i, batch in enumerate(pbar:=tqdm(dl)):
-    pbar.set_description(f"Generating hidden states")
+def collect_hs_masked(dl, model, tokenizer, mask_token_id, V, output_dir):
+    for i, batch in enumerate(pbar:=tqdm(dl)):
+        pbar.set_description(f"Generating hidden states")
 
-    # Compute MASK hidden state
-    tokenized_text = TOKENIZER(
-        batch["masked"], return_tensors='pt', 
-        padding="max_length", truncation=True
-    )
-    batch_mask_indices = torch.where(
-        (tokenized_text["input_ids"] == MASK_TOKEN_ID)
-    )
-    input_ids = tokenized_text["input_ids"].to(device)
-    token_type_ids = tokenized_text["token_type_ids"].to(device)
-    attention_mask = tokenized_text["attention_mask"].to(device)
-
-    with torch.no_grad():
-        output = MODEL(
-            input_ids=input_ids, token_type_ids=token_type_ids, 
-            attention_mask=attention_mask, output_hidden_states=True
+        # Compute MASK hidden state
+        tokenized_text = tokenizer(
+            batch["masked"], return_tensors='pt', 
+            padding="max_length", truncation=True
         )
-        mlm_hs = MODEL.cls.predictions.transform(
-            output["hidden_states"][-1]
+        batch_mask_indices = torch.where(
+            (tokenized_text["input_ids"] == mask_token_id)
         )
+        input_ids = tokenized_text["input_ids"].to(device)
+        token_type_ids = tokenized_text["token_type_ids"].to(device)
+        attention_mask = tokenized_text["attention_mask"].to(device)
 
-    #TODO:sanity check this with prob dist
-    batch["hidden_states"] = mlm_hs[batch_mask_indices].cpu().detach().numpy()
+        with torch.no_grad():
+            output = model(
+                input_ids=input_ids, token_type_ids=token_type_ids, 
+                attention_mask=attention_mask, output_hidden_states=True
+            )
+            mlm_hs = model.cls.predictions.transform(
+                output["hidden_states"][-1]
+            )
 
-    # Format and export batch
-    batch = format_batch_data(batch)
-    export_batch(OUTPUT_DIR, i, batch)
+        #TODO:sanity check this with prob dist
+        batch["hidden_states"] = mlm_hs[batch_mask_indices].cpu().detach().numpy()
 
-    torch.cuda.empty_cache()
+        # Format and export batch
+        batch = format_batch_masked(batch, tokenizer, V)
+        export_batch(output_dir, i, batch)
 
-logging.info(f"Finished exporting data to {OUTPUT_DIR}.")
+        torch.cuda.empty_cache()
+
+    logging.info(f"Finished exporting data to {output_dir}.")

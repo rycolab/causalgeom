@@ -103,7 +103,7 @@ def load_udfr(model_type, split_path):
 # Preprocessed Dataset General Loader #
 #######################################
 def get_model_type(model_name):
-    if model_name in ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl"]:
+    if model_name in ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl", "gpt2-base-french"]:
         return "ar"
     elif model_name == "bert-base-uncased":
         return "masked"
