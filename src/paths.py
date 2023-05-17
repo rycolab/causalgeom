@@ -16,4 +16,6 @@ UNIMORPH_ENG = "/cluster/work/cotterell/cguerner/eng/eng"
 
 UD_FRENCH_GSD = "/cluster/work/cotterell/cguerner/UD_French-GSD"
 UD_FRENCH_ParTUT = "/cluster/work/cotterell/cguerner/UD_French-ParTUT"
-UD_FRENCH_Rhapsodie = "/cluster/work/cotterell/cguerner/UD_French-ParTUT"
+UD_FRENCH_Rhapsodie = "/cluster/work/cotterell/cguerner/UD_French-Rhapsodie"
+
+FR_DATASETS = ["ud_fr_gsd", "ud_fr_partut", "ud_fr_rhapsodie"]

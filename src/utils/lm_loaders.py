@@ -6,6 +6,7 @@ import coloredlogs
 import torch
 from transformers import GPT2TokenizerFast, GPT2LMHeadModel
 from transformers import BertTokenizerFast, BertForMaskedLM
+from transformers import CamembertForMaskedLM, CamembertTokenizer
 
 sys.path.append('./src/')
 from paths import HF_CACHE
@@ -14,6 +15,7 @@ coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
 
 GPT2_LIST = ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl", "gpt2-base-french", "gpt2-french-small"]
+BERT_LIST = ["bert-base-uncased", "camembert-base"]
 
 def get_tokenizer(model_name):
     if model_name in ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl"]:
@@ -22,10 +24,6 @@ def get_tokenizer(model_name):
         )
         tokenizer.pad_token = tokenizer.eos_token
         return tokenizer
-    elif model_name == "bert-base-uncased":
-        return BertTokenizerFast.from_pretrained(
-            model_name, model_max_length=512
-        )
     elif model_name == "gpt2-base-french":
         tokenizer = GPT2TokenizerFast.from_pretrained(
             "ClassCat/gpt2-base-french", model_max_length=512
@@ -38,6 +36,14 @@ def get_tokenizer(model_name):
         )
         tokenizer.pad_token = tokenizer.eos_token
         return tokenizer
+    elif model_name == "bert-base-uncased":
+        return BertTokenizerFast.from_pretrained(
+            model_name, model_max_length=512
+        )
+    elif model_name == "camembert-base":
+        return CamembertTokenizer.from_pretrained(
+            model_name, model_max_length=512
+        )
     else:
         raise ValueError(f"Model name {model_name} not supported")
 
@@ -47,12 +53,6 @@ def get_model(model_name):
         return GPT2LMHeadModel.from_pretrained(
             model_name, 
             cache_dir=HF_CACHE
-        )
-    elif model_name == "bert-base-uncased":
-        return BertForMaskedLM.from_pretrained(
-            model_name, 
-            cache_dir=HF_CACHE, 
-            is_decoder=False
         )
     elif model_name == "gpt2-base-french":
         return GPT2LMHeadModel.from_pretrained(
@@ -64,11 +64,24 @@ def get_model(model_name):
             "dbddv01/gpt2-french-small", 
             cache_dir=HF_CACHE
         )
+    elif model_name == "bert-base-uncased":
+        return BertForMaskedLM.from_pretrained(
+            model_name, 
+            cache_dir=HF_CACHE, 
+            is_decoder=False
+        )
+    elif model_name == "camembert-base":
+        return CamembertForMaskedLM.from_pretrained(
+            model_name, 
+            cache_dir=HF_CACHE, 
+            #is_decoder=False
+        )
     else:
         raise ValueError(f"Model name {model_name} not supported")
 
 
 def get_V(model_name, model=None):
+    #TODO: add camembert
     if model is None:
         model = get_model(model_name)
 
@@ -77,6 +90,14 @@ def get_V(model_name, model=None):
     elif model_name == "bert-base-uncased":
         word_embeddings = model.bert.embeddings.word_embeddings.weight
         bias = model.cls.predictions.decoder.bias
+        return torch.cat(
+            (word_embeddings, bias.view(-1, 1)), dim=1).detach().numpy()
+    elif model_name == "camembert-base":
+        # i checked that the decoder linear layer weights are tied to the embeddings
+        # that said there is no bias at the embedding level, had to fetch the 
+        # decoder bias.
+        word_embeddings = model.lm_head.decoder.weight
+        bias = model.lm_head.decoder.bias
         return torch.cat(
             (word_embeddings, bias.view(-1, 1)), dim=1).detach().numpy()
     else:

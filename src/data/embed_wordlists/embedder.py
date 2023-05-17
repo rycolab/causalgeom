@@ -18,8 +18,8 @@ from scipy.special import softmax, kl_div
 #sys.path.append('../../')
 sys.path.append('./src/')
 
-from paths import DATASETS, OUT
-from utils.lm_loaders import get_tokenizer, get_V, GPT2_LIST
+from paths import DATASETS, OUT, FR_DATASETS
+from utils.lm_loaders import get_tokenizer, get_V, GPT2_LIST, BERT_LIST
 
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
@@ -38,34 +38,35 @@ def get_args():
     argparser.add_argument(
         "-dataset", 
         type=str,
-        choices=["linzen", "ud_fr_gsd"],
+        choices=["linzen"] + FR_DATASETS,
         default="linzen",
-        help="Dataset to extract counts from"
+        help="Dataset associated -- STILL RELEVANT?"
     )
     argparser.add_argument(
         "-model",
         type=str,
-        choices=["bert-base-uncased"] + GPT2_LIST,
-        help="MultiBERTs checkpoint for tokenizer and model"
+        choices=BERT_LIST + GPT2_LIST,
+        help="Models to create embedding files for"
     )
     return argparser.parse_args()
 
 def get_wordlist_paths(dataset_name):
     if dataset_name == "linzen":
         return LINZEN_WORD_LIST_PATH, LINZEN_VERB_LIST_PATH
-    elif dataset_name in ["ud_fr_gsd"]:
+    elif dataset_name in FR_DATASETS:
         return FR_WORD_LIST_PATH, FR_ADJ_LIST_PATH
     else:
         raise ValueError("Invalid dataset name")
 
 def get_outfile_paths(dataset_name, model_name):
+    #TODO: GET RID OF DATASET NAME IN THIS, JUST DO IT BY LANGUAGE/CONCEPT.
     if dataset_name == "linzen":
         word_emb_outfile = os.path.join(DATASETS, f"processed/{dataset_name}/word_lists/{model_name}_word_embeds.npy")
         verb_p_outfile = os.path.join(DATASETS, f"processed/{dataset_name}/word_lists/{model_name}_verb_p.npy")
         sg_emb_outfile = os.path.join(DATASETS, f"processed/{dataset_name}/word_lists/{model_name}_sg_embeds.npy")
         pl_emb_outfile = os.path.join(DATASETS, f"processed/{dataset_name}/word_lists/{model_name}_pl_embeds.npy")
         return word_emb_outfile, verb_p_outfile, sg_emb_outfile, pl_emb_outfile
-    elif dataset_name in ["ud_fr_gsd"]:
+    elif dataset_name in FR_DATASETS:
         word_emb_outfile = os.path.join(DATASETS, f"processed/fr/word_lists/{model_name}_word_embeds.npy")
         adj_p_outfile = os.path.join(DATASETS, f"processed/fr/word_lists/{model_name}_adj_p.npy")
         masc_emb_outfile = os.path.join(DATASETS, f"processed/fr/word_lists/{model_name}_masc_embeds.npy")
@@ -96,7 +97,7 @@ def tokenize_word(tokenizer, word, masked, add_space):
 def tokenize_word_handler(model_name, tokenizer, word, add_space=False):
     if model_name in GPT2_LIST:
         return tokenize_word(tokenizer, word, False, add_space)
-    elif model_name == "bert-base-uncased":
+    elif model_name in BERT_LIST:
         return tokenize_word(tokenizer, word, True, False)
     else:
         raise ValueError("Incorrect model name")

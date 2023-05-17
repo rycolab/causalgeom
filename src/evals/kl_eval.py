@@ -21,7 +21,7 @@ sys.path.append('./src/')
 
 from paths import DATASETS, OUT
 from utils.lm_loaders import get_tokenizer, get_V
-from data.dataset_loaders import load_hs, load_model_eval
+from utils.dataset_loaders import load_hs, load_model_eval
 
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")

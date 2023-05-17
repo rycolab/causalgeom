@@ -16,9 +16,9 @@ sys.path.append('../../')
 from paths import HF_CACHE, OUT, DATASETS
 
 #%% UD FR DATA FOR REFERENCE
-DATA_FILE = os.path.join(DATASETS, "preprocessed/ud_fr_gsd/train.pkl")
-with open(DATA_FILE, 'rb') as f:      
-    sent_data = pickle.load(f)
+#DATA_FILE = os.path.join(DATASETS, "preprocessed/ud_fr_gsd/train.pkl")
+#with open(DATA_FILE, 'rb') as f:      
+#    sent_data = pickle.load(f)
 
 #%%
 language = "fr"
@@ -194,6 +194,16 @@ lemma_final.rename(
 adj_list_outpath = os.path.join(DATASETS, "processed/fr/word_lists/adj_list.tsv")
 lemma_final.to_csv(adj_list_outpath, sep="\t")
 
+#%% concept prob
+totals = lemma_list.sum()[["count_masc", "count_fem"]]
+totals["total"] = totals.sum()
+totals["p_0"] = totals["count_masc"] / totals["total"]
+totals["p_1"] = totals["count_fem"] / totals["total"]
+
+p_concept_outfile = os.path.join(DATASETS, "processed/fr/word_lists/p_fr_gender.pkl")
+p_concept = totals[["p_0", "p_1"]]
+with open(p_concept_outfile, 'wb') as f:
+    pickle.dump(p_concept, f, protocol=pickle.HIGHEST_PROTOCOL)
 
 # %%
 other_df = pd.DataFrame(other_list)

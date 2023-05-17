@@ -5,6 +5,9 @@ import sys
 import argparse
 import coloredlogs
 
+from utils.lm_loaders import GPT2_LIST, BERT_LIST
+from paths import FR_DATASETS
+
 #%%#################
 # Args             #
 ####################
@@ -19,7 +22,7 @@ def get_train_probes_args():
     argparser.add_argument(
         "-dataset",
         type=str,
-        choices=["linzen", "ud_fr_gsd"],
+        choices=["linzen"] +  FR_DATASETS,
         dest="dataset_name",
         default="linzen",
         help="Dataset to train on"
@@ -27,7 +30,7 @@ def get_train_probes_args():
     argparser.add_argument(
         "-model",
         type=str,
-        choices=["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl", "bert-base-uncased", "gpt2-base-french"],
+        choices=BERT_LIST + GPT2_LIST,
         #required=True,
         dest="model_name",
         default="bert-base-uncased",
@@ -164,7 +167,7 @@ def get_train_probes_args():
 
 #%% Helpers
 def get_model_defaults(model_name):
-    if model_name.startswith("gpt2"):
+    if model_name in GPT2_LIST:
         defaults = dict(
             P_lr = 0.001,
             P_sched_patience=10,
@@ -172,7 +175,7 @@ def get_model_defaults(model_name):
             clf_n_lr_red = 5,
             clf_sched_patience=10
         )
-    elif model_name == "bert-base-uncased":
+    elif model_name in BERT_LIST:
         defaults = dict(
             P_lr=0.003,
             P_sched_patience=4,
@@ -249,7 +252,7 @@ def set_train_probes_defaults(config):
         "verbose": True
     }
     #rlace_epsilon = 0.001 # stop 0.1% from majority acc (I TURNED THIS OFF)
-    config["run_name"] = f"{config['model_name']}_k{config['k']}_Pms{config['P_milestones']}_Pg{config['P_gamma']}_clfms{config['clf_milestones']}_clfg{config['clf_gamma']}"
+    config["run_name"] = f"{config['model_name']}_k{config['k']}_Plr{config['P_lr']}_Pms{config['P_milestones']}_clflr{config['clf_lr']}_clfms{config['clf_milestones']}"
     return config
 
 def get_train_probes_config():

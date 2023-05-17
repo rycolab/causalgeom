@@ -14,6 +14,7 @@ import pickle
 
 from transformers import GPT2TokenizerFast, GPT2LMHeadModel
 from transformers import BertTokenizerFast, BertForMaskedLM
+from transformers.activations import gelu
 
 import torch
 from torch.utils.data import DataLoader, Dataset
@@ -22,10 +23,10 @@ from abc import ABC
 #sys.path.append('..')
 sys.path.append('./src/')
 
-from paths import OUT, HF_CACHE
+from paths import OUT, HF_CACHE, FR_DATASETS
 from utils.cuda_loaders import get_device
-from utils.lm_loaders import get_model, get_tokenizer, get_V
-from data.dataset_loaders import load_dataset
+from utils.lm_loaders import get_model, get_tokenizer, get_V, GPT2_LIST, BERT_LIST
+from utils.dataset_loaders import load_dataset
 import ipdb
 
 coloredlogs.install(level=logging.INFO)
@@ -158,8 +159,8 @@ def format_batch_masked(batch_data, tokenizer, V):
                                 batch_data["tgt_label"]):
         full_hs = np.append(hs, 1)
 
-        fact_tok_ids = TOKENIZER.encode(fact)[1:-1]
-        foil_tok_ids = TOKENIZER.encode(foil)[1:-1]
+        fact_tok_ids = tokenizer.encode(fact)[1:-1]
+        foil_tok_ids = tokenizer.encode(foil)[1:-1]
 
         if len(fact_tok_ids) == 1 and len(foil_tok_ids) == 1:
             fact_embedding = V[fact_tok_ids,:].flatten()
@@ -180,7 +181,7 @@ def format_batch_masked(batch_data, tokenizer, V):
         ))
     return data
 
-def collect_hs_masked(dl, model, tokenizer, mask_token_id, V, output_dir):
+def collect_hs_masked(dl, model_name, model, tokenizer, mask_token_id, V, output_dir):
     for i, batch in enumerate(pbar:=tqdm(dl)):
         pbar.set_description(f"Generating hidden states")
 
@@ -189,21 +190,32 @@ def collect_hs_masked(dl, model, tokenizer, mask_token_id, V, output_dir):
             batch["masked"], return_tensors='pt', 
             padding="max_length", truncation=True
         )
+        #ipdb.set_trace()
         batch_mask_indices = torch.where(
             (tokenized_text["input_ids"] == mask_token_id)
         )
         input_ids = tokenized_text["input_ids"].to(device)
-        token_type_ids = tokenized_text["token_type_ids"].to(device)
         attention_mask = tokenized_text["attention_mask"].to(device)
+        if model_name=="bert-base-uncased":
+            token_type_ids = tokenized_text["token_type_ids"].to(device)
 
         with torch.no_grad():
-            output = model(
-                input_ids=input_ids, token_type_ids=token_type_ids, 
-                attention_mask=attention_mask, output_hidden_states=True
-            )
-            mlm_hs = model.cls.predictions.transform(
-                output["hidden_states"][-1]
-            )
+            if model_name=="bert-base-uncased":
+                output = model(
+                    input_ids=input_ids, token_type_ids=token_type_ids, 
+                    attention_mask=attention_mask, output_hidden_states=True
+                )
+                mlm_hs = model.cls.predictions.transform(
+                    output["hidden_states"][-1]
+                )
+            elif model_name=="camembert-base":
+                output = model(
+                    input_ids=input_ids, 
+                    attention_mask=attention_mask, 
+                    output_hidden_states=True
+                )
+                last_layer_hs = output["hidden_states"][-1]
+                mlm_hs = model.lm_head.layer_norm(gelu(model.lm_head.dense(last_layer_hs)))
 
         #TODO:sanity check this with prob dist
         batch["hidden_states"] = mlm_hs[batch_mask_indices].cpu().detach().numpy()
@@ -223,15 +235,15 @@ def get_args():
     argparser.add_argument(
         "-dataset", 
         type=str,
-        choices=["linzen", "ud_fr_gsd"],
+        choices=["linzen"] + FR_DATASETS,
         default="linzen",
-        help="Dataset to extract counts from"
+        help="Dataset to collect hidden states for"
     )
     argparser.add_argument(
         "-model",
         type=str,
-        choices=["bert-base-uncased", "gpt2", "gpt2-medium", "gpt2-large", "gpt2-base-french"],
-        help="MultiBERTs checkpoint for tokenizer and model"
+        choices=BERT_LIST + GPT2_LIST,
+        help="Model for computing hidden states"
     )
     argparser.add_argument(
         "-split",
@@ -247,12 +259,12 @@ if __name__=="__main__":
     args = get_args()
     logging.info(args)
 
-    #dataset_name = args.dataset
-    #model_name = args.model
-    #split = args.split
-    dataset_name = "ud_fr_gsd"
-    model_name = "gpt2-base-french"
-    split = "dev"
+    dataset_name = args.dataset
+    model_name = args.model
+    split = args.split
+    #dataset_name = "ud_fr_gsd"
+    #model_name = "gpt2-base-french"
+    #split = "dev"
     batch_size = 64
 
     # Load model, tokenizer
@@ -271,20 +283,23 @@ if __name__=="__main__":
     dl = DataLoader(dataset = ds, batch_size=batch_size)
 
     # Output dir
-    output_dir = os.path.join(OUT, f"hidden_states/{dataset_name}/{model_name}")
+    if split is None:
+        output_dir = os.path.join(OUT, f"hidden_states/{dataset_name}/{model_name}")
+    else:
+        output_dir = os.path.join(OUT, f"hidden_states/{dataset_name}/{model_name}/{split}")
 
     assert not os.path.exists(output_dir), \
         f"Hidden state export dir exists: {output_dir}"
 
-    os.mkdir(output_dir)
+    os.makedirs(output_dir)
 
     # Collect HS
-    if model_name.startswith("gpt2"):
+    if model_name in GPT2_LIST:
         logging.info(f"Collecting hs for model {model_name} in AR mode.")
         collect_hs_ar(dl, model, tokenizer, V, output_dir)
-    elif model_name in ["bert-base-uncased"]:
+    elif model_name in BERT_LIST:
         logging.info(f"Collecting hs for model {model_name} in MASKED mode.")
-        collect_hs_masked(dl, model, tokenizer, 
+        collect_hs_masked(dl, model_name, model, tokenizer, 
             tokenizer.mask_token_id, V, output_dir)
     else:
         raise ValueError(f"Model name {model_name} incorrect.")
