@@ -19,13 +19,19 @@ def get_train_probes_args():
         default="test",
         help="Directory for exporting run eval"
     )
+    #argparser.add_argument(
+    #    "-dataset",
+    #    type=str,
+    #    choices=["linzen"] +  FR_DATASETS,
+    #    dest="dataset_name",
+    #    default="linzen",
+    #    help="Dataset to train on"
+    #)
     argparser.add_argument(
-        "-dataset",
+        "-concept",
         type=str,
-        choices=["linzen"] +  FR_DATASETS,
-        dest="dataset_name",
-        default="linzen",
-        help="Dataset to train on"
+        choices=["gender", "number"],
+        help="Concept to erase"
     )
     argparser.add_argument(
         "-model",

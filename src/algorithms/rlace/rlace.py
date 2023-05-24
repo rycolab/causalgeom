@@ -188,7 +188,7 @@ def solve_adv_game(X_train, y_train, X_dev, y_dev,
                    scheduler_class=None, scheduler_params_P=None, 
                    scheduler_params_predictor=None,
                    torch_outfile=None, wb=False, wb_run=None, 
-                   dataset_name=None, model_name=None,
+                   concept=None, model_name=None,
                    X_pca=None):
     """
     :param X: The input (np array)
@@ -259,7 +259,7 @@ def solve_adv_game(X_train, y_train, X_dev, y_dev,
 
     burn_P, burn_loss = None, -1
 
-    word_emb, sg_emb, pl_emb, verb_probs, sg_pl_prob = load_model_eval(dataset_name, model_name)
+    word_emb, sg_emb, pl_emb, verb_probs, sg_pl_prob = load_model_eval(concept, model_name)
 
     if wb:
         if wb_run is None:

@@ -41,36 +41,40 @@ def define_target(tgt_label):
 ## MASKED 
 def format_sample_masked(sample):
     hs = sample["hs"]
-    fact = sample["fact_embedding"]
-    foil = sample["foil_embedding"]
+    fact_emb = sample["fact_embedding"]
+    foil_emb = sample["foil_embedding"]
+    fact = sample["fact"]
+    foil = sample["foil"]
     tgt_label = define_target(sample["tgt_label"])
     max_tokens = count_tgt_tokens(sample)
     if tgt_label == 0 and max_tokens == 1:
         y = 0
-        u = foil - fact
-        return (hs, u, y)
+        u = foil - fact_emb
+        return (hs, u, y, fact, foil)
     elif tgt_label == 1 and max_tokens == 1:
         y = 1
-        u = fact - foil
-        return (hs, u, y)
+        u = fact_emb - foil
+        return (hs, u, y, fact, foil)
     else: # max_tokens > 1:
         return None 
     
 ## AR
 def format_sample_ar(sample):
     hs = sample["fact_hs"][0,:]
-    fact = sample["fact_embedding"]
-    foil = sample["foil_embedding"]
+    fact_emb = sample["fact_embedding"]
+    foil_emb = sample["foil_embedding"]
+    fact = sample["fact"]
+    foil = sample["foil"]
     tgt_label = define_target(sample["tgt_label"])
     max_tokens = count_tgt_tokens(sample)
     if tgt_label == 0 and max_tokens == 1:
         y = 0
-        u = foil.flatten() - fact.flatten()
-        return (hs, u, y)
+        u = foil_emb.flatten() - fact_emb.flatten()
+        return (hs, u, y, fact, foil)
     elif tgt_label == 1 and max_tokens == 1:
         y = 1
-        u = fact.flatten() - foil.flatten()
-        return (hs, u, y)
+        u = fact_emb.flatten() - foil_emb.flatten()
+        return (hs, u, y, fact, foil)
     else: # max_tokens > 1
         return None
     

@@ -300,7 +300,7 @@ def get_hs_sample_index(hs, nsamples=200):
     np.random.shuffle(idx)
     return idx[:nsamples]
 
-def compute_kls(hs, P, I_P, word_emb, sg_emb, pl_emb, verb_probs, sg_pl_prob, 
+def compute_kls(X, y, P, I_P, word_emb, sg_emb, pl_emb, pair_marginals, concept_marginal, 
     nsamples=200, faith=True, er_kls=True, er_mis=True, X_pca = None):
     ind = get_hs_sample_index(hs, nsamples)    
 
