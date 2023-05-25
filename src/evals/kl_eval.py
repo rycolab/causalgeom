@@ -41,23 +41,23 @@ def load_run_output(run_path):
 #%%#################
 # KL Helpers       #
 ####################
-def get_logs(hidden_state, word_emb, sg_emb, pl_emb):
-    word_log = word_emb @ hidden_state
-    sg_log = sg_emb @ hidden_state
-    pl_log = pl_emb @ hidden_state
-    return word_log, sg_log, pl_log
+def get_logs(hidden_state, other_emb, l0_emb, l1_emb):
+    other_log = other_emb @ hidden_state
+    l0_log = l0_emb @ hidden_state
+    l1_log = l1_emb @ hidden_state
+    return other_log, l0_log, l1_log
 
-def get_probs(hidden_state, word_emb, sg_emb, pl_emb):
-    word_log, sg_log, pl_log = get_logs(
-        hidden_state, word_emb, sg_emb, pl_emb
+def get_probs(hidden_state, other_emb, l0_emb, l1_emb):
+    other_log, l0_log, l1_log = get_logs(
+        hidden_state, other_emb, l0_emb, l1_emb
     )
-    all_logits = np.hstack([word_log, sg_log, pl_log])
+    all_logits = np.hstack([other_log, l0_log, l1_log])
     all_probs = softmax(all_logits)
-    word_probs = all_probs[:word_log.shape[0]]
-    sg_end = word_log.shape[0] + sg_log.shape[0]
-    sg_probs = all_probs[word_log.shape[0]:sg_end]
-    pl_probs = all_probs[sg_end:]
-    return all_probs, word_probs, sg_probs, pl_probs
+    other_probs = all_probs[:other_log.shape[0]]
+    l0_end = other_log.shape[0] + l0_log.shape[0]
+    l0_probs = all_probs[other_log.shape[0]:l0_end]
+    l1_probs = all_probs[l0_end:]
+    return all_probs, other_probs, l0_probs, l1_probs
 
 def get_merged_probs(word_probs, sg_probs, pl_probs):
     lemma_merged = sg_probs + pl_probs
@@ -79,8 +79,8 @@ def get_all_pairwise_distribs(base_distribs, P_distribs, I_P_distribs):
     I_P_pair_probs = normalize_pairs(I_P_distribs["sg"], I_P_distribs["pl"])
     return base_pair_probs, P_pair_probs, I_P_pair_probs
 
-def get_distribs(h, word_emb, sg_emb, pl_emb):
-    all_split, words, sg, pl = get_probs(h, word_emb, sg_emb, pl_emb)
+def get_distribs(h, other_emb, l0_emb, l1_emb):
+    all_split, words, sg, pl = get_probs(h, other_emb, l0_emb, l1_emb)
     lemma_split = np.hstack([sg, pl])
     lemma_merged, all_merged = get_merged_probs(
         words, sg, pl
@@ -95,23 +95,22 @@ def get_distribs(h, word_emb, sg_emb, pl_emb):
         lemma_merged=lemma_merged
     )
 
-def get_all_distribs(h, P, I_P, word_emb, sg_emb, pl_emb, X_pca=None):
-    base_distribs = get_distribs(h, word_emb, sg_emb, pl_emb)
+def get_all_distribs(h, P, I_P, other_emb, l0_emb, l1_emb, X_pca=None):
+    base_distribs = get_distribs(h, other_emb, l0_emb, l1_emb)
     if X_pca is None:
-        P_distribs = get_distribs(P @ h, word_emb, sg_emb, pl_emb)
-        I_P_distribs = get_distribs(I_P @ h, word_emb, sg_emb, pl_emb)
+        P_distribs = get_distribs(P @ h, other_emb, l0_emb, l1_emb)
+        I_P_distribs = get_distribs(I_P @ h, other_emb, l0_emb, l1_emb)
     else:
-        #TODO: debug into this
         h = h.reshape(1,-1)
         P_distribs = get_distribs(
             X_pca.inverse_transform(
                 (P @ X_pca.transform(h).reshape(-1)).reshape(1, -1)).reshape(-1), 
-            word_emb, sg_emb, pl_emb
+            other_emb, l0_emb, l1_emb
         )
         I_P_distribs = get_distribs(
             X_pca.inverse_transform(
                 (I_P @ X_pca.transform(h).reshape(-1)).reshape(1, -1)).reshape(-1), 
-            word_emb, sg_emb, pl_emb
+            other_emb, l0_emb, l1_emb
         )
     return base_distribs, P_distribs, I_P_distribs
 
@@ -179,14 +178,14 @@ def compute_erasure_kl(base_pair_probs, proj_pair_probs, agg_func=np.sum):
         obs_er_kls.append(compute_kl(base_pair, proj_pair, agg_func))
     return np.mean(obs_er_kls)
 
-def compute_erasure_kls(base_pair_probs, proj_pair_probs, verb_probs, prefix="", agg_func=np.sum):
+def compute_erasure_kls(base_pair_probs, proj_pair_probs, pair_probs, prefix="", agg_func=np.sum):
     erasure_kls = {
         f"{prefix}er_kl_base_proj": compute_erasure_kl(
             base_pair_probs, proj_pair_probs, agg_func),
         f"{prefix}er_kl_maj_base": compute_erasure_kl(
-            verb_probs, base_pair_probs, agg_func),
+            pair_probs, base_pair_probs, agg_func),
         f"{prefix}er_kl_maj_proj": compute_erasure_kl(
-            verb_probs, proj_pair_probs, agg_func)
+            pair_probs, proj_pair_probs, agg_func)
     }
     return erasure_kls
 
@@ -211,25 +210,62 @@ def get_all_pairwise_mis(verb_pairs_probs, base_pair_probs, P_pair_probs, I_P_pa
     return res
 
 # erasure overall MI
-def get_sg_pl_prob(sg_prob, pl_prob):
-    total_sg_prob = np.sum(sg_prob)
-    total_pl_prob = np.sum(pl_prob)
-    total_prob = total_sg_prob + total_pl_prob
-    sg_pl_prob = np.hstack([total_sg_prob, total_pl_prob]) / total_prob
-    return sg_pl_prob
+def get_lemma_marginals(l0_prob, l1_prob):
+    total_l0_prob = np.sum(l0_prob)
+    total_l1_prob = np.sum(l1_prob)
+    normalizer = total_l0_prob + total_l1_prob
+    l0_l1_marginals = np.hstack([total_l0_prob, total_l1_prob]) / normalizer
+    return l0_l1_marginals
 
-def compute_overall_mi(uncond_sg_pl_prob, cond_sg_probs, cond_pl_probs):
-    cond_sg_pl_prob = get_sg_pl_prob(cond_sg_probs, cond_pl_probs)
-    return entropy(uncond_sg_pl_prob) - entropy(cond_sg_pl_prob)
+def get_all_marginals(l0_prob, l1_prob, other_prob):
+    total_l0_prob = np.sum(l0_prob)
+    total_l1_prob = np.sum(l1_prob)
+    total_other_prob = np.sum(other_prob)
+    normalizer = total_l0_prob + total_l1_prob + total_other_prob
+    all_marginals = np.hstack(
+        [total_l0_prob, total_l1_prob, total_other_prob]) / normalizer
+    return all_marginals
 
-def get_all_overall_mis(uncond_sg_pl_prob, base_distribs, P_distribs, I_P_distribs):
+def compute_overall_mi(concept_marginals, cond_l0_probs, cond_l1_probs, cond_other_probs):
+    all_marginals = [
+        concept_marginals["p_0_incl_other"], 
+        concept_marginals["p_1_incl_other"], 
+        concept_marginals["p_other_incl_other"]
+    ]
+    cond_all_marginals = get_all_marginals(
+        cond_l0_probs, cond_l1_probs, cond_other_probs
+    )
+    return entropy(all_marginals) - entropy(cond_all_marginals)
+
+def compute_lemma_mi(concept_marginals, cond_l0_probs, cond_l1_probs):
+    lemma_marginals = [
+        concept_marginals["p_0_wout_other"], 
+        concept_marginals["p_1_wout_other"]
+    ]
+    cond_lemma_marginals = get_lemma_marginals(
+        cond_l0_probs, cond_l1_probs
+    )
+    return entropy(lemma_marginals) - entropy(cond_lemma_marginals)
+
+def get_all_overall_mis(concept_marginals, base_distribs, P_distribs, I_P_distribs):
     res = dict(
         base_overall_mi = compute_overall_mi(
-            uncond_sg_pl_prob, base_distribs["sg"], base_distribs["pl"]),
+            concept_marginals, base_distribs["sg"], base_distribs["pl"], base_distribs["words"]),
         P_overall_mi = compute_overall_mi(
-            uncond_sg_pl_prob, P_distribs["sg"], P_distribs["pl"]),
+            concept_marginals, P_distribs["sg"], P_distribs["pl"],  base_distribs["words"]),
         I_P_overall_mi = compute_overall_mi(
-            uncond_sg_pl_prob, I_P_distribs["sg"], I_P_distribs["pl"]),
+            concept_marginals, I_P_distribs["sg"], I_P_distribs["pl"], base_distribs["words"]),
+    )
+    return res
+
+def get_all_lemma_mis(concept_marginals, base_distribs, P_distribs, I_P_distribs):
+    res = dict(
+        base_lemma_mi = compute_lemma_mi(
+            concept_marginals, base_distribs["sg"], base_distribs["pl"]),
+        P_lemma_mi = compute_lemma_mi(
+            concept_marginals, P_distribs["sg"], P_distribs["pl"]),
+        I_P_lemma_mi = compute_lemma_mi(
+            concept_marginals, I_P_distribs["sg"], I_P_distribs["pl"]),
     )
     return res
 
@@ -248,36 +284,39 @@ def compute_all_faith_metrics(base_distribs, P_distribs, I_P_distribs):
          | I_P_fth_tvds | I_P_fth_pct_chg
 
     
-def compute_all_erasure_kls(base_distribs, P_distribs, I_P_distribs, verb_probs):
+def compute_all_erasure_kls(base_distribs, P_distribs, I_P_distribs, pair_probs):
     base_pair_probs, P_pair_probs, I_P_pair_probs = get_all_pairwise_distribs(
         base_distribs, P_distribs, I_P_distribs
     )
     
     P_er_kls = compute_erasure_kls(
-        base_pair_probs, P_pair_probs, verb_probs, prefix="P_"
+        base_pair_probs, P_pair_probs, pair_probs, prefix="P_"
     )
     I_P_er_kls = compute_erasure_kls(
-        base_pair_probs, I_P_pair_probs, verb_probs, prefix="I_P_"
+        base_pair_probs, I_P_pair_probs, pair_probs, prefix="I_P_"
     )
     return P_er_kls | I_P_er_kls
 
-def compute_all_erasure_mis(base_distribs, P_distribs, I_P_distribs, verb_probs, sg_pl_probs):
+def compute_all_erasure_mis(base_distribs, P_distribs, I_P_distribs, pair_probs, concept_marginals):
     base_pair_probs, P_pair_probs, I_P_pair_probs = get_all_pairwise_distribs(
         base_distribs, P_distribs, I_P_distribs
     )
     
     pairwise_mis = get_all_pairwise_mis(
-        verb_probs, base_pair_probs, P_pair_probs, I_P_pair_probs
+        pair_probs, base_pair_probs, P_pair_probs, I_P_pair_probs
     )
     overall_mis = get_all_overall_mis(
-        sg_pl_probs, base_distribs, P_distribs, I_P_distribs
+        concept_marginals, base_distribs, P_distribs, I_P_distribs
     )
-    return pairwise_mis | overall_mis
+    lemma_mis = get_all_lemma_mis(
+        concept_marginals, base_distribs, P_distribs, I_P_distribs
+    )
+    return pairwise_mis | overall_mis | lemma_mis
 
-def compute_kls_one_sample(h, P, I_P, word_emb, sg_emb, pl_emb, verb_probs, 
-    sg_pl_probs, faith=True, er_kls=True, er_mis=True, X_pca=None):
+def compute_kls_one_sample(h, P, I_P, other_emb, l0_emb, l1_emb, pair_probs, 
+    concept_marginals, faith=True, er_kls=True, er_mis=True, X_pca=None):
     base_distribs, P_distribs, I_P_distribs = get_all_distribs(
-        h, P, I_P, word_emb, sg_emb, pl_emb, X_pca
+        h, P, I_P, other_emb, l0_emb, l1_emb, X_pca
     )
 
     faith_metrics, er_kl_metrics, er_mis_metrics = {},{},{}
@@ -287,11 +326,11 @@ def compute_kls_one_sample(h, P, I_P, word_emb, sg_emb, pl_emb, verb_probs,
         )
     if er_kls:
         er_kl_metrics = compute_all_erasure_kls(
-            base_distribs, P_distribs, I_P_distribs, verb_probs
+            base_distribs, P_distribs, I_P_distribs, pair_probs
         )
     if er_mis:
         er_mis_metrics = compute_all_erasure_mis(
-            base_distribs, P_distribs, I_P_distribs, verb_probs, sg_pl_probs
+            base_distribs, P_distribs, I_P_distribs, pair_probs, concept_marginals
         )
     return faith_metrics | er_kl_metrics | er_mis_metrics
 
@@ -300,7 +339,7 @@ def get_hs_sample_index(hs, nsamples=200):
     np.random.shuffle(idx)
     return idx[:nsamples]
 
-def compute_kls(X, y, P, I_P, word_emb, sg_emb, pl_emb, pair_marginals, concept_marginal, 
+def compute_kls(hs, P, I_P, other_emb, l0_emb, l1_emb, pair_probs, concept_marginals, 
     nsamples=200, faith=True, er_kls=True, er_mis=True, X_pca = None):
     ind = get_hs_sample_index(hs, nsamples)    
 
@@ -309,7 +348,7 @@ def compute_kls(X, y, P, I_P, word_emb, sg_emb, pl_emb, pair_marginals, concept_
     kls = []
     for i in pbar:
         kls.append(compute_kls_one_sample(
-            hs[i], P, I_P, word_emb, sg_emb, pl_emb, verb_probs, sg_pl_prob,
+            hs[i], P, I_P, other_emb, l0_emb, l1_emb, pair_probs, concept_marginals,
             faith, er_kls, er_mis, X_pca
         ))
     kls = pd.DataFrame(kls).describe()
@@ -322,14 +361,14 @@ def compute_kls(X, y, P, I_P, word_emb, sg_emb, pl_emb, pair_marginals, concept_
 if __name__ == '__main__':
 
     model_name = "bert-base-uncased"
-    dataset_name = "linzen"
-    run_output = os.path.join(OUT, "run_output/bert-base-uncased/230310/run_bert_k_1_0_1.pkl")
+    concept_name = "number"
+    run_output = os.path.join(OUT, "run_output/linzen/bert-base-uncased/230310/run_bert_k_1_0_1.pkl")
 
     logging.info(f"Tokenizing and saving embeddings from word and verb lists for model {model_name}")
 
-    hs = load_hs(dataset_name, model_name)
-    word_emb, sg_emb, pl_emb, verb_probs, sg_pl_prob = load_model_eval(dataset_name, model_name)
+    hs = load_hs(concept_name, model_name)
+    other_emb, l0_emb, l1_emb, pair_probs, concept_marginals = load_model_eval(concept_name, model_name)
     P, I_P = load_run_output(run_output)
     
-    kls = compute_kls(hs, P, I_P, word_emb, sg_emb, pl_emb, verb_probs, sg_pl_prob)
+    kls = compute_kls(hs, P, I_P, other_emb, l0_emb, l1_emb, pair_probs, concept_marginals)
     kls.to_csv(os.path.join(OUT, "run_kls.csv"))

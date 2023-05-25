@@ -24,10 +24,10 @@ from utils.lm_loaders import get_tokenizer, get_V, GPT2_LIST, BERT_LIST
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
 
-LINZEN_WORD_LIST_PATH = os.path.join(DATASETS, f"processed/linzen/word_lists/wordlist.csv")
-LINZEN_VERB_LIST_PATH = os.path.join(DATASETS, f"processed/linzen/word_lists/verb_list_final.pkl")
+EN_VERB_LIST_PATH = os.path.join(DATASETS, f"processed/en/word_lists/verb_pair_list.tsv")
+EN_WORD_LIST_PATH = os.path.join(DATASETS, f"processed/en/word_lists/other_list.tsv")
 
-FR_ADJ_LIST_PATH = os.path.join(DATASETS, f"processed/fr/word_lists/adj_list.tsv")
+FR_ADJ_LIST_PATH = os.path.join(DATASETS, f"processed/fr/word_lists/adj_pair_list.tsv")
 FR_WORD_LIST_PATH = os.path.join(DATASETS, f"processed/fr/word_lists/other_list.tsv")
 
 #%%#################
@@ -36,11 +36,10 @@ FR_WORD_LIST_PATH = os.path.join(DATASETS, f"processed/fr/word_lists/other_list.
 def get_args():
     argparser = argparse.ArgumentParser(description='Embedding word and target lists')
     argparser.add_argument(
-        "-dataset", 
+        "-concept",
         type=str,
-        choices=["linzen"] + FR_DATASETS,
-        default="linzen",
-        help="Dataset associated -- STILL RELEVANT?"
+        choices=["gender", "number"],
+        help="Concept to create embedded word lists for"
     )
     argparser.add_argument(
         "-model",
@@ -50,27 +49,26 @@ def get_args():
     )
     return argparser.parse_args()
 
-def get_wordlist_paths(dataset_name):
-    if dataset_name == "linzen":
-        return LINZEN_WORD_LIST_PATH, LINZEN_VERB_LIST_PATH
-    elif dataset_name in FR_DATASETS:
+def get_wordlist_paths(concept):
+    if concept == "number":
+        return EN_WORD_LIST_PATH, EN_VERB_LIST_PATH
+    elif concept == "gender":
         return FR_WORD_LIST_PATH, FR_ADJ_LIST_PATH
     else:
         raise ValueError("Invalid dataset name")
 
-def get_outfile_paths(dataset_name, model_name):
-    #TODO: GET RID OF DATASET NAME IN THIS, JUST DO IT BY LANGUAGE/CONCEPT.
-    if dataset_name == "linzen":
-        word_emb_outfile = os.path.join(DATASETS, f"processed/{dataset_name}/word_lists/{model_name}_word_embeds.npy")
-        verb_p_outfile = os.path.join(DATASETS, f"processed/{dataset_name}/word_lists/{model_name}_verb_p.npy")
-        sg_emb_outfile = os.path.join(DATASETS, f"processed/{dataset_name}/word_lists/{model_name}_sg_embeds.npy")
-        pl_emb_outfile = os.path.join(DATASETS, f"processed/{dataset_name}/word_lists/{model_name}_pl_embeds.npy")
+def get_outfile_paths(concept, model_name):
+    if concept == "number":
+        word_emb_outfile = os.path.join(DATASETS, f"processed/en/embedded_word_lists/{model_name}_word_embeds.npy")
+        verb_p_outfile = os.path.join(DATASETS, f"processed/en/embedded_word_lists/{model_name}_verb_p.npy")
+        sg_emb_outfile = os.path.join(DATASETS, f"processed/en/embedded_word_lists/{model_name}_sg_embeds.npy")
+        pl_emb_outfile = os.path.join(DATASETS, f"processed/en/embedded_word_lists/{model_name}_pl_embeds.npy")
         return word_emb_outfile, verb_p_outfile, sg_emb_outfile, pl_emb_outfile
-    elif dataset_name in FR_DATASETS:
-        word_emb_outfile = os.path.join(DATASETS, f"processed/fr/word_lists/{model_name}_word_embeds.npy")
-        adj_p_outfile = os.path.join(DATASETS, f"processed/fr/word_lists/{model_name}_adj_p.npy")
-        masc_emb_outfile = os.path.join(DATASETS, f"processed/fr/word_lists/{model_name}_masc_embeds.npy")
-        fem_emb_outfile = os.path.join(DATASETS, f"processed/fr/word_lists/{model_name}_fem_embeds.npy")
+    elif concept == "gender":
+        word_emb_outfile = os.path.join(DATASETS, f"processed/fr/embedded_word_lists/{model_name}_word_embeds.npy")
+        adj_p_outfile = os.path.join(DATASETS, f"processed/fr/embedded_word_lists/{model_name}_adj_p.npy")
+        masc_emb_outfile = os.path.join(DATASETS, f"processed/fr/embedded_word_lists/{model_name}_masc_embeds.npy")
+        fem_emb_outfile = os.path.join(DATASETS, f"processed/fr/embedded_word_lists/{model_name}_fem_embeds.npy")
         return word_emb_outfile, adj_p_outfile, masc_emb_outfile, fem_emb_outfile
     else:
         raise ValueError("Invalid dataset name")
@@ -103,7 +101,7 @@ def tokenize_word_handler(model_name, tokenizer, word, add_space=False):
         raise ValueError("Incorrect model name")
 
 def get_unique_word_list(wordlist_path, model_name, tokenizer, add_space):
-    wl = pd.read_csv(wordlist_path, index_col=0, sep="\t")
+    wl = pd.read_csv(wordlist_path, index_col=0, sep="\t")[["word"]]
     wl.drop_duplicates(inplace=True)
     wl["input_ids_word"] = wl["word"].apply(
         lambda x: tokenize_word_handler(model_name, tokenizer, x, add_space)
@@ -135,7 +133,7 @@ def get_unique_lemma_lists(lemma_list_path, model_name, tokenizer, add_space):
     ll["lemma_0_tok"] = ll["lemma_0_input_ids"].apply(lambda x: x[0])
     ll["lemma_1_tok"] = ll["lemma_1_input_ids"].apply(lambda x: x[0])
 
-    lemma_p = ll[["p_0", "p_1"]].to_numpy()
+    lemma_p = ll[["pair_p_0", "pair_p_1"]].to_numpy()
     ll_sg_tok = ll["lemma_0_tok"].to_numpy()
     ll_pl_tok = ll["lemma_1_tok"].to_numpy()
     return lemma_p, ll_sg_tok, ll_pl_tok
@@ -152,14 +150,14 @@ if __name__=="__main__":
     args = get_args()
     logging.info(args)
 
-    dataset_name = args.dataset
+    concept = args.concept
     model_name = args.model
     #dataset_name = "gpt2"
     #model_name = "linzen"
     
     logging.info(f"Tokenizing and saving embeddings from word and lemma lists for model {model_name}")
-    wordlist_path, lemmalist_path = get_wordlist_paths(dataset_name)
-    word_emb_outfile, lemma_p_outfile, l0_emb_outfile, l1_emb_outfile = get_outfile_paths(dataset_name, model_name)
+    wordlist_path, lemmalist_path = get_wordlist_paths(concept)
+    word_emb_outfile, lemma_p_outfile, l0_emb_outfile, l1_emb_outfile = get_outfile_paths(concept, model_name)
 
     tokenizer = get_tokenizer(model_name)
     V = get_V(model_name)

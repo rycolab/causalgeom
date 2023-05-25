@@ -145,16 +145,22 @@ def load_dataset(dataset_name, model_name, split=None):
 #%%##############################
 # Loading Processed HS Datasets #
 #################################
-def load_dataset_pickle(path):
+def load_dataset_pickle(path, dataset_name):
+    #TODO: fix this once we're sure what we're computing
     with open(path, 'rb') as f:      
-        data = pd.DataFrame(pickle.load(f), columns = ["h", "u", "y", "fact", "foil"])
+        if dataset_name == "linzen":
+            data = pd.DataFrame(pickle.load(f), columns = ["h", "u", "y"])
+        elif dataset_name in ["ud_fr_gsd", "ud_fr_partut", "ud_fr_rhapsodie"]:
+            data = pd.DataFrame(pickle.load(f), columns = ["h", "u", "y", "fact", "foil"])
+        else:
+            raise ValueError("Unsupported dataset name.")
     
     X = np.array([x for x in data["h"]])
     U = np.array([x for x in data["u"]])
     y = np.array([yi for yi in data["y"]])
-    fact = np.array([fact for fact in data["fact"]])
-    foil = np.array([foil for foil in data["foil"]])
-    return X, U, y, fact, foil
+    #fact = np.array([fact for fact in data["fact"]])
+    #foil = np.array([foil for foil in data["foil"]])
+    return X, U, y#, fact, foil
 
 def get_processed_dataset_path(dataset_name, model_name, split=None):
     if model_name in GPT2_LIST and split is None:
@@ -170,25 +176,34 @@ def get_processed_dataset_path(dataset_name, model_name, split=None):
 
 def load_processed_dataset(dataset_name, model_name, split=None):
     dataset_path = get_processed_dataset_path(dataset_name, model_name, split)
-    return load_dataset_pickle(dataset_path)
+    return load_dataset_pickle(dataset_path, dataset_name)
 
 def load_gender_split(model_name, split_name):
-    X_gsd, U_gsd, y_gsd, fact_gsd, foil_gsd = load_processed_dataset("ud_fr_gsd", model_name, split_name)
-    X_partut, U_partut, y_partut, fact_partut, foil_partut = load_processed_dataset("ud_fr_partut", model_name, split_name)
-    X_rhapsodie, U_rhapsodie, y_rhapsodie, fact_rhapsodie, foil_rhapsodie = load_processed_dataset("ud_fr_rhapsodie", model_name, split_name)
+    X_gsd, U_gsd, y_gsd = load_processed_dataset("ud_fr_gsd", model_name, split_name)
+    #X_gsd, U_gsd, y_gsd, fact_gsd, foil_gsd = load_processed_dataset("ud_fr_gsd", model_name, split_name)
+    X_partut, U_partut, y_partut = load_processed_dataset("ud_fr_partut", model_name, split_name)
+    #X_partut, U_partut, y_partut, fact_partut, foil_partut = load_processed_dataset("ud_fr_partut", model_name, split_name)
+    X_rhapsodie, U_rhapsodie, y_rhapsodie = load_processed_dataset("ud_fr_rhapsodie", model_name, split_name)
+    #X_rhapsodie, U_rhapsodie, y_rhapsodie, fact_rhapsodie, foil_rhapsodie = load_processed_dataset("ud_fr_rhapsodie", model_name, split_name)
 
     X = np.vstack([X_gsd, X_partut, X_rhapsodie])
     U = np.vstack([U_gsd, U_partut, U_rhapsodie])
     y = np.hstack([y_gsd, y_partut, y_rhapsodie])
-    fact = np.hstack([fact_gsd, fact_partut, fact_rhapsodie])
-    foil = np.hstack([foil_gsd, foil_partut, foil_rhapsodie])
-    return X, U, y, fact, foil
+    #fact = np.hstack([fact_gsd, fact_partut, fact_rhapsodie])
+    #foil = np.hstack([foil_gsd, foil_partut, foil_rhapsodie])
+    return X, U, y#, fact, foil
 
 def load_gender_processed(model_name):
-    X_train, U_train, y_train, fact_train, foil_train = load_gender_split(model_name, "train")
-    X_dev, U_dev, y_dev, fact_dev, foil_dev = load_gender_split(model_name, "dev")
-    X_test, U_test, y_test, fact_test, foil_test = load_gender_split(model_name, "test")
-    return X_train, U_train, y_train, fact_train, foil_train, X_dev, U_dev, y_dev, fact_dev, foil_dev, X_test, U_test, y_test, fact_test, foil_test
+    X_train, U_train, y_train = load_gender_split(model_name, "train")
+    #X_train, U_train, y_train, fact_train, foil_train = load_gender_split(model_name, "train")
+    X_dev, U_dev, y_dev = load_gender_split(model_name, "dev")
+    #X_dev, U_dev, y_dev, fact_dev, foil_dev = load_gender_split(model_name, "dev")
+    X_test, U_test, y_test = load_gender_split(model_name, "test")
+    #X_test, U_test, y_test, fact_test, foil_test = load_gender_split(model_name, "test")
+    X = np.vstack([X_train, X_dev, X_test])
+    U = np.vstack([U_train, U_dev, U_test])
+    y = np.hstack([y_train, y_dev, y_test])
+    return X, U, y
 
 def load_processed_data(concept_name, model_name):
     if concept_name == "number":
@@ -199,15 +214,14 @@ def load_processed_data(concept_name, model_name):
         raise ValueError("Concept name and model name pair not supported.")
 
 #%% loading only the hs
-#TODO: need to fix this, it's kinda shit
 def sample_hs(hs, nsamples=200):
     idx = np.arange(0, hs.shape[0])
     np.random.shuffle(idx)
     ind = idx[:nsamples]
     return hs[ind]
 
-def load_hs(dataset_name, model_name, nsamples=None, split=None):
-    hs, _, _ = load_processed_dataset(dataset_name, model_name, split)
+def load_hs(concept_name, model_name, nsamples=None):
+    hs, _, _ = load_processed_data(concept_name, model_name)
 
     if nsamples is not None:
         return sample_hs(hs, nsamples)
@@ -218,28 +232,23 @@ def load_hs(dataset_name, model_name, nsamples=None, split=None):
 # Loading Model Word Lists.     #
 #################################
 def load_model_eval(concept_name, model_name):
+    word_emb_path, lemma_p_path, lemma_0_path, lemma_1_path = get_outfile_paths(concept_name, model_name)
     
-    #TODO: NEED TO FIX WHOLE EVAL
-    if concept_name == "gender":
-        dataset_name = "ud_fr_gsd"
-    elif concept_name == "number":
-        dataset_name = "linzen"
+    if concept_name == "number":
+        concept_prob_path = os.path.join(DATASETS, "processed/en/word_lists/number_marginals.pkl")
+    elif concept_name == "gender":
+        concept_prob_path = os.path.join(DATASETS, "processed/fr/word_lists/gender_marginals.pkl")
     else:
-        dataset_name = None
+        concept_prob_path = ""
 
-    word_emb_path, lemma_p_path, lemma_0_path, lemma_1_path = get_outfile_paths(dataset_name, model_name)
-    
-    if dataset_name == "linzen":
-        concept_prob_path = os.path.join(DATASETS, f"processed/{dataset_name}/word_lists/sg_pl_prob.pkl")
-    elif dataset_name in ["ud_fr_gsd"]:
-        concept_prob_path = os.path.join(DATASETS, "processed/fr/word_lists/p_fr_gender.pkl")
-    
     with open(concept_prob_path, 'rb') as f:
-        concept_prob = pickle.load(f).to_numpy().tolist()
+        #concept_prob = pickle.load(f).to_numpy().tolist()
+        concept_marginals = pickle.load(f)
     
-    word_emb = np.load(word_emb_path)
-    lemma_prob = np.load(lemma_p_path)
+    other_emb = np.load(word_emb_path)
+    pair_probs = np.load(lemma_p_path)
     l0_emb = np.load(lemma_0_path)
     l1_emb = np.load(lemma_1_path)
-    return word_emb, l0_emb, l1_emb, lemma_prob, concept_prob
+    return other_emb, l0_emb, l1_emb, pair_probs, concept_marginals
+    
 # %%

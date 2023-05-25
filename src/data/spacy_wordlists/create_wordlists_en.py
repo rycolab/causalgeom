@@ -12,7 +12,8 @@ import spacy
 from datasets import load_dataset
 import pandas as pd
 
-sys.path.append('../../')
+#sys.path.append('../../')
+sys.path.append('./src/')
 
 from paths import HF_CACHE, OUT, DATASETS
 
@@ -28,6 +29,10 @@ OUT_FILE = os.path.join(OUT_DIR, f"{language}_new.pkl")
 
 with open(OUT_FILE, 'rb') as f:
     token_data = pickle.load(f)
+
+EXPORT_DIR = os.path.join(DATASETS, "processed/en/word_lists")
+if not os.path.exists(EXPORT_DIR):
+    os.path.makedirs(EXPORT_DIR)
 
 # %%
 def find_substr(fullstr, substr):
@@ -123,6 +128,7 @@ sgpl = pd.merge(
 #%%
 def filter_merge(df, drop_threshold=1000):
     filtered_df = df.dropna(subset=["verb_sg", "verb_pl"], inplace=False)
+
     drop_df = filtered_df.drop(
         filtered_df[(filtered_df["count_sg"] < drop_threshold) & 
                 (filtered_df["count_pl"] < drop_threshold)].index, 
@@ -134,11 +140,12 @@ def filter_merge(df, drop_threshold=1000):
 drop_threshold = 1000
 sgpl_filtered = filter_merge(sgpl, drop_threshold)
 
-sgpl_filtered["total_count"] = total_count
-sgpl_filtered["p_0"] = sgpl_filtered["count_sg"] / sgpl_filtered["total_count"]
-sgpl_filtered["p_1"] = sgpl_filtered["count_pl"] / sgpl_filtered["total_count"]
-#TODO: fix this tomorrow, not sure what to make of this.
-lemma_final = sgpl_filtered[["verb_sg", "verb_pl", "p_0", "p_1"]] # "count_masc", "count_fem", "number_masc"]]
+#%%
+sgpl_filtered["pair_total"] = sgpl_filtered["count_sg"] + sgpl_filtered["count_pl"]
+sgpl_filtered["pair_p_0"] = sgpl_filtered["count_sg"] / sgpl_filtered["pair_total"]
+sgpl_filtered["pair_p_1"] = sgpl_filtered["count_pl"] / sgpl_filtered["pair_total"]
+
+lemma_final = sgpl_filtered[["verb_sg", "verb_pl", "pair_p_0", "pair_p_1"]] # "count_masc", "count_fem", "number_masc"]]
 lemma_final.rename(
     {"verb_sg":"lemma_0",
      "verb_pl": "lemma_1"}, 
@@ -146,37 +153,45 @@ lemma_final.rename(
     inplace=True
 )
 
-# %%
 #init_list_outpath = os.path.join(DATASETS, "processed/ud_fr_gsd/word_lists/init_adjlist.tsv")
 #final_list.to_csv(init_list_outpath, sep="\t")
-adj_list_outpath = os.path.join(DATASETS, "processed/fr/word_lists/adj_list.tsv")
+adj_list_outpath = os.path.join(DATASETS, "processed/en/word_lists/verb_pair_list.tsv")
 lemma_final.to_csv(adj_list_outpath, sep="\t")
 
 #%% concept prob
-totals = lemma_list.sum()[["count_masc", "count_fem"]]
-totals["total"] = totals.sum()
-totals["p_0"] = totals["count_masc"] / totals["total"]
-totals["p_1"] = totals["count_fem"] / totals["total"]
+totals = sgpl_filtered.sum()[["count_sg", "count_pl"]]
+totals["total_wout_other"] = totals.sum()
+totals["total_incl_other"] = total_count
+totals["p_0_wout_other"] = totals["count_sg"] / totals["total_wout_other"]
+totals["p_1_wout_other"] = totals["count_pl"] / totals["total_wout_other"]
+totals["p_0_incl_other"] = totals["count_sg"] / totals["total_incl_other"]
+totals["p_1_incl_other"] = totals["count_pl"] / totals["total_incl_other"]
+totals["p_other_incl_other"] = (totals["total_incl_other"] - totals["total_wout_other"]) / totals["total_incl_other"]
+totals.rename({"count_sg": "count_0", "count_pl": "count_1"}, inplace=True)
 
-p_concept_outfile = os.path.join(DATASETS, "processed/fr/word_lists/p_fr_gender.pkl")
-p_concept = totals[["p_0", "p_1"]]
+p_concept_outfile = os.path.join(DATASETS, "processed/en/word_lists/number_marginals.pkl")
+p_concept = totals[
+    ["p_0_wout_other", "p_1_wout_other","p_0_incl_other","p_1_incl_other","p_other_incl_other"]
+]
 with open(p_concept_outfile, 'wb') as f:
     pickle.dump(p_concept, f, protocol=pickle.HIGHEST_PROTOCOL)
 
 # %%
 other_df = pd.DataFrame(other_list)
 
-other_sub = other_df[other_df["count"]>10000]
-other_sub.sort_values(by="count", inplace=True, ascending=False)
+other_sub = other_df[other_df["count"]>drop_threshold]
+other_sub.sort_values(by="count", inplace=True, ascending=True)
 
 #%%
-masc_adj_list = lemma_final["lemma_0"].unique()
-fem_adj_list = lemma_final["lemma_1"].unique()
+sg_verb_list = lemma_final["lemma_0"].unique()
+pl_verb_list = lemma_final["lemma_1"].unique()
 
-other_sub["adj_flag"] = other_sub["word"].apply(lambda x: 1 if ((x in masc_adj_list) or (x in fem_adj_list)) else 0)
-other_sub.drop(other_sub[other_sub["adj_flag"]==1].index, axis=0, inplace=True)
+other_sub["verb_flag"] = other_sub["word"].apply(lambda x: 1 if ((x in sg_verb_list) or (x in pl_verb_list)) else 0)
+other_sub["p_incl_other_unnorm"] = other_sub["count"] / total_count
+other_sub["p_incl_other"] = other_sub["p_incl_other_unnorm"] / other_sub["p_incl_other_unnorm"].sum()
+other_sub.drop(other_sub[other_sub["verb_flag"]==1].index, axis=0, inplace=True)
 #%%
-other_list_outpath = os.path.join(DATASETS, "processed/fr/word_lists/other_list.tsv")
-other_sub[["word"]].to_csv(other_list_outpath, sep="\t")
+other_list_outpath = os.path.join(DATASETS, "processed/en/word_lists/other_list.tsv")
+other_sub[["word", "p_incl_other"]].to_csv(other_list_outpath, sep="\t")
 
 # %%
