@@ -9,7 +9,7 @@ import argparse
 from tqdm import tqdm
 import pickle
 import spacy
-from datasets import load_dataset
+from utils.dataset_loaders import load_wikipedia
 
 #sys.path.append('../../')
 sys.path.append('./src/')
@@ -118,9 +118,7 @@ if __name__=="__main__":
     language = args.language 
     backup_batches = args.backup_batches 
     #language = "fr"
-    data = load_dataset(
-        "wikipedia", f"20220301.{language}", cache_dir=HF_CACHE
-    )["train"]
+    data = load_wikipedia(language)
     data.shuffle()
     
     if language == "fr":

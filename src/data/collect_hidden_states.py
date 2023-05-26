@@ -26,7 +26,7 @@ sys.path.append('./src/')
 from paths import OUT, HF_CACHE, FR_DATASETS
 from utils.cuda_loaders import get_device
 from utils.lm_loaders import get_model, get_tokenizer, get_V, GPT2_LIST, BERT_LIST
-from utils.dataset_loaders import load_dataset
+from utils.dataset_loaders import load_preprocessed_dataset
 import ipdb
 
 coloredlogs.install(level=logging.INFO)
@@ -278,7 +278,7 @@ if __name__=="__main__":
     model = model.to(device)
 
     # load data
-    data = load_dataset(dataset_name, model_name, split)
+    data = load_preprocessed_dataset(dataset_name, model_name, split)
     ds = CustomDataset(data)
     dl = DataLoader(dataset = ds, batch_size=batch_size)
 

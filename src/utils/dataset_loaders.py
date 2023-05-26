@@ -5,18 +5,27 @@ import numpy as np
 import pandas as pd
 import csv 
 import pickle
+from datasets import load_dataset
 
 #sys.path.append('..')
 sys.path.append('./src/')
 
 from data.embed_wordlists.embedder import get_outfile_paths
 from utils.lm_loaders import GPT2_LIST, BERT_LIST
-from paths import DATASETS, FR_DATASETS
+from paths import DATASETS, FR_DATASETS, HF_CACHE
 
 LINZEN_PREPROCESSED = os.path.join(DATASETS, "preprocessed/linzen_preprocessed.tsv")
 UD_FRENCH_GSD_PREPROCESSED = os.path.join(DATASETS, "preprocessed/ud_fr_gsd")
 UD_FRENCH_ParTUT_PREPROCESSED = os.path.join(DATASETS, "preprocessed/ud_fr_partut")
 UD_FRENCH_Rhapsodie_PREPROCESSED = os.path.join(DATASETS, "preprocessed/ud_fr_rhapsodie")
+
+#%%##############################
+# Loading HuggingFace datasets  #
+#################################
+def load_wikipedia(language):
+    return load_dataset(
+            "wikipedia", f"20220301.{language}", cache_dir=HF_CACHE
+        )["train"]
 
 #%%##############################
 # Loading Preprocessed Datasets #
@@ -123,7 +132,7 @@ def get_model_type(model_name):
     else: 
         raise ValueError(f"Model {model_name} not supported")
 
-def load_dataset(dataset_name, model_name, split=None):
+def load_preprocessed_dataset(dataset_name, model_name, split=None):
     """ Dataset name: ["linzen", "ud_fr_gsd"]
     Model name: GPT2 + BERT models
     Split: ["train", "dev", "test"] (only for UD)

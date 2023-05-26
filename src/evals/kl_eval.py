@@ -26,7 +26,6 @@ from utils.dataset_loaders import load_hs, load_model_eval
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
 
-
 #%%#################
 # Loading          #
 ####################
@@ -59,13 +58,13 @@ def get_probs(hidden_state, other_emb, l0_emb, l1_emb):
     l1_probs = all_probs[l0_end:]
     return all_probs, other_probs, l0_probs, l1_probs
 
-def get_merged_probs(word_probs, sg_probs, pl_probs):
-    lemma_merged = sg_probs + pl_probs
-    all_merged = np.hstack([word_probs,lemma_merged])
+def get_merged_probs(other_probs, l0_probs, l1_probs):
+    lemma_merged = l0_probs + l1_probs
+    all_merged = np.hstack([other_probs,lemma_merged])
     return lemma_merged, all_merged
 
-def normalize_pairs(sg, pl):
-    base_pair = np.vstack((sg, pl)).T
+def normalize_pairs(l0, l1):
+    base_pair = np.vstack((l0, l1)).T
     base_pair_Z = np.sum(base_pair,axis=1)
     base_pair_probs = np.vstack([
         np.divide(base_pair[:,0], base_pair_Z),
@@ -74,21 +73,21 @@ def normalize_pairs(sg, pl):
     return base_pair_probs
 
 def get_all_pairwise_distribs(base_distribs, P_distribs, I_P_distribs):
-    base_pair_probs = normalize_pairs(base_distribs["sg"], base_distribs["pl"])
-    P_pair_probs = normalize_pairs(P_distribs["sg"], P_distribs["pl"])
-    I_P_pair_probs = normalize_pairs(I_P_distribs["sg"], I_P_distribs["pl"])
+    base_pair_probs = normalize_pairs(base_distribs["l0"], base_distribs["l1"])
+    P_pair_probs = normalize_pairs(P_distribs["l0"], P_distribs["l1"])
+    I_P_pair_probs = normalize_pairs(I_P_distribs["l0"], I_P_distribs["l1"])
     return base_pair_probs, P_pair_probs, I_P_pair_probs
 
 def get_distribs(h, other_emb, l0_emb, l1_emb):
-    all_split, words, sg, pl = get_probs(h, other_emb, l0_emb, l1_emb)
-    lemma_split = np.hstack([sg, pl])
+    all_split, other, l0, l1 = get_probs(h, other_emb, l0_emb, l1_emb)
+    lemma_split = np.hstack([l0, l1])
     lemma_merged, all_merged = get_merged_probs(
-        words, sg, pl
+        other, l0, l1
     )
     return dict(
-        words=words,
-        sg=sg,
-        pl=pl,
+        other=other,
+        l0=l0,
+        l1=l1,
         all_split=all_split,
         all_merged=all_merged,
         lemma_split=lemma_split,
@@ -129,10 +128,10 @@ def compute_faith_kls(base, proj, prefix="", agg_func=np.sum):
     kls = {
         f"{prefix}faith_kl_all_split": compute_kl(base["all_split"], proj["all_split"], agg_func),
         f"{prefix}faith_kl_all_merged": compute_kl(base["all_merged"], proj["all_merged"], agg_func),
-        f"{prefix}faith_kl_words": compute_kl(renormalize(base["words"]), renormalize(proj["words"]), agg_func),
+        f"{prefix}faith_kl_other": compute_kl(renormalize(base["other"]), renormalize(proj["other"]), agg_func),
         f"{prefix}faith_kl_tgt_split": compute_kl(renormalize(base["lemma_split"]), renormalize(proj["lemma_split"]), agg_func),
         f"{prefix}faith_kl_tgt_merged": compute_kl(renormalize(base["lemma_merged"]), renormalize(proj["lemma_merged"]), agg_func),
-        f"{prefix}faith_kl_words_unnorm": compute_kl(base["words"], proj["words"], agg_func),
+        f"{prefix}faith_kl_other_unnorm": compute_kl(base["other"], proj["other"], agg_func),
         f"{prefix}faith_kl_tgt_split_unnorm": compute_kl(base["lemma_split"], proj["lemma_split"], agg_func),
     }
     return kls
@@ -148,7 +147,7 @@ def compute_faith_tvds(base, proj, prefix="", agg_func=np.sum):
     tvds = {
         f"{prefix}faith_tvd_all_split": compute_tvd(base["all_split"], proj["all_split"], agg_func),
         f"{prefix}faith_tvd_all_merged": compute_tvd(base["all_merged"], proj["all_merged"], agg_func),
-        f"{prefix}faith_tvd_words": compute_tvd(renormalize(base["words"]), renormalize(proj["words"]), agg_func),
+        f"{prefix}faith_tvd_other": compute_tvd(renormalize(base["other"]), renormalize(proj["other"]), agg_func),
         f"{prefix}faith_tvd_tgt_split": compute_tvd(renormalize(base["lemma_split"]), renormalize(proj["lemma_split"]), agg_func),
         f"{prefix}faith_tvd_tgt_merged": compute_tvd(renormalize(base["lemma_merged"]), renormalize(proj["lemma_merged"]), agg_func),
     }
@@ -165,7 +164,7 @@ def compute_faith_pct_chg(base, proj, prefix="", agg_func=np.mean):
     pct_chgs = {
         f"{prefix}faith_pct_chg_all_split": compute_pct_chg(base["all_split"], proj["all_split"], agg_func),
         f"{prefix}faith_pct_chg_all_merged": compute_pct_chg(base["all_merged"], proj["all_merged"], agg_func),
-        f"{prefix}faith_pct_chg_words": compute_pct_chg(renormalize(base["words"]), renormalize(proj["words"]), agg_func),
+        f"{prefix}faith_pct_chg_other": compute_pct_chg(renormalize(base["other"]), renormalize(proj["other"]), agg_func),
         f"{prefix}faith_pct_chg_tgt_split": compute_pct_chg(renormalize(base["lemma_split"]), renormalize(proj["lemma_split"]), agg_func),
         f"{prefix}faith_pct_chg_tgt_merged": compute_pct_chg(renormalize(base["lemma_merged"]), renormalize(proj["lemma_merged"]), agg_func),
     }
@@ -250,22 +249,22 @@ def compute_lemma_mi(concept_marginals, cond_l0_probs, cond_l1_probs):
 def get_all_overall_mis(concept_marginals, base_distribs, P_distribs, I_P_distribs):
     res = dict(
         base_overall_mi = compute_overall_mi(
-            concept_marginals, base_distribs["sg"], base_distribs["pl"], base_distribs["words"]),
+            concept_marginals, base_distribs["l0"], base_distribs["l1"], base_distribs["other"]),
         P_overall_mi = compute_overall_mi(
-            concept_marginals, P_distribs["sg"], P_distribs["pl"],  base_distribs["words"]),
+            concept_marginals, P_distribs["l0"], P_distribs["l1"],  base_distribs["other"]),
         I_P_overall_mi = compute_overall_mi(
-            concept_marginals, I_P_distribs["sg"], I_P_distribs["pl"], base_distribs["words"]),
+            concept_marginals, I_P_distribs["l0"], I_P_distribs["l1"], base_distribs["other"]),
     )
     return res
 
 def get_all_lemma_mis(concept_marginals, base_distribs, P_distribs, I_P_distribs):
     res = dict(
         base_lemma_mi = compute_lemma_mi(
-            concept_marginals, base_distribs["sg"], base_distribs["pl"]),
+            concept_marginals, base_distribs["l0"], base_distribs["l1"]),
         P_lemma_mi = compute_lemma_mi(
-            concept_marginals, P_distribs["sg"], P_distribs["pl"]),
+            concept_marginals, P_distribs["l0"], P_distribs["l1"]),
         I_P_lemma_mi = compute_lemma_mi(
-            concept_marginals, I_P_distribs["sg"], I_P_distribs["pl"]),
+            concept_marginals, I_P_distribs["l0"], I_P_distribs["l1"]),
     )
     return res
 
