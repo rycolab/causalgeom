@@ -12,18 +12,99 @@ import numpy as np
 from tqdm import tqdm
 import pandas as pd
 import pickle
+import torch
 
 #sys.path.append('..')
 #sys.path.append('./src/')
 
 from paths import DATASETS, OUT
-from utils.lm_loaders import get_tokenizer, get_V, get_model
 
+
+from utils.lm_loaders import get_tokenizer, get_V, get_model
+from utils.cuda_loaders import get_device
 
 #from evals.usage_eval import diag_eval, usage_eval
 
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
+
+
+
+#%%#################
+# Generating Text  #
+####################
+#from transformers import AutoTokenizer
+#from transformers import LogitsWarper, LogitsProcessorList, TopPLogitsWarper
+from evals.kl_eval import load_run_output
+
+#torch.cuda.empty_cache()
+
+model_name = "gpt2-large"
+
+device = get_device()
+#device = "cpu"
+model = get_model(model_name).to(device)
+tokenizer = get_tokenizer(model_name)
+
+#TODO: batch this, check that once EOS has been generated only EOS is then generated
+prompt_ids = tokenizer(tokenizer.bos_token, return_tensors="pt").input_ids.to(device)
+
+if model_name == "gpt2-large":
+    run_output = os.path.join(OUT, "run_output/linzen/gpt2-large/230415/run_gpt2-large_k1_Pms31_Pg0.5_clfms31_clfg0.5_2023-04-15-20:20:45_0_1.pkl")
+else:
+    run_output = None
+
+P, I_P = load_run_output(run_output)
+I_P = torch.tensor(I_P, device=device).float()
+
+#%%
+
+def generate_sequence_until_eos(model, prompt_ids, device="cpu", P=None):
+    tokens = prompt_ids
+    token_h_pairs = []
+    sm = torch.nn.Softmax(0)#.to(device)
+    while (tokens[-1][-1] != tokenizer.eos_token_id or (tokens.shape[1] == prompt_ids.shape[1])):# and tokens.shape[1] < 10:
+        if tokens.shape[1] > 1024:
+            input_tokens = tokens[:,-1024:]
+        else:
+            input_tokens = tokens
+        with torch.no_grad():
+            output = model(
+                input_ids=input_tokens,
+                output_hidden_states=True
+            )
+        #final_logits = output.logits[-1]#.cpu()
+        hs = output.hidden_states[-1][-1,-1,:].squeeze().squeeze()#.cpu()
+        if I_P is not None:
+            hs = torch.matmul(I_P, hs)
+        check_logits = model.lm_head(hs)
+        #assert (torch.isclose(final_logits[-1,:], check_logits, atol = 1e-05)).all().item(), "Logits not equal"
+        probs = sm(check_logits)
+        sampled_token = torch.multinomial(probs, 1)
+        tokens = torch.cat((tokens, sampled_token.unsqueeze(0)), dim=-1)
+        logging.info(f"Sampled token {sampled_token}, number of tokens so far: {tokens.shape[1]}")
+        token_h_pairs.append((hs.cpu(), sampled_token.item()))
+    return tokens.cpu(), token_h_pairs
+
+#tokens, token_h_pairs = generate_sequence_until_eos(model, prompt_ids, device)
+#I_P_tokens, I_P_token_h_pairs = generate_sequence_until_eos(model, prompt_ids, device, P=I_P)
+
+#%%
+def generate_multiple_sequences(model, prompt_ids, device="cpu", P=None):
+    export_index = 0
+    n_generations = 3
+    all_token_h_pairs = []
+    all_lengths = []
+    for i in range(n_generations):
+        _, token_h_pairs = generate_sequence_until_eos(model, prompt_ids, device)
+        all_lengths.append(len(token_h_pairs))
+        all_token_h_pairs += token_h_pairs
+    export_path = os.path.join(OUT, f"generated_text/{model_name}/generations_{export_index}.pkl")
+    with open(export_path, 'wb') as f:
+        pickle.dump(all_token_h_pairs, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+#%%
+
 
 #%%#################
 # Computing new MI #

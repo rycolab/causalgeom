@@ -167,14 +167,17 @@ logging.info(f"Exported I_P_fth results to: {I_P_fth_res_path}")
 er_res = dict(
     base=dict(
         overall_mi=run["burn_kl_mean"]["base_overall_mi"],
+        lemma_mi=run["burn_kl_mean"]["base_lemma_mi"],
         pairwise_mi=run["burn_kl_mean"]["base_pairwise_mi"],
     ),
     P=dict(
         overall_mi=run["burn_kl_mean"]["P_overall_mi"],
+        lemma_mi=run["burn_kl_mean"]["P_lemma_mi"],
         pairwise_mi=run["burn_kl_mean"]["P_pairwise_mi"],
     ),
     I_P=dict(
         overall_mi=run["burn_kl_mean"]["I_P_overall_mi"],
+        lemma_mi=run["burn_kl_mean"]["I_P_lemma_mi"],
         pairwise_mi=run["burn_kl_mean"]["I_P_pairwise_mi"],
     ),
 )
