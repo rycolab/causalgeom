@@ -21,7 +21,7 @@ sys.path.append('./src/')
 
 from paths import DATASETS, OUT
 from utils.lm_loaders import get_tokenizer, get_V
-from utils.dataset_loaders import load_hs, load_model_eval
+from utils.dataset_loaders import load_hs, load_other_hs, load_model_eval
 
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
@@ -350,7 +350,7 @@ def compute_kls(hs, P, I_P, other_emb, l0_emb, l1_emb, pair_probs, concept_margi
             hs[i], P, I_P, other_emb, l0_emb, l1_emb, pair_probs, concept_marginals,
             faith, er_kls, er_mis, X_pca
         ))
-    kls = pd.DataFrame(kls).describe()
+    kls = pd.DataFrame(kls)
     return kls
 
 
@@ -361,13 +361,28 @@ if __name__ == '__main__':
 
     model_name = "bert-base-uncased"
     concept_name = "number"
+    nsamples = 1000
     run_output = os.path.join(OUT, "run_output/linzen/bert-base-uncased/230310/run_bert_k_1_0_1.pkl")
 
     logging.info(f"Tokenizing and saving embeddings from word and verb lists for model {model_name}")
 
-    hs = load_hs(concept_name, model_name)
+    concept_hs = load_hs(concept_name, model_name, nsamples=nsamples)
+    other_hs = load_other_hs(concept_name, model_name, nsamples=nsamples)
     other_emb, l0_emb, l1_emb, pair_probs, concept_marginals = load_model_eval(concept_name, model_name)
     P, I_P = load_run_output(run_output)
     
-    kls = compute_kls(hs, P, I_P, other_emb, l0_emb, l1_emb, pair_probs, concept_marginals)
+    concept_kls = compute_kls(concept_hs, P, I_P, other_emb, l0_emb, l1_emb, pair_probs, concept_marginals)
+    other_kls = compute_kls(other_hs, P, I_P, other_emb, l0_emb, l1_emb, pair_probs, concept_marginals)
+    
+    concept_kls_desc = concept_kls.describe()
+    concept_kls_desc.columns = ["concept_" + x for x in concept_kls_desc.columns]
+    other_kls_desc = other_kls.describe()
+    other_kls_desc.columns = ["other_" + x for x in other_kls_desc.columns]
+    
+    all_kls = pd.concat([concept_kls, other_kls], axis=0)
+    all_kls_desc = all_kls.describe()
+    all_kls_desc.columns = ["all_" + x for x in all_kls_desc.columns]
+    
+    kls = pd.concat([concept_kls_desc, other_kls_desc, all_kls_desc], axis=1)
+
     kls.to_csv(os.path.join(OUT, "run_kls.csv"))

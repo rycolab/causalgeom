@@ -174,7 +174,7 @@ for i in trange(cfg['nruns']):
         diag_rlace_output, X_train, U_train, y_train, X_test, U_test, 
         y_test, X_pca=X_pca
     )
-
+    #TODO: FIX THIS SHIT -- no longer aligned w format_res
     kl_eval = compute_kls(
         X_test, diag_rlace_output["P"], diag_rlace_output["I_P"], 
         WORD_EMB, SG_EMB, PL_EMB, VERB_PROBS, SG_PL_PROB, X_pca=X_pca

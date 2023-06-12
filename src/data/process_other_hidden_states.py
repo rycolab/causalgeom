@@ -10,6 +10,7 @@ import numpy as np
 import pickle
 from tqdm import tqdm
 import shutil
+import torch
 
 #sys.path.append('..')
 sys.path.append('./src/')
@@ -23,7 +24,7 @@ warnings.filterwarnings("ignore")
 
 
 #%% FILE HANDLERS
-def create_temp_files(batch_file_dir, tempdir, out_type, nbatches=None, temp_nbatches=100):
+def create_temp_files(batch_file_dir, tempdir, nbatches=None, temp_nbatches=100):
     """ Loops through batch_file_dir batch npy files containing hidden states,
     concatenates them, and exports temporary files containing 100 batches each
     into tempdir
@@ -40,11 +41,10 @@ def create_temp_files(batch_file_dir, tempdir, out_type, nbatches=None, temp_nba
     for i, filename in enumerate(tqdm(files)):
         filepath = os.path.join(batch_file_dir, filename)
         with open(filepath, 'rb') as f:      
-            #TODO: WRITE THIS BIT
             batch_data = pickle.load(f)
+        data.append(batch_data)
         if (i + 1) % temp_nbatches == 0 or i == len(files)-1:
-            #TODO: WRITE THIS NEXT LINE
-            data = data + batch_data
+            data = np.vstack(data)
             tempfile = os.path.join(
                 tempdir, 
                 f"temp{tempcount}.pkl"
@@ -53,8 +53,6 @@ def create_temp_files(batch_file_dir, tempdir, out_type, nbatches=None, temp_nba
                 pickle.dump(data, f, protocol=pickle.HIGHEST_PROTOCOL)
             data = []
             tempcount+=1
-        else:
-            data = data + batch_data
 
     logging.info(
         f"Hidden state batches processed by creating {tempcount} tempfiles"
@@ -71,13 +69,13 @@ def concat_temp_files(tempdir):
         filepath = os.path.join(tempdir, filename)
         with open(filepath, 'rb') as f:      
             samples = pickle.load(f)
-        all_temps = all_temps + samples
+        all_temps.append(samples)
 
-    return all_temps
+    return np.vstack(all_temps)
 
 #%%
-def process_hidden_states(batch_file_dir, output_file, temp_dir, out_type, nbatches=None, delete_batch_dir=False):
-    create_temp_files(batch_file_dir, temp_dir, out_type, nbatches=nbatches)
+def process_hidden_states(batch_file_dir, output_file, temp_dir, nbatches=None, delete_batch_dir=False):
+    create_temp_files(batch_file_dir, temp_dir, nbatches=nbatches)
     data = concat_temp_files(temp_dir)
 
     with open(output_file, 'wb') as f:
@@ -98,37 +96,16 @@ def process_hidden_states(batch_file_dir, output_file, temp_dir, out_type, nbatc
 def get_args():
     argparser = argparse.ArgumentParser(description='Process hidden states')
     argparser.add_argument(
-        "-dataset", 
+        "-language", 
         type=str,
-        choices=["linzen"] + FR_DATASETS,
-        default="linzen",
-        help="Dataset to process hidden states for"
+        choices=["fr", "en"],
+        help="Language to collect hidden states for"
     )
     argparser.add_argument(
         "-model",
         type=str,
         choices=BERT_LIST + GPT2_LIST,
-        help="Model to process hidden states for"
-    )
-    argparser.add_argument(
-        "-outtype",
-        type=str,
-        choices=["full", "tgt"],
-        help="Export full dataset for probe training or just tgt"
-    )
-    argparser.add_argument(
-        "-nbatches",
-        type=int,
-        required=False,
-        default=None,
-        help="Number of batches to process"
-    )
-    argparser.add_argument(
-        "-split",
-        type=str,
-        choices=["train", "dev", "test"],
-        default=None,
-        help="For UD data, specifies which split to collect hs for"
+        help="Model for computing hidden states"
     )
     return argparser.parse_args()
 
@@ -137,49 +114,25 @@ if __name__=="__main__":
     args = get_args()
     logging.info(args)
 
-    DATASET_NAME = args.dataset
-    MODEL_NAME = args.model
-    OUT_TYPE = args.outtype
-    NBATCHES = args.nbatches
-    SPLIT = args.split
-    #DATASET_NAME = "linzen"
-    #MODEL_NAME = "gpt2-medium"
-    #OUT_TYPE = "full"
-    #NBATCHES = 10
-    #SPLIT = "train"
-
-    if MODEL_NAME in GPT2_LIST and OUT_TYPE == "full":
-        OUT_TYPE = "ar"
-    elif MODEL_NAME in BERT_LIST and OUT_TYPE == "full":
-        OUT_TYPE = "masked"
-
-    assert OUT_TYPE in ["ar", "masked", "tgt"], "Wrong outtype"
+    language = args.language
+    model_name = args.model
+    #language = "en"
+    #model_name = "bert-base-uncased"
 
     logging.info(
-        f"Creating {OUT_TYPE} dataset for raw data: "
-        f"{DATASET_NAME}, model {MODEL_NAME}."
+        f"Creating other hidden states dataset for language "
+        f"{language}, model {model_name}."
     )
 
-    if SPLIT is None:
-        FILEDIR = os.path.join(OUT, f"hidden_states/{DATASET_NAME}/{MODEL_NAME}")
-        OUTFILE = os.path.join(DATASETS, f"processed/{DATASET_NAME}/{OUT_TYPE}/{DATASET_NAME}_{MODEL_NAME}_{OUT_TYPE}.pkl")
-        OUTPUT_DIR = os.path.dirname(OUTFILE)
-        TEMPDIR = os.path.join(OUTPUT_DIR, f"temp_{MODEL_NAME}_{OUT_TYPE}")
-    else:
-        FILEDIR = os.path.join(OUT, f"hidden_states/{DATASET_NAME}/{MODEL_NAME}/{SPLIT}")
-        OUTFILE = os.path.join(DATASETS, f"processed/{DATASET_NAME}/{OUT_TYPE}/{DATASET_NAME}_{MODEL_NAME}_{OUT_TYPE}_{SPLIT}.pkl")
-        OUTPUT_DIR = os.path.dirname(OUTFILE)
-        TEMPDIR = os.path.join(OUTPUT_DIR, f"temp_{MODEL_NAME}_{OUT_TYPE}_{SPLIT}")
-    
+    FILEDIR = os.path.join(OUT, f"hidden_states/{language}/{model_name}")
+    OUTFILE = os.path.join(DATASETS, f"processed/{language}/other_hidden_states/{model_name}.pkl")
+    OUTPUT_DIR = os.path.dirname(OUTFILE)
+    TEMPDIR = os.path.join(OUTPUT_DIR, f"temp_{model_name}")    
         
     assert os.path.exists(FILEDIR), \
         f"Hidden state filedir doesn't exist: {FILEDIR}"
     
-    #assert not os.path.isfile(OUTFILE), \
-    #    f"Output file {OUTFILE} already exists"
-
-    
     assert not os.path.exists(TEMPDIR), f"Temp dir {TEMPDIR} already exists"
     os.makedirs(TEMPDIR)
 
-    process_hidden_states(FILEDIR, OUTFILE, TEMPDIR, OUT_TYPE, nbatches=NBATCHES)
+    process_hidden_states(FILEDIR, OUTFILE, TEMPDIR)

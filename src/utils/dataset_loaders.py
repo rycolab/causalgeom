@@ -237,6 +237,29 @@ def load_hs(concept_name, model_name, nsamples=None):
     else:
         return hs
 
+def load_other_hs(concept_name, model_name, nsamples=None):
+    if concept_name == "gender":
+        language = "fr"
+    elif concept_name == "number":
+        language = "en"
+    else:
+        raise ValueError(f"Unsupported concept_name {concept_name}")
+
+    other_hs_file = os.path.join(
+        DATASETS, 
+        f"processed/{language}/other_hidden_states/{model_name}.pkl"
+    )
+    with open(other_hs_file, 'rb') as f:
+        hs = pickle.load(f)
+
+    if nsamples is not None:
+        hs = sample_hs(hs, nsamples)
+    
+    if model_name in BERT_LIST:
+        hs = np.hstack((hs, np.ones((hs.shape[0], 1))))
+    
+    return hs
+
 #%%##############################
 # Loading Model Word Lists.     #
 #################################

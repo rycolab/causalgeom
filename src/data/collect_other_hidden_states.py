@@ -227,11 +227,14 @@ if __name__=="__main__":
 
     language = args.language
     model_name = args.model
-    #batch_size = 64
     #language = "en"
     #model_name = "bert-base-uncased"
-    #split = "dev"
-    batch_size = 64
+    if model_name in BERT_LIST:
+        batch_size = 64
+    elif model_name == "gpt2-base-french":
+        batch_size = 32
+    else:
+        batch_size = 16
 
     # Output dir
     output_dir = os.path.join(OUT, f"hidden_states/{language}/{model_name}")
