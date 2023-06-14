@@ -23,44 +23,12 @@ from paths import DATASETS, OUT, RESULTS
 from evals.kl_eval import load_run_output, get_distribs, \
     normalize_pairs, compute_overall_mi, compute_kl, renormalize
 from utils.dataset_loaders import load_hs, load_model_eval
+from utils.lm_loaders import BERT_LIST, GPT2_LIST
 
 #from evals.usage_eval import diag_eval, usage_eval
 
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
-
-#%%#################
-# Main             #
-####################
-#if __name__ == '__main__':
-
-model_name = "bert-base-uncased"
-concept = "number"
-suffix = "nopca"
-gpt_run_output = os.path.join(OUT, "run_output/linzen/gpt2/230415/run_gpt2_k1_Pms11,16,21,26,31,36_Pg0.5_clfms21,31_clfg0.5_2023-04-15-15:02:02_0_1.pkl")
-gpt2_large_run_output = os.path.join(OUT, "run_output/linzen/gpt2-large/230415/run_gpt2-large_k1_Pms31_Pg0.5_clfms31_clfg0.5_2023-04-15-20:20:45_0_1.pkl")
-bert_run_output = os.path.join(OUT, "run_output/linzen/bert-base-uncased/230310/run_bert_k_1_0_1.pkl")
-if model_name == "bert-base-uncased":
-    run_output = bert_run_output
-elif model_name == "gpt2":
-    run_output = gpt_run_output
-elif model_name == "gpt2-large":
-    run_output = gpt2_large_run_output
-elif model_name == "gpt2-medium":
-    run_output = None
-else:
-    run_output = None
-
-RES = pd.read_csv(os.path.join(OUT, "run_kls.csv"), index_col=0)
-OUTDIR = os.path.join(RESULTS, f"{concept}/{model_name}")
-if not os.path.exists(OUTDIR):
-    os.makedirs(OUTDIR)
-logging.info(f"Formatting and exporting run results for {model_name}")
-
-#P, I_P = load_run_output(gpt_run_output)
-
-#kls = compute_kls(hs, P, I_P, word_emb, l0_emb, l1_emb, verb_probs)
-#kls.to_csv(os.path.join(OUT, "run_kls.csv"))
 
 
 #%%#################
@@ -105,7 +73,7 @@ diag_usage_res = dict(
 )
 
 diag_usage_res_df = pd.DataFrame(diag_usage_res).T
-diag_usage_res_path = os.path.join(OUTDIR, f"diag_usage_res_{suffix}.csv")
+diag_usage_res_path = os.path.join(OUTDIR, f"diag_usage_res.csv")
 diag_usage_res_df.to_csv(diag_usage_res_path)
 logging.info(f"Exported diag_usage results to: {diag_usage_res_path}")
 """
@@ -161,17 +129,6 @@ def get_full_kls_df(res, P):
     full_P_kls.sort_values(by = ["split", "distance_metric", "metric"], inplace=True)
     return full_P_kls 
 
-P_kls = get_full_kls_df(RES, "P")
-I_P_kls = get_full_kls_df(RES, "I_P")
-
-P_fth_res_path = os.path.join(OUTDIR, f"fth_res_P_{suffix}.csv")
-P_kls.to_csv(P_fth_res_path)
-logging.info(f"Exported P_fth results to: {P_fth_res_path}")
-
-I_P_fth_res_path = os.path.join(OUTDIR, f"fth_res_I_P_{suffix}.csv")
-I_P_kls.to_csv(I_P_fth_res_path)
-logging.info(f"Exported I_P_fth results to: {I_P_fth_res_path}")
-
 #%%
 def get_er_res(res, split, metric):
     resdict = dict(
@@ -213,36 +170,87 @@ def get_full_er_df(res):
     full_ers.sort_values(by = ["split", "reps", "metric"], inplace=True)
     return full_ers
 
-full_ers = get_full_er_df(RES) 
+#%%#################
+# BASELINE         #
+####################
+def get_baseline_kls(concept, model_name, nsamples=200):
+    hs_sub = load_hs(concept, model_name, nsamples*2)
+    other_emb, l0_emb, l1_emb, pair_probs, concept_marginals = load_model_eval(concept, model_name)
 
-er_res_path = os.path.join(OUTDIR, f"er_res_{suffix}.csv")
-full_ers.to_csv(er_res_path)
-logging.info(f"Exported erasure results to: {er_res_path}")
+    kls = []
+    for i in trange(nsamples):
+        h1 = hs_sub[i]
+        h2 = hs_sub[nsamples + i]
+        h1_base_distribs = get_distribs(h1, other_emb, l0_emb, l1_emb)
+        h2_base_distribs = get_distribs(h2, other_emb, l0_emb, l1_emb)
+        res = dict(
+            all_split=compute_kl(h1_base_distribs["all_split"], h2_base_distribs["all_split"]),
+            all_merged=compute_kl(h1_base_distribs["all_merged"], h2_base_distribs["all_merged"]),
+            tgt_split=compute_kl(renormalize(h1_base_distribs["lemma_split"]), renormalize(h2_base_distribs["lemma_split"])),
+            tgt_merged=compute_kl(renormalize(h1_base_distribs["lemma_merged"]), renormalize(h2_base_distribs["lemma_merged"])),
+            other=compute_kl(renormalize(h1_base_distribs["other"]), renormalize(h2_base_distribs["other"])),
+        )
+        kls.append(res)
+        
+    desc_kls = pd.DataFrame(kls).describe()
+    return desc_kls
 
 #%%#################
-# BASELINE       #
+# Main             #
 ####################
-nsamples = 200
-
-hs_sub = load_hs(concept, model_name, nsamples*2)
-other_emb, l0_emb, l1_emb, pair_probs, concept_marginals = load_model_eval(concept, model_name)
-
-kls = []
-for i in trange(nsamples):
-    h1 = hs_sub[i]
-    h2 = hs_sub[nsamples + i]
-    h1_base_distribs = get_distribs(h1, other_emb, l0_emb, l1_emb)
-    h2_base_distribs = get_distribs(h2, other_emb, l0_emb, l1_emb)
-    res = dict(
-        all_split=compute_kl(h1_base_distribs["all_split"], h2_base_distribs["all_split"]),
-        all_merged=compute_kl(h1_base_distribs["all_merged"], h2_base_distribs["all_merged"]),
-        tgt_split=compute_kl(renormalize(h1_base_distribs["lemma_split"]), renormalize(h2_base_distribs["lemma_split"])),
-        tgt_merged=compute_kl(renormalize(h1_base_distribs["lemma_merged"]), renormalize(h2_base_distribs["lemma_merged"])),
-        other=compute_kl(renormalize(h1_base_distribs["other"]), renormalize(h2_base_distribs["other"])),
+def get_args():
+    argparser = argparse.ArgumentParser(description='Formatting Results Tables')
+    argparser.add_argument(
+        "-concept",
+        type=str,
+        choices=["gender", "number"],
+        help="Concept to create embedded word lists for"
     )
-    kls.append(res)
-    
-desc_kls = pd.DataFrame(kls).describe()
-desc_kls_path = os.path.join(OUTDIR, "fth_baseline.csv")
-desc_kls.to_csv(desc_kls_path)
-logging.info(f"Exported baseline KL results to: {desc_kls_path}")
+    argparser.add_argument(
+        "-model",
+        type=str,
+        choices=BERT_LIST + GPT2_LIST,
+        help="Models to create embedding files for"
+    )
+    return argparser.parse_args()
+
+if __name__ == '__main__':
+    args = get_args()
+    logging.info(args)
+
+    model_name = args.model
+    concept_name = args.concept
+    #model_name = "bert-base-uncased"
+    #concept_name = "number"
+    #suffix = "nopca"
+
+    raw_results_path = os.path.join(OUT, f"raw_results/kl_mi_{model_name}_{concept_name}.csv")
+    raw_results = pd.read_csv(raw_results_path, index_col=0)
+
+    OUTDIR = os.path.join(RESULTS, f"{concept_name}/{model_name}")
+    if not os.path.exists(OUTDIR):
+        os.makedirs(OUTDIR)
+
+    logging.info(f"Formatting and exporting run results for {model_name}, {concept_name}")
+
+    P_kls = get_full_kls_df(raw_results, "P")
+    I_P_kls = get_full_kls_df(raw_results, "I_P")
+
+    P_fth_res_path = os.path.join(OUTDIR, f"fth_res_P.csv")
+    P_kls.to_csv(P_fth_res_path, index=False)
+    logging.info(f"Exported P_fth results to: {P_fth_res_path}")
+
+    I_P_fth_res_path = os.path.join(OUTDIR, f"fth_res_I_P.csv")
+    I_P_kls.to_csv(I_P_fth_res_path, index=False)
+    logging.info(f"Exported I_P_fth results to: {I_P_fth_res_path}")
+
+    full_ers = get_full_er_df(raw_results) 
+
+    er_res_path = os.path.join(OUTDIR, f"er_res.csv")
+    full_ers.to_csv(er_res_path, index=False)
+    logging.info(f"Exported erasure results to: {er_res_path}")
+
+    baseline_kls = get_baseline_kls(concept_name, model_name)
+    baseline_kls_path = os.path.join(OUTDIR, "fth_baseline.csv")
+    baseline_kls.to_csv(baseline_kls_path, index=True)
+    logging.info(f"Exported baseline KL results to: {baseline_kls_path}")

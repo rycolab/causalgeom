@@ -156,13 +156,14 @@ def load_preprocessed_dataset(dataset_name, model_name, split=None):
 #################################
 def load_dataset_pickle(path, dataset_name):
     #TODO: fix this once we're sure what we're computing
-    with open(path, 'rb') as f:      
-        if dataset_name == "linzen":
-            data = pd.DataFrame(pickle.load(f), columns = ["h", "u", "y"])
-        elif dataset_name in ["ud_fr_gsd", "ud_fr_partut", "ud_fr_rhapsodie"]:
-            data = pd.DataFrame(pickle.load(f), columns = ["h", "u", "y", "fact", "foil"])
+    with open(path, 'rb') as f:     
+        data = pd.DataFrame(pickle.load(f))
+        if data.shape[1] == 3:
+            data.columns = ["h", "u", "y"]
+        elif data.shape[1] == 5:
+            data.columns = ["h", "u", "y", "fact", "foil"]
         else:
-            raise ValueError("Unsupported dataset name.")
+            raise ValueError("Unexpected processed dataset format")
     
     X = np.array([x for x in data["h"]])
     U = np.array([x for x in data["u"]])

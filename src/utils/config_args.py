@@ -150,12 +150,12 @@ def get_train_probes_args():
         default=1,
         help="Number of runs of the experiment"
     )
-    argparser.add_argument(
-        "-train_obs",
-        type=int,
-        default=200000,
-        help="Number of train obs"
-    )
+    #argparser.add_argument(
+    #    "-train_obs",
+    #    type=int,
+    #    default=200000,
+    #    help="Number of train obs"
+    #)
     argparser.add_argument(
         "-seed",
         type=int,
@@ -212,9 +212,14 @@ def set_train_probes_defaults(config):
         config["clf_lr"] * (config["clf_sched_factor"]**config["clf_n_lr_red"])
     )
 
-    # Val and test size
+    # Train, val and test size
+    config["train_obs"] = 200000
     config["val_obs"] = 10000
     config["test_obs"] = 20000
+
+    config["train_share"] = .8
+    config["val_share"] = .1
+    config["test_share"] = .1
 
     # Constructing RLACE arg dicts (DON'T SET DEFAULTS HERE)
     config["rlace_optimizer_params_P"] = {

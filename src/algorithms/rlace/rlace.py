@@ -76,7 +76,7 @@ def compute_mis(X_dev, P, rank, word_emb, sg_emb, pl_emb, verb_probs, sg_pl_prob
     mis = compute_kls(
         X_dev, P_svd, I_P_svd, word_emb, sg_emb, pl_emb, verb_probs, sg_pl_prob,
         faith=False, er_kls=False, er_mis=True, X_pca=X_pca
-    )
+    ).describe()
     return mis.loc["mean",:]
 
 def solve_constraint(lambdas, d=1):
@@ -259,7 +259,7 @@ def solve_adv_game(X_train, y_train, X_dev, y_dev,
 
     burn_P, burn_loss = None, -1
 
-    word_emb, sg_emb, pl_emb, verb_probs, sg_pl_prob = load_model_eval(concept, model_name)
+    other_emb, l0_emb, l1_emb, pair_probs, concept_marginals = load_model_eval(concept, model_name)
 
     if wb:
         if wb_run is None:
@@ -349,14 +349,17 @@ def solve_adv_game(X_train, y_train, X_dev, y_dev,
 
         if (i+1) % 5000 == 0:
             mis_val = compute_mis(
-                X_dev, P.detach().cpu().numpy(), rank, word_emb, sg_emb, pl_emb, 
-                verb_probs, sg_pl_prob, X_pca
+                X_dev, P.detach().cpu().numpy(), rank, other_emb, l0_emb, l1_emb, 
+                pair_probs, concept_marginals, X_pca
             )
             if wb:
                 wandb.log({
                     f"diag_rlace/val/mis/{wb_run}/base_overall_mi": mis_val["base_overall_mi"],
                     f"diag_rlace/val/mis/{wb_run}/P_overall_mi": mis_val["P_overall_mi"],
                     f"diag_rlace/val/mis/{wb_run}/I_P_overall_mi": mis_val["I_P_overall_mi"],
+                    f"diag_rlace/val/mis/{wb_run}/base_lemma_mi": mis_val["base_lemma_mi"],
+                    f"diag_rlace/val/mis/{wb_run}/P_lemma_mi": mis_val["P_lemma_mi"],
+                    f"diag_rlace/val/mis/{wb_run}/I_P_lemma_mi": mis_val["I_P_lemma_mi"],
                     f"diag_rlace/val/mis/{wb_run}/base_pairwise_mi": mis_val["base_pairwise_mi"],
                     f"diag_rlace/val/mis/{wb_run}/P_pairwise_mi": mis_val["P_pairwise_mi"],
                     f"diag_rlace/val/mis/{wb_run}/I_P_pairwise_mi": mis_val["I_P_pairwise_mi"],

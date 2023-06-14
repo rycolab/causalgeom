@@ -20,7 +20,7 @@ from scipy.stats import entropy
 sys.path.append('./src/')
 
 from paths import DATASETS, OUT
-from utils.lm_loaders import get_tokenizer, get_V
+from utils.lm_loaders import get_tokenizer, get_V, BERT_LIST, GPT2_LIST
 from utils.dataset_loaders import load_hs, load_other_hs, load_model_eval
 
 coloredlogs.install(level=logging.INFO)
@@ -353,24 +353,9 @@ def compute_kls(hs, P, I_P, other_emb, l0_emb, l1_emb, pair_probs, concept_margi
     kls = pd.DataFrame(kls)
     return kls
 
-
-#%%#################
-# Main             #
-####################
-if __name__ == '__main__':
-
-    model_name = "bert-base-uncased"
-    concept_name = "number"
-    nsamples = 1000
-    run_output = os.path.join(OUT, "run_output/linzen/bert-base-uncased/230310/run_bert_k_1_0_1.pkl")
-
-    logging.info(f"Tokenizing and saving embeddings from word and verb lists for model {model_name}")
-
-    concept_hs = load_hs(concept_name, model_name, nsamples=nsamples)
-    other_hs = load_other_hs(concept_name, model_name, nsamples=nsamples)
+def compute_kls_all_hs(concept_name, model_name, concept_hs, other_hs, P, I_P):
     other_emb, l0_emb, l1_emb, pair_probs, concept_marginals = load_model_eval(concept_name, model_name)
-    P, I_P = load_run_output(run_output)
-    
+
     concept_kls = compute_kls(concept_hs, P, I_P, other_emb, l0_emb, l1_emb, pair_probs, concept_marginals)
     other_kls = compute_kls(other_hs, P, I_P, other_emb, l0_emb, l1_emb, pair_probs, concept_marginals)
     
@@ -383,6 +368,73 @@ if __name__ == '__main__':
     all_kls_desc = all_kls.describe()
     all_kls_desc.columns = ["all_" + x for x in all_kls_desc.columns]
     
-    kls = pd.concat([concept_kls_desc, other_kls_desc, all_kls_desc], axis=1)
+    return pd.concat([concept_kls_desc, other_kls_desc, all_kls_desc], axis=1)
 
-    kls.to_csv(os.path.join(OUT, "run_kls.csv"))
+
+def compute_kls_from_run_output(concept_name, model_name, nsamples):
+    concept_hs = load_hs(concept_name, model_name, nsamples=nsamples)
+    other_hs = load_other_hs(concept_name, model_name, nsamples=nsamples)
+    run_output_path = get_best_runs(model_name, concept_name)
+    P, I_P = load_run_output(run_output_path)
+
+    return compute_kls_all_hs(concept_name, model_name, concept_hs, other_hs, 
+        P, I_P)   
+    
+def compute_kls_after_training(concept_name, model_name, X_test, P, I_P):
+    other_hs = load_other_hs(concept_name, model_name, nsamples=X_test.shape[0])
+    
+    return compute_kls_all_hs(concept_name, model_name, X_test, other_hs, 
+        P, I_P)
+    
+
+#%%#################
+# Main             #
+####################
+def get_args():
+    argparser = argparse.ArgumentParser(description='Running KL and MI eval')
+    argparser.add_argument(
+        "-concept",
+        type=str,
+        choices=["gender", "number"],
+        help="Concept to create embedded word lists for"
+    )
+    argparser.add_argument(
+        "-model",
+        type=str,
+        choices=BERT_LIST + GPT2_LIST,
+        help="Models to create embedding files for"
+    )
+    return argparser.parse_args()
+
+def get_best_runs(model_name, concept_name):
+    if model_name == "bert-base-uncased" and concept_name == "number":
+        return os.path.join(OUT, "run_output/linzen/bert-base-uncased/230310/run_bert_k_1_0_1.pkl")
+    elif model_name == "gpt2-large" and concept_name == "number":
+        return os.path.join(OUT, "run_output/linzen/gpt2-large/230415/run_gpt2-large_k1_Pms31_Pg0.5_clfms31_clfg0.5_2023-04-15-20:20:45_0_1.pkl")
+    elif model_name == "camembert-base" and concept_name == "gender":
+        return None
+    elif model_name == "gpt2-base-french" and concept_name == "gender":
+        return None
+    else:
+        raise ValueError(f"No best run for combination of {model_name} and {concept_name}")
+
+if __name__ == '__main__':
+    args = get_args()
+    logging.info(args)
+
+    model_name = args.model
+    concept_name = args.concept
+    #model_name = "bert-base-uncased"
+    #concept_name = "number"
+    nsamples = 1000
+    
+    logging.info(f"Running KL and MI eval for {model_name}, {concept_name}")
+
+    outdir = os.path.join(OUT, "raw_results")
+    if not os.path.exists(outdir):
+        os.makedirs(outdir)
+    outfile = os.path.join(outdir, f"kl_mi_{model_name}_{concept_name}.csv")
+
+    kls = compute_kls_from_run_output(concept_name, model_name, nsamples)
+    kls.to_csv(outfile)
+    logging.info(f"Exported KLs for all subsets of hs to {outfile}")
