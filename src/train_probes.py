@@ -31,7 +31,7 @@ from classifiers.classifiers import BinaryParamFreeClf
 from classifiers.compute_marginals import compute_concept_marginal, compute_pair_marginals
 from utils.cuda_loaders import get_device
 from utils.config_args import get_train_probes_config
-from evals.kl_eval import compute_kls, load_model_eval
+from evals.kl_eval import compute_kls_after_training, load_model_eval
 from evals.usage_eval import full_usage_eval, full_diag_eval
 from utils.dataset_loaders import load_processed_data
 
@@ -124,15 +124,13 @@ def train_probes(X, U, y, cfg, wb, wb_run, diag_rlace_u_outdir, device="cpu"):
         diag_rlace_output, X_train, U_train, y_train, X_test, U_test, 
         y_test, X_pca=X_pca
     )
-    #raw_kl_eval = compute_kls(
-    #    X_test, diag_rlace_output["P"], diag_rlace_output["I_P"], 
-    #    other_emb, l0_emb, l1_emb, pair_probs, concept_marginals, X_pca=X_pca
-    #)
+    #diag_eval = None
+    #usage_eval = None
     raw_kl_eval = compute_kls_after_training(
         cfg["concept"], cfg["model_name"], X_test, 
         diag_rlace_output["P_burn"], diag_rlace_output["I_P_burn"]
     )
-
+    
     if WB:
         wandb.log({
             f"diag_rlace/test/P/diag/{i}/diag_acc_test": diag_eval["diag_acc_P_test"],
@@ -167,7 +165,7 @@ def train_probes(X, U, y, cfg, wb, wb_run, diag_rlace_u_outdir, device="cpu"):
             f"diag_rlace/test/I_P/er_mis/{i}/lemma_mi": raw_kl_eval.loc["mean", "I_P_lemma_mi"],
             f"diag_rlace/test/I_P/er_mis/{i}/pairwise_mi": raw_kl_eval.loc["mean", "I_P_pairwise_mi"],
         })
-
+    
     """
     #%%
     #versions = ["original", "positively_functional", "negatively_functional"]
@@ -296,7 +294,7 @@ if __name__ == '__main__':
             f"run_{cfg['run_name']}_{datetimestr}_{i}_{cfg['nruns']}.pkl")
 
         with open(outfile_path, 'wb') as f:
-            pickle.dump(full_results, f, protocol=pickle.HIGHEST_PROTOCOL)
+            pickle.dump(run_output, f, protocol=pickle.HIGHEST_PROTOCOL)
 
         logging.info(f"Exported {outfile_path}")
 
