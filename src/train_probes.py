@@ -126,45 +126,10 @@ def train_probes(X, U, y, cfg, wb, wb_run, diag_rlace_u_outdir, device="cpu"):
     )
     #diag_eval = None
     #usage_eval = None
-    raw_kl_eval = compute_kls_after_training(
+    mikl_descs, concept_kls, other_kls = compute_kls_after_training(
         cfg["concept"], cfg["model_name"], X_test, 
         diag_rlace_output["P_burn"], diag_rlace_output["I_P_burn"]
     )
-    
-    if WB:
-        wandb.log({
-            f"diag_rlace/test/P/diag/{i}/diag_acc_test": diag_eval["diag_acc_P_test"],
-            f"diag_rlace/test/I_P/diag/{i}/diag_acc_test": diag_eval["diag_acc_I_P_test"],
-            f"diag_rlace/test/P/usage/{i}/lm_acc_test": usage_eval["lm_acc_P_test"], 
-            f"diag_rlace/test/I_P/usage/{i}/lm_acc_test": usage_eval["lm_acc_I_P_test"],
-            f"diag_rlace/test/P_burn/diag/{i}/diag_acc_test": diag_eval["diag_acc_P_burn_test"],
-            f"diag_rlace/test/I_P_burn/diag/{i}/diag_acc_test": diag_eval["diag_acc_I_P_burn_test"],
-            f"diag_rlace/test/P_burn/usage/{i}/lm_acc_test": usage_eval["lm_acc_P_burn_test"], 
-            f"diag_rlace/test/I_P_burn/usage/{i}/lm_acc_test": usage_eval["lm_acc_I_P_burn_test"],
-            
-            f"diag_rlace/test/P/fth_kls/{i}/faith_kl_all_split": raw_kl_eval.loc["mean", "P_faith_kl_all_split"],
-            f"diag_rlace/test/P/fth_kls/{i}/faith_kl_all_merged": raw_kl_eval.loc["mean", "P_faith_kl_all_merged"],
-            f"diag_rlace/test/P/fth_kls/{i}/faith_kl_words": raw_kl_eval.loc["mean", "P_faith_kl_words"],
-            f"diag_rlace/test/P/fth_kls/{i}/faith_kl_tgt_split": raw_kl_eval.loc["mean", "P_faith_kl_tgt_split"],
-            f"diag_rlace/test/P/fth_kls/{i}/faith_kl_tgt_merged": raw_kl_eval.loc["mean", "P_faith_kl_tgt_merged"],
-
-            f"diag_rlace/test/base/er_mis/{i}/overall_mi": raw_kl_eval.loc["mean", "base_overall_mi"],
-            f"diag_rlace/test/base/er_mis/{i}/pairwise_mi": raw_kl_eval.loc["mean", "base_pairwise_mi"],
-
-            f"diag_rlace/test/P/er_mis/{i}/overall_mi": raw_kl_eval.loc["mean", "P_overall_mi"],
-            f"diag_rlace/test/P/er_mis/{i}/lemma_mi": raw_kl_eval.loc["mean", "P_lemma_mi"],
-            f"diag_rlace/test/P/er_mis/{i}/pairwise_mi": raw_kl_eval.loc["mean", "P_pairwise_mi"],
-
-            f"diag_rlace/test/I_P/fth_kls/{i}/faith_kl_all_split": raw_kl_eval.loc["mean", "I_P_faith_kl_all_split"],
-            f"diag_rlace/test/I_P/fth_kls/{i}/faith_kl_all_merged": raw_kl_eval.loc["mean", "I_P_faith_kl_all_merged"],
-            f"diag_rlace/test/I_P/fth_kls/{i}/faith_kl_words": raw_kl_eval.loc["mean", "I_P_faith_kl_words"],
-            f"diag_rlace/test/I_P/fth_kls/{i}/faith_kl_tgt_split": raw_kl_eval.loc["mean", "I_P_faith_kl_tgt_split"],
-            f"diag_rlace/test/I_P/fth_kls/{i}/faith_kl_tgt_merged": raw_kl_eval.loc["mean", "I_P_faith_kl_tgt_merged"],
-
-            f"diag_rlace/test/I_P/er_mis/{i}/overall_mi": raw_kl_eval.loc["mean", "I_P_overall_mi"],
-            f"diag_rlace/test/I_P/er_mis/{i}/lemma_mi": raw_kl_eval.loc["mean", "I_P_lemma_mi"],
-            f"diag_rlace/test/I_P/er_mis/{i}/pairwise_mi": raw_kl_eval.loc["mean", "I_P_pairwise_mi"],
-        })
     
     """
     #%%
@@ -227,7 +192,9 @@ def train_probes(X, U, y, cfg, wb, wb_run, diag_rlace_u_outdir, device="cpu"):
         output=diag_rlace_output,
         diag_eval=diag_eval,
         usage_eval=usage_eval,
-        kl_eval=raw_kl_eval,
+        kl_eval=mikl_descs,
+        concept_kl_samples=concept_kls,
+        other_kl_samples=other_kls,
         maj_acc_test=get_majority_acc(y_test),
         maj_acc_val=get_majority_acc(y_val),
         maj_acc_train=get_majority_acc(y_train),
@@ -297,6 +264,43 @@ if __name__ == '__main__':
             pickle.dump(run_output, f, protocol=pickle.HIGHEST_PROTOCOL)
 
         logging.info(f"Exported {outfile_path}")
+        
+        if WB:
+            kl_eval_desc = run_output["kl_eval"].describe()
+            wandb.log({
+                f"diag_rlace/test/P/diag/{i}/diag_acc_test": run_output["diag_eval"]["diag_acc_P_test"],
+                f"diag_rlace/test/I_P/diag/{i}/diag_acc_test": run_output["diag_eval"]["diag_acc_I_P_test"],
+                f"diag_rlace/test/P/usage/{i}/lm_acc_test": run_output["usage_eval"]["lm_acc_P_test"], 
+                f"diag_rlace/test/I_P/usage/{i}/lm_acc_test": run_output["usage_eval"]["lm_acc_I_P_test"],
+                f"diag_rlace/test/P_burn/diag/{i}/diag_acc_test": run_output["diag_eval"]["diag_acc_P_burn_test"],
+                f"diag_rlace/test/I_P_burn/diag/{i}/diag_acc_test": run_output["diag_eval"]["diag_acc_I_P_burn_test"],
+                f"diag_rlace/test/P_burn/usage/{i}/lm_acc_test": run_output["usage_eval"]["lm_acc_P_burn_test"], 
+                f"diag_rlace/test/I_P_burn/usage/{i}/lm_acc_test": run_output["usage_eval"]["lm_acc_I_P_burn_test"],
+                
+                f"diag_rlace/test/P/fth_kls/{i}/faith_kl_all_split": kl_eval_desc.loc["mean", "all_P_faith_kl_all_split"],
+                f"diag_rlace/test/P/fth_kls/{i}/faith_kl_all_merged": kl_eval_desc.loc["mean", "all_P_faith_kl_all_merged"],
+                f"diag_rlace/test/P/fth_kls/{i}/faith_kl_words": kl_eval_desc.loc["mean", "all_P_faith_kl_words"],
+                f"diag_rlace/test/P/fth_kls/{i}/faith_kl_tgt_split": kl_eval_desc.loc["mean", "all_P_faith_kl_tgt_split"],
+                f"diag_rlace/test/P/fth_kls/{i}/faith_kl_tgt_merged": kl_eval_desc.loc["mean", "all_P_faith_kl_tgt_merged"],
 
+                f"diag_rlace/test/base/er_mis/{i}/overall_mi": kl_eval_desc.loc["mean", "all_base_overall_mi"],
+                f"diag_rlace/test/base/er_mis/{i}/pairwise_mi": kl_eval_desc.loc["mean", "all_base_pairwise_mi"],
+
+                f"diag_rlace/test/P/er_mis/{i}/overall_mi": kl_eval_desc.loc["mean", "all_P_overall_mi"],
+                f"diag_rlace/test/P/er_mis/{i}/lemma_mi": kl_eval_desc.loc["mean", "all_P_lemma_mi"],
+                f"diag_rlace/test/P/er_mis/{i}/pairwise_mi": kl_eval_desc.loc["mean", "all_P_pairwise_mi"],
+
+                f"diag_rlace/test/I_P/fth_kls/{i}/faith_kl_all_split": kl_eval_desc.loc["mean", "all_I_P_faith_kl_all_split"],
+                f"diag_rlace/test/I_P/fth_kls/{i}/faith_kl_all_merged": kl_eval_desc.loc["mean", "all_I_P_faith_kl_all_merged"],
+                f"diag_rlace/test/I_P/fth_kls/{i}/faith_kl_words": kl_eval_desc.loc["mean", "all_I_P_faith_kl_words"],
+                f"diag_rlace/test/I_P/fth_kls/{i}/faith_kl_tgt_split": kl_eval_desc.loc["mean", "all_I_P_faith_kl_tgt_split"],
+                f"diag_rlace/test/I_P/fth_kls/{i}/faith_kl_tgt_merged": kl_eval_desc.loc["mean", "all_I_P_faith_kl_tgt_merged"],
+
+                f"diag_rlace/test/I_P/er_mis/{i}/overall_mi": kl_eval_desc.loc["mean", "all_I_P_overall_mi"],
+                f"diag_rlace/test/I_P/er_mis/{i}/lemma_mi": kl_eval_desc.loc["mean", "all_I_P_lemma_mi"],
+                f"diag_rlace/test/I_P/er_mis/{i}/pairwise_mi": kl_eval_desc.loc["mean", "all_I_P_pairwise_mi"],
+            })
+
+    
 
     logging.info("Done")

@@ -32,7 +32,10 @@ warnings.filterwarnings("ignore")
 def load_run_output(run_path):
     with open(run_path, 'rb') as f:      
         run = pickle.load(f)
+    return run
 
+def load_run_Ps(run_path):
+    run = load_run_output(run_path)
     P = run["output"]["P_burn"]
     I_P = run["output"]["I_P_burn"]
     return P, I_P
@@ -368,17 +371,18 @@ def compute_kls_all_hs(concept_name, model_name, concept_hs, other_hs, P, I_P):
     all_kls_desc = all_kls.describe()
     all_kls_desc.columns = ["all_" + x for x in all_kls_desc.columns]
     
-    return pd.concat([concept_kls_desc, other_kls_desc, all_kls_desc], axis=1)
+    all_descs = pd.concat([concept_kls_desc, other_kls_desc, all_kls_desc], axis=1)
+    return all_descs, concept_kls, other_kls
 
 
-def compute_kls_from_run_output(concept_name, model_name, nsamples):
+def compute_kls_from_run_output(concept_name, model_name, run_output_path, nsamples):
+    #TODO: do this with Xtest now that it is logged to run output
     concept_hs = load_hs(concept_name, model_name, nsamples=nsamples)
     other_hs = load_other_hs(concept_name, model_name, nsamples=nsamples)
-    run_output_path = get_best_runs(model_name, concept_name)
-    P, I_P = load_run_output(run_output_path)
+    P, I_P = load_run_Ps(run_output_path)
 
     return compute_kls_all_hs(concept_name, model_name, concept_hs, other_hs, 
-        P, I_P)   
+        P, I_P)    
     
 def compute_kls_after_training(concept_name, model_name, X_test, P, I_P):
     other_hs = load_other_hs(concept_name, model_name, nsamples=X_test.shape[0])
@@ -406,17 +410,6 @@ def get_args():
     )
     return argparser.parse_args()
 
-def get_best_runs(model_name, concept_name):
-    if model_name == "bert-base-uncased" and concept_name == "number":
-        return os.path.join(OUT, "run_output/linzen/bert-base-uncased/230310/run_bert_k_1_0_1.pkl")
-    elif model_name == "gpt2-large" and concept_name == "number":
-        return os.path.join(OUT, "run_output/linzen/gpt2-large/230415/run_gpt2-large_k1_Pms31_Pg0.5_clfms31_clfg0.5_2023-04-15-20:20:45_0_1.pkl")
-    elif model_name == "camembert-base" and concept_name == "gender":
-        return None
-    elif model_name == "gpt2-base-french" and concept_name == "gender":
-        return None
-    else:
-        raise ValueError(f"No best run for combination of {model_name} and {concept_name}")
 
 if __name__ == '__main__':
     args = get_args()

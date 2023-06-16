@@ -20,8 +20,9 @@ sys.path.append('./src/')
 
 from paths import DATASETS, OUT, RESULTS
 #from utils.lm_loaders import get_tokenizer, get_V
-from evals.kl_eval import load_run_output, get_distribs, \
-    normalize_pairs, compute_overall_mi, compute_kl, renormalize
+from evals.kl_eval import load_run_output, load_run_Ps, get_distribs, \
+    normalize_pairs, compute_overall_mi, compute_kl, renormalize,\
+        compute_kls_from_run_output
 from utils.dataset_loaders import load_hs, load_model_eval
 from utils.lm_loaders import BERT_LIST, GPT2_LIST
 
@@ -38,45 +39,29 @@ warnings.filterwarnings("ignore")
 #    run = pickle.load(f)
 
 #%% Diag eval
-"""
-diag_acc_keys = [
-    "diag_acc_original_test", "diag_loss_original_test", 
-    "diag_acc_P_burn_test", "diag_loss_P_burn_test",
-    "diag_acc_I_P_burn_test", "diag_loss_I_P_burn_test"
-]
+def format_acc_res(diag_eval_dict, usage_eval_dict):
+    diag_usage_res = dict(
+        orig=dict(
+            test_diag_loss=diag_eval_dict["diag_loss_original_test"],
+            test_diag_acc=diag_eval_dict["diag_acc_original_test"],
+            test_lm_loss=usage_eval_dict["lm_loss_original_test"],
+            test_lm_acc=usage_eval_dict["lm_acc_original_test"],
+        ),
+        P=dict(
+            test_diag_loss=diag_eval_dict["diag_loss_P_burn_test"],
+            test_diag_acc=diag_eval_dict["diag_acc_P_burn_test"],
+            test_lm_loss=usage_eval_dict["lm_loss_P_burn_test"],
+            test_lm_acc=usage_eval_dict["lm_acc_P_burn_test"],
+        ),
+        I_P=dict(
+            test_diag_loss=diag_eval_dict["diag_loss_I_P_burn_test"],
+            test_diag_acc=diag_eval_dict["diag_acc_I_P_burn_test"],
+            test_lm_loss=usage_eval_dict["lm_loss_I_P_burn_test"],
+            test_lm_acc=usage_eval_dict["lm_acc_I_P_burn_test"],
+        ),
+    )
+    return pd.DataFrame(diag_usage_res).T 
 
-usage_acc_keys = [
-    "lm_acc_original_test", "lm_loss_original_test", 
-    "lm_acc_P_burn_test", "lm_loss_P_burn_test",
-    "lm_acc_I_P_burn_test", "lm_loss_I_P_burn_test"
-]
-
-diag_usage_res = dict(
-    orig=dict(
-        test_diag_loss=run["diag_eval"]["diag_loss_original_test"],
-        test_diag_acc=run["diag_eval"]["diag_acc_original_test"],
-        test_lm_loss=run["usage_eval"]["lm_loss_original_test"],
-        test_lm_acc=run["usage_eval"]["lm_acc_original_test"],
-    ),
-    P=dict(
-        test_diag_loss=run["diag_eval"]["diag_loss_P_burn_test"],
-        test_diag_acc=run["diag_eval"]["diag_acc_P_burn_test"],
-        test_lm_loss=run["usage_eval"]["lm_loss_P_burn_test"],
-        test_lm_acc=run["usage_eval"]["lm_acc_P_burn_test"],
-    ),
-    I_P=dict(
-        test_diag_loss=run["diag_eval"]["diag_loss_I_P_burn_test"],
-        test_diag_acc=run["diag_eval"]["diag_acc_I_P_burn_test"],
-        test_lm_loss=run["usage_eval"]["lm_loss_I_P_burn_test"],
-        test_lm_acc=run["usage_eval"]["lm_acc_I_P_burn_test"],
-    ),
-)
-
-diag_usage_res_df = pd.DataFrame(diag_usage_res).T
-diag_usage_res_path = os.path.join(OUTDIR, f"diag_usage_res.csv")
-diag_usage_res_df.to_csv(diag_usage_res_path)
-logging.info(f"Exported diag_usage results to: {diag_usage_res_path}")
-"""
 #%%
 def get_fth_res(res, split, P, metric):
     """
@@ -195,6 +180,21 @@ def get_baseline_kls(concept, model_name, nsamples=200):
     desc_kls = pd.DataFrame(kls).describe()
     return desc_kls
 
+#%%
+def recompute_eval(concept_name, model_name, run_output_path, outdir, nsamples):
+    desc_outfile = os.path.join(outdir, f"kl_mi_descs_{model_name}_{concept_name}.csv")
+    concept_outfile = os.path.join(outdir, f"kl_mi_concept_{model_name}_{concept_name}.csv")
+    other_outfile = os.path.join(outdir, f"kl_mi_other_{model_name}_{concept_name}.csv")
+
+    kl_descs, concept_kls, other_kls = compute_kls_from_run_output(
+        concept_name, model_name, run_output_path, nsamples)
+    kl_descs.to_csv(desc_outfile)
+    concept_kls.to_csv(concept_outfile)
+    other_kls.to_csv(other_outfile)
+    logging.info(f"Exported KLs for all subsets of hs.")
+
+    return kl_descs, concept_kls, other_kls
+
 #%%#################
 # Main             #
 ####################
@@ -212,29 +212,78 @@ def get_args():
         choices=BERT_LIST + GPT2_LIST,
         help="Models to create embedding files for"
     )
+    argparser.add_argument(
+        "-useRun",
+        action="store_true",
+        default=False,
+        help="Whether to load and use metrics computed at the end of the run",
+    )
+    argparser.add_argument(
+        "-exportAcc",
+        action="store_true",
+        default=False,
+        help="Whether to load and format accuracy metrics from the end of run",
+    )
     return argparser.parse_args()
+
+def get_best_runs(model_name, concept_name):
+    if model_name == "bert-base-uncased" and concept_name == "number":
+        return os.path.join(OUT, "run_output/linzen/bert-base-uncased/230310/run_bert_k_1_0_1.pkl")
+    elif model_name == "gpt2-large" and concept_name == "number":
+        return os.path.join(OUT, "run_output/linzen/gpt2-large/230415/run_gpt2-large_k1_Pms31_Pg0.5_clfms31_clfg0.5_2023-04-15-20:20:45_0_1.pkl")
+    elif model_name == "camembert-base" and concept_name == "gender":
+        return None
+    elif model_name == "gpt2-base-french" and concept_name == "gender":
+        return None
+    else:
+        raise ValueError(f"No best run for combination of {model_name} and {concept_name}")
 
 if __name__ == '__main__':
     args = get_args()
     logging.info(args)
 
-    model_name = args.model
-    concept_name = args.concept
-    #model_name = "bert-base-uncased"
-    #concept_name = "number"
+    #model_name = args.model
+    #concept_name = args.concept
+    #useRun = args.useRun
+    model_name = "gpt2-large"
+    concept_name = "number"
+    useRun=False
+    exportAcc=True
+    nsamples=1000
     #suffix = "nopca"
-
-    raw_results_path = os.path.join(OUT, f"raw_results/kl_mi_{model_name}_{concept_name}.csv")
-    raw_results = pd.read_csv(raw_results_path, index_col=0)
-
+    
     OUTDIR = os.path.join(RESULTS, f"{concept_name}/{model_name}")
     if not os.path.exists(OUTDIR):
         os.makedirs(OUTDIR)
 
     logging.info(f"Formatting and exporting run results for {model_name}, {concept_name}")
 
-    P_kls = get_full_kls_df(raw_results, "P")
-    I_P_kls = get_full_kls_df(raw_results, "I_P")
+    run_output_path = get_best_runs(model_name, concept_name)
+    run_output = load_run_output(run_output_path)
+
+    if not useRun:
+        logging.info(f"Running KL and MI eval for {model_name}, {concept_name}")
+        
+        raw_outdir = os.path.join(OUT, "raw_results")
+        if not os.path.exists(raw_outdir):
+            os.makedirs(raw_outdir)
+
+        #TODO: do this with Xtest from run output once available
+        klmidesc, _, _ = recompute_eval(concept_name, model_name, run_output_path, raw_outdir, nsamples)
+    else:
+        klmidesc = run_output["kl_eval"]
+
+    #klmi_results_path = os.path.join(OUT, f"raw_results/kl_mi_{model_name}_{concept_name}.csv")
+    #raw_results = pd.read_csv(raw_results_path, index_col=0)
+
+    if exportAcc:
+        diag_usage_res_df = format_acc_res(run_output["diag_eval"], run_output["usage_eval"])
+        diag_usage_res_path = os.path.join(OUTDIR, f"diag_usage_res.csv")
+        diag_usage_res_df.to_csv(diag_usage_res_path)
+        logging.info(f"Exported diag_usage results to: {diag_usage_res_path}")
+
+    P_kls = get_full_kls_df(klmidesc, "P")
+    I_P_kls = get_full_kls_df(klmidesc, "I_P")
 
     P_fth_res_path = os.path.join(OUTDIR, f"fth_res_P.csv")
     P_kls.to_csv(P_fth_res_path, index=False)
@@ -244,7 +293,7 @@ if __name__ == '__main__':
     I_P_kls.to_csv(I_P_fth_res_path, index=False)
     logging.info(f"Exported I_P_fth results to: {I_P_fth_res_path}")
 
-    full_ers = get_full_er_df(raw_results) 
+    full_ers = get_full_er_df(klmidesc) 
 
     er_res_path = os.path.join(OUTDIR, f"er_res.csv")
     full_ers.to_csv(er_res_path, index=False)

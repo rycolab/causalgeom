@@ -17,7 +17,7 @@ import random
 #sys.path.append('..')
 #sys.path.append('./src/')
 
-from paths import DATASETS, OUT
+from paths import DATASETS, OUT, RESULTS
 
 
 from utils.lm_loaders import get_model, get_tokenizer, get_V, GPT2_LIST, BERT_LIST
@@ -29,6 +29,26 @@ from utils.dataset_loaders import load_processed_data
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
 
+
+#%%#####################
+# Creating Nice Graphs #
+########################
+model_name = "gpt2-large"
+concept_name = "number"
+
+#resdir = os.path.join(RESULTS, f"{concept_name}/{model_name}")
+#I_P_fth_res_path = os.path.join(resdir, f"fth_res_I_P.csv")
+
+#I_P_kls = pd.read_csv(I_P_fth_res_path)
+
+raw_resdir = os.path.join(OUT, "raw_results")
+concept_fth_raw_res_path = os.path.join(raw_resdir, f"kl_mi_concept_{model_name}_{concept_name}.csv")
+concept_kls = pd.read_csv(concept_fth_raw_res_path)
+other_fth_raw_res_path = os.path.join(raw_resdir, f"kl_mi_other_{model_name}_{concept_name}.csv")
+other_kls = pd.read_csv(other_fth_raw_res_path)
+
+#%%
+I_P_kls = I_P_kls[I_P_kls["distance_metric"] == "kl"]
 
 #%%#############################
 # Computing Generation p(x, h) #

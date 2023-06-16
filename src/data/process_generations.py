@@ -98,7 +98,37 @@ def create_temp_files(generationsdir, tempdir):
         else:
             all_hs, all_counts = merge_unique_counts(all_hs, all_counts, unique_hs, counts)
 
-def aggregate_temp_files(tempdir, outfile):
+def aggregate_temp_files(tempdir, newtempdir, tempbatches=10):
+    tempfiles = os.listdir(tempdir)
+    all_hs, all_counts = None, None
+    tempcount = 0
+    for i, filepath in enumerate(tqdm(tempfiles)):
+        with open(os.path.join(tempdir, filepath), "rb") as f:
+            file_hs, file_counts = pickle.load(f)
+
+        if all_hs is None and all_counts is None:
+            all_hs, all_counts = file_hs, file_counts
+        elif (i+1)%tempbatches == 0 or i == len(tempfiles)-1:
+            all_hs, all_counts = merge_unique_counts(
+                all_hs, all_counts, file_hs, file_counts
+            )
+            tempfile = os.path.join(
+                newtempdir, 
+                f"temp{tempcount}.pkl"
+            )
+            with open(tempfile, 'wb') as f:
+                pickle.dump((all_hs, all_counts), f, protocol=pickle.HIGHEST_PROTOCOL)
+            logging.info(f"Exported tempfile {tempcount}")
+            all_hs, all_counts = None, None
+            tempcount+=1
+        else:
+            all_hs, all_counts = merge_unique_counts(
+                all_hs, all_counts, file_hs, file_counts
+            )
+    logging.info(f"Finished exporting tempfiles to {newtempdir}")
+
+
+def create_final_file(tempdir, outfile):
     tempfiles = os.listdir(tempdir)
     all_hs, all_counts = None, None
     for i, filepath in enumerate(tqdm(tempfiles)):
@@ -153,7 +183,11 @@ if __name__ == '__main__':
 
     logging.info(f"Processing generations for model {model_name} with {I_P}")
     
-    create_temp_files(generations_folder, tempdir)
-    
+    #create_temp_files(generations_folder, tempdir)
+    tempdir2 = os.path.join(outdir, "tempdir2")
+    if not os.path.exists(tempdir2):
+        os.makedirs(tempdir2)
+    aggregate_temp_files(tempdir, tempdir2)
     logging.info("Tempfiles created, merging")
-    aggregate_temp_files(tempdir, outfile)
+
+    create_final_file(tempdir2, outfile)
