@@ -227,14 +227,15 @@ def get_args():
     return argparser.parse_args()
 
 def get_best_runs(model_name, concept_name):
+    run_output_dir = os.path.join(OUT, f"run_output/{concept_name}/{model_name}")
     if model_name == "bert-base-uncased" and concept_name == "number":
-        return os.path.join(OUT, "run_output/linzen/bert-base-uncased/230310/run_bert_k_1_0_1.pkl")
+        return os.path.join(run_output_dir, "230614_test/run_bert-base-uncased_k1_Plr0.003_Pms11,21,31,41,51_clflr0.003_clfms200_2023-06-16-12:07:45_0_1.pkl")
     elif model_name == "gpt2-large" and concept_name == "number":
-        return os.path.join(OUT, "run_output/linzen/gpt2-large/230415/run_gpt2-large_k1_Pms31_Pg0.5_clfms31_clfg0.5_2023-04-15-20:20:45_0_1.pkl")
+        return os.path.join(run_output_dir, "230614/run_gpt2-large_k1_Plr0.001_Pms31_clflr0.0003_clfms31_2023-06-16-12:07:54_0_1.pkl")
     elif model_name == "camembert-base" and concept_name == "gender":
         return None
     elif model_name == "gpt2-base-french" and concept_name == "gender":
-        return None
+        return os.path.join(run_output_dir, "230614/run_gpt2-base-french_k1_Plr0.01_Pms16,41,61,81,101_clflr0.01_clfms26,51,76_2023-06-16-12:14:50_0_1.pkl")
     else:
         raise ValueError(f"No best run for combination of {model_name} and {concept_name}")
 
@@ -242,12 +243,12 @@ if __name__ == '__main__':
     args = get_args()
     logging.info(args)
 
-    #model_name = args.model
-    #concept_name = args.concept
-    #useRun = args.useRun
-    model_name = "gpt2-large"
-    concept_name = "number"
-    useRun=False
+    model_name = args.model
+    concept_name = args.concept
+    useRun = args.useRun
+    #model_name = "gpt2-large"
+    #concept_name = "number"
+    #useRun=False
     exportAcc=True
     nsamples=1000
     #suffix = "nopca"

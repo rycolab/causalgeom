@@ -57,7 +57,7 @@ def get_wordlist_paths(concept):
     else:
         raise ValueError("Invalid dataset name")
 
-def get_outfile_paths(concept, model_name):
+def get_emb_outfile_paths(concept, model_name):
     if concept == "number":
         word_emb_outfile = os.path.join(DATASETS, f"processed/en/embedded_word_lists/{model_name}_word_embeds.npy")
         verb_p_outfile = os.path.join(DATASETS, f"processed/en/embedded_word_lists/{model_name}_verb_p.npy")
@@ -70,6 +70,20 @@ def get_outfile_paths(concept, model_name):
         masc_emb_outfile = os.path.join(DATASETS, f"processed/fr/embedded_word_lists/{model_name}_masc_embeds.npy")
         fem_emb_outfile = os.path.join(DATASETS, f"processed/fr/embedded_word_lists/{model_name}_fem_embeds.npy")
         return word_emb_outfile, adj_p_outfile, masc_emb_outfile, fem_emb_outfile
+    else:
+        raise ValueError("Invalid dataset name")
+
+def get_token_list_outfile_paths(concept, model_name):
+    if concept == "number":
+        other_outfile = os.path.join(DATASETS, f"processed/en/tokenized_lists/{model_name}_word_token_list.npy")
+        sg_outfile = os.path.join(DATASETS, f"processed/en/tokenized_lists/{model_name}_sg_token_list.npy")
+        pl_outfile = os.path.join(DATASETS, f"processed/en/tokenized_lists/{model_name}_pl_token_list.npy")
+        return other_outfile, sg_outfile, pl_outfile
+    elif concept == "gender":
+        other_outfile = os.path.join(DATASETS, f"processed/fr/tokenized_lists/{model_name}_word_token_list.npy")
+        masc_outfile = os.path.join(DATASETS, f"processed/fr/tokenized_lists/{model_name}_masc_token_list.npy")
+        fem_outfile = os.path.join(DATASETS, f"processed/fr/tokenized_lists/{model_name}_fem_token_list.npy")
+        return other_outfile, masc_outfile, fem_outfile
     else:
         raise ValueError("Invalid dataset name")
 
@@ -147,17 +161,23 @@ def embed_and_export_list(token_list, V, outfile):
 # Main             #
 ####################
 if __name__=="__main__":
-    args = get_args()
-    logging.info(args)
 
-    concept = args.concept
-    model_name = args.model
-    #dataset_name = "gpt2"
-    #model_name = "linzen"
+    #args = get_args()
+    #logging.info(args)
+    #concept = args.concept
+    #model_name = args.model
+    concept = "number"
+    model_name = "gpt2-large"
     
     logging.info(f"Tokenizing and saving embeddings from word and lemma lists for model {model_name}")
     wordlist_path, lemmalist_path = get_wordlist_paths(concept)
-    word_emb_outfile, lemma_p_outfile, l0_emb_outfile, l1_emb_outfile = get_outfile_paths(concept, model_name)
+    word_emb_outfile, lemma_p_outfile, l0_emb_outfile, l1_emb_outfile = get_emb_outfile_paths(concept, model_name)
+    other_tl_outfile, l0_tl_outfile, l1_tl_outfile = get_token_list_outfile_paths(concept, model_name)
+
+    for filepath in [word_emb_outfile, other_tl_outfile]:
+        dirpath = os.path.dirname(filepath)
+        if not os.path.exists(dirpath):
+            os.makedirs(dirpath)
 
     tokenizer = get_tokenizer(model_name)
     V = get_V(model_name)
@@ -165,11 +185,14 @@ if __name__=="__main__":
 
     wl = get_unique_word_list(wordlist_path, model_name, tokenizer, add_space)
     logging.info(f"Single token word list of length: {len(wl)}")
+    np.save(other_tl_outfile, wl)
     embed_and_export_list(wl, V, word_emb_outfile)
     logging.info(f"Tokenized and exported word embeds to: {word_emb_outfile}")
 
     lemma_p, l0_tok, l1_tok = get_unique_lemma_lists(
         lemmalist_path, model_name, tokenizer, add_space)
+    np.save(l0_tl_outfile, l0_tok)
+    np.save(l1_tl_outfile, l1_tok)
     np.save(lemma_p_outfile, lemma_p)
     logging.info(f"Exported single token verb probs to: {lemma_p_outfile}")
 

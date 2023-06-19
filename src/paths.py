@@ -5,6 +5,7 @@ MAIN = "/cluster/work/cotterell/cguerner/usagebasedprobing/"
 OUT = os.path.join(MAIN, "out")
 DATASETS = os.path.join(MAIN, "data")
 RESULTS = os.path.join(MAIN, "results")
+MODELS = os.path.join(MAIN, "models")
 HF_CACHE = "../hf_cache"
 
 

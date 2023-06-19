@@ -50,8 +50,8 @@ class CustomDataset(Dataset, ABC):
 def export_batch(output_dir, batch_num, batch_data):
     export_path = os.path.join(output_dir, f"batch_{batch_num}.pkl")
     
-    with open(export_path, 'wb') as file:
-        pickle.dump(batch_data, file, protocol=pickle.HIGHEST_PROTOCOL)
+    with open(export_path, 'wb') as f:
+        pickle.dump(batch_data, f, protocol=pickle.HIGHEST_PROTOCOL)
 
 #%%#################
 # AR Helpers       #

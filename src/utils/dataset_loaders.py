@@ -10,7 +10,7 @@ from datasets import load_dataset
 #sys.path.append('..')
 sys.path.append('./src/')
 
-from data.embed_wordlists.embedder import get_outfile_paths
+from data.embed_wordlists.embedder import get_emb_outfile_paths
 from utils.lm_loaders import GPT2_LIST, BERT_LIST
 from paths import DATASETS, FR_DATASETS, HF_CACHE
 
@@ -265,7 +265,7 @@ def load_other_hs(concept_name, model_name, nsamples=None):
 # Loading Model Word Lists.     #
 #################################
 def load_model_eval(concept_name, model_name):
-    word_emb_path, lemma_p_path, lemma_0_path, lemma_1_path = get_outfile_paths(concept_name, model_name)
+    word_emb_path, lemma_p_path, lemma_0_path, lemma_1_path = get_emb_outfile_paths(concept_name, model_name)
     
     if concept_name == "number":
         concept_prob_path = os.path.join(DATASETS, "processed/en/word_lists/number_marginals.pkl")
