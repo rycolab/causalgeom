@@ -31,48 +31,34 @@ warnings.filterwarnings("ignore")
 #%%#####################
 # Creating Nice Graphs #
 ########################
-model_name = "gpt2-large"
-concept_name = "number"
+from analysis.format_res import get_best_runs
+model_name = "camembert-base"
+concept_name = "gender"
 
+run_path = get_best_runs(model_name, concept_name)
+run = load_run_output(run_path)
 #resdir = os.path.join(RESULTS, f"{concept_name}/{model_name}")
 #I_P_fth_res_path = os.path.join(resdir, f"fth_res_I_P.csv")
 
 #I_P_kls = pd.read_csv(I_P_fth_res_path)
 
-raw_resdir = os.path.join(OUT, "raw_results")
-concept_fth_raw_res_path = os.path.join(raw_resdir, f"kl_mi_concept_{model_name}_{concept_name}.csv")
-concept_kls = pd.read_csv(concept_fth_raw_res_path)
-other_fth_raw_res_path = os.path.join(raw_resdir, f"kl_mi_other_{model_name}_{concept_name}.csv")
-other_kls = pd.read_csv(other_fth_raw_res_path)
+#raw_resdir = os.path.join(OUT, "raw_results")
+#concept_fth_raw_res_path = os.path.join(raw_resdir, f"kl_mi_concept_{model_name}_{concept_name}.csv")
+#concept_kls = pd.read_csv(concept_fth_raw_res_path)
+#other_fth_raw_res_path = os.path.join(raw_resdir, f"kl_mi_other_{model_name}_{concept_name}.csv")
+#other_kls = pd.read_csv(other_fth_raw_res_path)
 
 #%%
-I_P_kls = I_P_kls[I_P_kls["distance_metric"] == "kl"]
+concept_kls = run["concept_kl_samples"]
+I_P_kls = concept_kls[["I_P_faith_kl_all_split", "I_P_faith_kl_all_merged", "I_P_faith_kl_tgt_merged", "I_P_faith_kl_tgt_split", "I_P_faith_kl_other"]]
+
+import seaborn as sns
+
+I_P_kls.columns = ["all_split", "all_merged", "tgt_merged", "tgt_split", "other"]
+sns.boxplot(I_P_kls)
 
 
-#%%#################
-# Computing correct MI #
-####################
-from models.fit_kde import load_data
 
-model_name = "gpt2-large"
-I_P = "I_P"
-X, weights = load_data(model_name, I_P)
-
-#%%
-#TODO: OR SAMPLE FROM THE KERNEL
-nsamples = 200
-probs = weights / np.sum(weights)
-idx = np.arange(0, X.shape[0])
-sampled_idx = np.random.choice(idx, size=nsamples, p=probs)
-X_samples = X[sampled_idx]
-
-#%%
-kde_path = os.path.join(MODELS, f"kde/kde_{model_name}_{I_P}.pkl")
-with open(kde_path, "rb") as f:
-    kde = pickle.load(f)
-
-#%%
-logp_hs = kde.score_samples(X_samples)
 
 #%%#################
 # Computing new MI #

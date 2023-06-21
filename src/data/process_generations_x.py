@@ -18,8 +18,11 @@ import torch
 sys.path.append('./src/')
 
 from paths import DATASETS, OUT
-from utils.lm_loaders import GPT2_LIST
+
+from utils.lm_loaders import GPT2_LIST, get_concept_name
+#from utils.lm_loaders import GPT2_LIST
 from data.embed_wordlists.embedder import get_token_list_outfile_paths
+
 
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
@@ -67,14 +70,6 @@ def create_concept_counts(xs, l0_tl, l1_tl):
             c = update_count(c, "other", v)
     return c
 
-def get_concept_name(model_name):
-    if model_name in ["gpt2-large", "bert-base-uncased"]:
-        return "number"
-    elif model_name in ["gpt2-base-french", "camembert-base"]:
-        return "gender"
-    else:
-        raise ValueError(f"No model to concept mapping")
-
 def get_cs_count_dict(model_name, xs):
     concept_name = get_concept_name(model_name)
     l0_tl, l1_tl = load_concept_token_lists(concept_name, model_name)
@@ -99,17 +94,18 @@ def get_args():
 
 
 if __name__ == '__main__':
-    #args = get_args()
-    #logging.info(args)
+    args = get_args()
+    logging.info(args)
     
-    #model_name = args.model
-    #if args.useP:
-    #    I_P = "I_P"
-    #else:
-    #    I_P = "no_I_P"
-    model_name = "gpt2-large"
-    I_P = "I_P"
-    nsamples = 20
+    nsamples=None
+    model_name = args.model
+    if args.useP:
+        I_P = "I_P"
+    else:
+        I_P = "no_I_P"
+    #model_name = "gpt2-large"
+    #I_P = "I_P"
+    #nsamples = 20
 
     generations_folder = os.path.join(OUT, f"generated_text/{model_name}/{I_P}")
     outdir = os.path.join(OUT, f"p_x/{model_name}")

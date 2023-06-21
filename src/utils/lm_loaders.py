@@ -102,3 +102,13 @@ def get_V(model_name, model=None):
             (word_embeddings, bias.view(-1, 1)), dim=1).detach().numpy()
     else:
         raise ValueError(f"Model name {model_name} not supported")
+
+def get_concept_name(model_name):
+    """ Model name to concept mapper, for now it's one to one so this
+    can exist. """
+    if model_name in ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl", "bert-base-uncased"]:
+        return "number"
+    elif model_name in ["gpt2-base-french", "camembert-base"]:
+        return "gender"
+    else:
+        raise ValueError(f"No model to concept mapping")

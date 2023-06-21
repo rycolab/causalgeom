@@ -39,23 +39,26 @@ warnings.filterwarnings("ignore")
 #    run = pickle.load(f)
 
 #%% Diag eval
-def format_acc_res(diag_eval_dict, usage_eval_dict):
+def format_acc_res(diag_eval_dict, usage_eval_dict, test_maj_acc):
     diag_usage_res = dict(
         orig=dict(
             test_diag_loss=diag_eval_dict["diag_loss_original_test"],
             test_diag_acc=diag_eval_dict["diag_acc_original_test"],
+            test_maj_acc=test_maj_acc,
             test_lm_loss=usage_eval_dict["lm_loss_original_test"],
             test_lm_acc=usage_eval_dict["lm_acc_original_test"],
         ),
         P=dict(
             test_diag_loss=diag_eval_dict["diag_loss_P_burn_test"],
             test_diag_acc=diag_eval_dict["diag_acc_P_burn_test"],
+            test_maj_acc=test_maj_acc,
             test_lm_loss=usage_eval_dict["lm_loss_P_burn_test"],
             test_lm_acc=usage_eval_dict["lm_acc_P_burn_test"],
         ),
         I_P=dict(
             test_diag_loss=diag_eval_dict["diag_loss_I_P_burn_test"],
             test_diag_acc=diag_eval_dict["diag_acc_I_P_burn_test"],
+            test_maj_acc=test_maj_acc,
             test_lm_loss=usage_eval_dict["lm_loss_I_P_burn_test"],
             test_lm_acc=usage_eval_dict["lm_acc_I_P_burn_test"],
         ),
@@ -231,9 +234,9 @@ def get_best_runs(model_name, concept_name):
     if model_name == "bert-base-uncased" and concept_name == "number":
         return os.path.join(run_output_dir, "230614_test/run_bert-base-uncased_k1_Plr0.003_Pms11,21,31,41,51_clflr0.003_clfms200_2023-06-16-12:07:45_0_1.pkl")
     elif model_name == "gpt2-large" and concept_name == "number":
-        return os.path.join(run_output_dir, "230614/run_gpt2-large_k1_Plr0.001_Pms31_clflr0.0003_clfms31_2023-06-16-12:07:54_0_1.pkl")
+        return os.path.join(run_output_dir, "230614/run_gpt2-large_k1_Plr0.001_Pms31,76_clflr0.0003_clfms31_2023-06-19-13:34:07_0_1.pkl")
     elif model_name == "camembert-base" and concept_name == "gender":
-        return None
+        return os.path.join(run_output_dir, "230619/run_camembert-base_k1_Plr0.001_Pms26,51,76_clflr0.001_clfms26,51,76_2023-06-19-13:53:52_0_1.pkl")
     elif model_name == "gpt2-base-french" and concept_name == "gender":
         return os.path.join(run_output_dir, "230614/run_gpt2-base-french_k1_Plr0.01_Pms16,41,61,81,101_clflr0.01_clfms26,51,76_2023-06-16-12:14:50_0_1.pkl")
     else:
@@ -243,12 +246,12 @@ if __name__ == '__main__':
     args = get_args()
     logging.info(args)
 
-    model_name = args.model
-    concept_name = args.concept
-    useRun = args.useRun
-    #model_name = "gpt2-large"
-    #concept_name = "number"
-    #useRun=False
+    #model_name = args.model
+    #concept_name = args.concept
+    #useRun = args.useRun
+    model_name = "gpt2-large"
+    concept_name = "number"
+    useRun=True
     exportAcc=True
     nsamples=1000
     #suffix = "nopca"
@@ -278,7 +281,7 @@ if __name__ == '__main__':
     #raw_results = pd.read_csv(raw_results_path, index_col=0)
 
     if exportAcc:
-        diag_usage_res_df = format_acc_res(run_output["diag_eval"], run_output["usage_eval"])
+        diag_usage_res_df = format_acc_res(run_output["diag_eval"], run_output["usage_eval"], run_output["maj_acc_test"])
         diag_usage_res_path = os.path.join(OUTDIR, f"diag_usage_res.csv")
         diag_usage_res_df.to_csv(diag_usage_res_path)
         logging.info(f"Exported diag_usage results to: {diag_usage_res_path}")
