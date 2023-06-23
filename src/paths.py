@@ -4,6 +4,8 @@ MAIN = "/cluster/work/cotterell/cguerner/usagebasedprobing/"
 
 OUT = os.path.join(MAIN, "out")
 DATASETS = os.path.join(MAIN, "data")
+RESULTS = os.path.join(MAIN, "results")
+MODELS = os.path.join(MAIN, "models")
 HF_CACHE = "../hf_cache"
 
 
@@ -16,4 +18,6 @@ UNIMORPH_ENG = "/cluster/work/cotterell/cguerner/eng/eng"
 
 UD_FRENCH_GSD = "/cluster/work/cotterell/cguerner/UD_French-GSD"
 UD_FRENCH_ParTUT = "/cluster/work/cotterell/cguerner/UD_French-ParTUT"
-UD_FRENCH_Rhapsodie = "/cluster/work/cotterell/cguerner/UD_French-ParTUT"
+UD_FRENCH_Rhapsodie = "/cluster/work/cotterell/cguerner/UD_French-Rhapsodie"
+
+FR_DATASETS = ["ud_fr_gsd", "ud_fr_partut", "ud_fr_rhapsodie"]

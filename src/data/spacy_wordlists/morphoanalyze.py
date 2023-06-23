@@ -9,7 +9,7 @@ import argparse
 from tqdm import tqdm
 import pickle
 import spacy
-from datasets import load_dataset
+from utils.dataset_loaders import load_wikipedia
 
 #sys.path.append('../../')
 sys.path.append('./src/')
@@ -88,19 +88,25 @@ def create_temp_files(data):
             tempcount+=1
 """
 
-def export_token_dict(token_dict, outfile):
-    with open(outfile, 'wb') as f:
+def export_token_dict(token_dict, outfile, switch):
+    switch_outfile = f"{outfile[:-4]}_{switch}.pkl"
+    with open(switch_outfile, 'wb') as f:
         pickle.dump(token_dict, f, protocol=pickle.HIGHEST_PROTOCOL)
-    logging.info(f"Token dict exported to: {outfile}")
+    logging.info(f"Token dict exported to: {switch_outfile}")
 
 
 def create_token_dict(data, outfile, backup_batches):
     nsamples = len(data)
+    switch=0
     token_dict = {}
     for i, obs in enumerate(tqdm(data)):
         token_dict = update_token_dict(token_dict, process_sample(obs))
         if (i + 1) % backup_batches == 0 or i == nsamples-1:
-            export_token_dict(token_dict, outfile)
+            export_token_dict(token_dict, outfile, switch)
+            if switch == 0:
+                switch = 1
+            else:
+                switch = 0
     return token_dict
     
 
@@ -112,9 +118,7 @@ if __name__=="__main__":
     language = args.language 
     backup_batches = args.backup_batches 
     #language = "fr"
-    data = load_dataset(
-        "wikipedia", f"20220301.{language}", cache_dir=HF_CACHE
-    )["train"]
+    data = load_wikipedia(language)
     data.shuffle()
     
     if language == "fr":

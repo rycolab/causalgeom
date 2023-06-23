@@ -5,6 +5,9 @@ import sys
 import argparse
 import coloredlogs
 
+from utils.lm_loaders import GPT2_LIST, BERT_LIST
+from paths import FR_DATASETS
+
 #%%#################
 # Args             #
 ####################
@@ -17,21 +20,26 @@ def get_train_probes_args():
         help="Directory for exporting run eval"
     )
     argparser.add_argument(
-        "-dataset",
+        "-concept",
         type=str,
-        choices=["linzen", "ud_fr_gsd"],
-        dest="dataset_name",
-        default="linzen",
-        help="Dataset to train on"
+        choices=["gender", "number"],
+        help="Concept to erase"
     )
     argparser.add_argument(
         "-model",
         type=str,
-        choices=["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl", "bert-base-uncased"],
+        choices=BERT_LIST + GPT2_LIST,
         #required=True,
         dest="model_name",
         default="bert-base-uncased",
         help="Model used to extract hidden states & embeddings"
+    )
+    argparser.add_argument(
+        "-rlace_type",
+        type=str,
+        choices=["theta","lm"],
+        default="theta",
+        help="Which type of RLACE to use"
     )
     argparser.add_argument(
         "-k",
@@ -141,12 +149,12 @@ def get_train_probes_args():
         default=1,
         help="Number of runs of the experiment"
     )
-    argparser.add_argument(
-        "-train_obs",
-        type=int,
-        default=200000,
-        help="Number of train obs"
-    )
+    #argparser.add_argument(
+    #    "-train_obs",
+    #    type=int,
+    #    default=200000,
+    #    help="Number of train obs"
+    #)
     argparser.add_argument(
         "-seed",
         type=int,
@@ -164,7 +172,7 @@ def get_train_probes_args():
 
 #%% Helpers
 def get_model_defaults(model_name):
-    if model_name.startswith("gpt2"):
+    if model_name in GPT2_LIST:
         defaults = dict(
             P_lr = 0.001,
             P_sched_patience=10,
@@ -172,7 +180,7 @@ def get_model_defaults(model_name):
             clf_n_lr_red = 5,
             clf_sched_patience=10
         )
-    elif model_name == "bert-base-uncased":
+    elif model_name in BERT_LIST:
         defaults = dict(
             P_lr=0.003,
             P_sched_patience=4,
@@ -203,9 +211,14 @@ def set_train_probes_defaults(config):
         config["clf_lr"] * (config["clf_sched_factor"]**config["clf_n_lr_red"])
     )
 
-    # Val and test size
+    # Train, val and test size
+    config["train_obs"] = 200000
     config["val_obs"] = 10000
     config["test_obs"] = 20000
+
+    config["train_share"] = .8
+    config["val_share"] = .1
+    config["test_share"] = .1
 
     # Constructing RLACE arg dicts (DON'T SET DEFAULTS HERE)
     config["rlace_optimizer_params_P"] = {
@@ -249,7 +262,7 @@ def set_train_probes_defaults(config):
         "verbose": True
     }
     #rlace_epsilon = 0.001 # stop 0.1% from majority acc (I TURNED THIS OFF)
-    config["run_name"] = f"{config['model_name']}_k{config['k']}_Pms{config['P_milestones']}_Pg{config['P_gamma']}_clfms{config['clf_milestones']}_clfg{config['clf_gamma']}"
+    config["run_name"] = f"{config['model_name']}_{config['rlace_type']}_k{config['k']}_Plr{config['P_lr']}_Pms{config['P_milestones']}_clflr{config['clf_lr']}_clfms{config['clf_milestones']}"
     return config
 
 def get_train_probes_config():

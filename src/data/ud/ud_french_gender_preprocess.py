@@ -15,14 +15,54 @@ from inflecteur import inflecteur
 #sys.path.append('../../')
 sys.path.append('./src/')
 
-from paths import UD_FRENCH_GSD, DATASETS
+from paths import DATASETS, UD_FRENCH_GSD, UD_FRENCH_ParTUT, UD_FRENCH_Rhapsodie
+
+coloredlogs.install(level=logging.INFO)
+warnings.filterwarnings("ignore")
 
 
 #%%
-SPLIT = "dev"
-INPUT_FILE = os.path.join(UD_FRENCH_GSD, f"fr_gsd-ud-{SPLIT}.conllu")
-OUTPUT_FILE = os.path.join(DATASETS, f"preprocessed/ud_fr_gsd/{SPLIT}.pkl")
+def get_args():
+    argparser = argparse.ArgumentParser(description='Process hidden states')
+    argparser.add_argument(
+        "-dataset", 
+        type=str,
+        choices=["ud_fr_gsd", "ud_fr_partut", "ud_fr_rhapsodie"],
+        help="Dataset to preprocess"
+    )
+    argparser.add_argument(
+        "-split",
+        type=str,
+        choices=["train", "dev", "test"],
+        default=None,
+        help="While split to preprocess"
+    )
+    return argparser.parse_args()
 
+
+args = get_args()
+logging.info(args)
+DATASET = args.dataset
+SPLIT = args.split
+#DATASET = "ud_fr_partut"
+#SPLIT = "train"
+
+def get_input_file(dataset, split):
+    if dataset == "ud_fr_gsd":
+        input_file = os.path.join(UD_FRENCH_GSD, f"fr_gsd-ud-{split}.conllu")
+    elif dataset == "ud_fr_partut":
+        input_file = os.path.join(UD_FRENCH_ParTUT, f"fr_partut-ud-{split}.conllu")
+    elif dataset == "ud_fr_rhapsodie":
+        input_file = os.path.join(UD_FRENCH_Rhapsodie, f"fr_rhapsodie-ud-{split}.conllu")
+    else:
+        raise ValueError("Unsupported dataset")
+    return input_file
+
+INPUT_FILE = get_input_file(DATASET, SPLIT)
+OUTPUT_FILE = os.path.join(DATASETS, f"preprocessed/{DATASET}/{SPLIT}.pkl")
+OUTPUT_DIR = os.path.dirname(OUTPUT_FILE)
+if not os.path.exists(OUTPUT_DIR):
+    os.makedirs(OUTPUT_DIR)
 logging.info(f"Preprocessing UD French data split: {SPLIT}")
 
 #%%
@@ -117,8 +157,9 @@ df = pd.DataFrame(ndps)
 #%%
 # adj drop
 df["adjlen"] = df["adjs"].apply(len)
+df.drop(df[(df["adjlen"]==0)].index, inplace=True)
 
-df.drop(df[(df["adjlen"]!=1)].index, inplace=True)
+df["first_adj"] = df["adjs"].apply(lambda x: x[0])
 
 #%% bad noun drops 
 # noun feature investigation
@@ -131,7 +172,7 @@ df.drop(df[(df["foreign"]=="Yes")].index, inplace=True)
 df.drop(["typo", "tense", "foreign", "feats"],axis=1, inplace=True)
 
 #%% Creating ADJ df
-adj_df = pd.DataFrame(list(df["adjs"].apply(lambda x: x[0])))
+adj_df = pd.DataFrame(list(df["first_adj"]))
 adj_df.columns = ["adj_" + x for x in adj_df.columns]
 df.drop(["adjs", "adjlen"],axis=1, inplace=True)
 df.reset_index(drop=True,inplace=True)
@@ -159,7 +200,6 @@ full_df.drop(
     axis=0, inplace=True
 )
 
-
 #%% mislabeled adjs -- DID NOT FINISH THIS FILTER
 """
 adjs = full_df.groupby(["adj", "adj_gender", "adj_number"])["sent_index"].count().reset_index()
@@ -182,6 +222,7 @@ def flag_dups(adj, lag_adj, cnt, lag_cnt):
 
 adjs["drop_flag"] = adjs.apply(lambda x: flag_dups(x.adj, x.lag_adj, int(x.cnt), int(x.lag_cnt)), axis=1)
 """
+
 #%%
 INFL = inflecteur()
 INFL.load_dict()
@@ -220,42 +261,50 @@ full_df_foil.drop(
     full_df_foil[full_df_foil["adj_gender_foil"].isnull()].index, inplace=True
 )
 
-#%% masked processing
-def flag_masked_sentence(sentence, adj, adj_index):
+#%% ar and masked sentence processing
+def flag_valid_sentence(sentence, adj, adj_index):
     try:
-        find_adj_ind = sentence.split(" ").index(adj)
+        list_adj_ind = sentence.split(" ").index(adj)
     except ValueError:
-        return 0
+        find_adj_ind = sentence.find(adj)
+        if find_adj_ind == -1:
+            return 0
+        elif sentence.count(adj) == 1:
+            return 3
+        elif sentence.count(adj) > 1:
+            return 4
+        else:
+            return 5
     else:
-        if find_adj_ind == adj_index:
+        if list_adj_ind == adj_index:
             return 1
         else:
             return 2
 
-def get_masked_sentence(sentence, adj):
-    if sentence.count(adj) == 1:
-        return sentence.replace(adj, "[MASK]", 1)
+def get_masked_sentence(sentence, adj, valid_flag):
+    if sentence.count(adj) == 1 and valid_flag in [1,2,3]:
+        return sentence.replace(adj, "<mask>", 1)
     else:
         return None
 
-
-full_df_foil["masked_check"] = full_df_foil.apply(
-    lambda x: flag_masked_sentence(x.text, x.adj, x.adj_index), axis=1
-)
-full_df_foil["masked"] = full_df_foil.apply(
-    lambda x: get_masked_sentence(x.text, x.adj), axis=1
-)
-
-#%% ar features
-def get_ar_sentence(sentence, adj):
-    if sentence.count(adj) == 1:
+def get_ar_sentence(sentence, adj, valid_flag):
+    if sentence.count(adj) == 1 and valid_flag in [1,2,3]:
         return sentence[:sentence.find(adj)]
     else:
         return None
 
+full_df_foil["valid_flag"] = full_df_foil.apply(
+    lambda x: flag_valid_sentence(x.text, x.adj, x.adj_index), axis=1
+)
+logging.info(f"Valid flag breakdown: \n {full_df_foil['valid_flag'].value_counts()}")
+
+full_df_foil["masked"] = full_df_foil.apply(
+    lambda x: get_masked_sentence(x.text, x.adj, x.valid_flag), axis=1
+)
+
 full_df_foil["ar_flag"] = (full_df_foil["noun_index"] < full_df_foil["adj_index"])
 full_df_foil["pre_tgt_text"] = full_df_foil.apply(
-    lambda x: get_ar_sentence(x.text, x.adj), axis=1
+    lambda x: get_ar_sentence(x.text, x.adj, x.valid_flag), axis=1
 )
 
 full_df_foil["fact_text"] = full_df_foil["pre_tgt_text"] + full_df_foil["adj"]
@@ -274,4 +323,6 @@ final_df = full_df_foil[
     "text", "masked", "ar_flag", "pre_tgt_text", "fact_text", "foil_text"]
 ]
 final_df.to_pickle(OUTPUT_FILE)
+
+logging.info(f"Exported to {OUTPUT_FILE}, number of obs: {final_df.shape[0]}")
 # %%

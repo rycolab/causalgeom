@@ -10,7 +10,7 @@ class BinaryParamFreeClf():
         self.U = torch.tensor(U).float()
         self.y = y
 
-        self.clf = torch.nn.Sigmoid()
+        self.clf = torch.nn.Sigmoid()#.to(device)
 
     def get_logits(self):
         return (self.X * self.U).sum(-1)

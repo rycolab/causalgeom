@@ -19,164 +19,130 @@ import torch
 import sklearn
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import SGDClassifier
+from sklearn.decomposition import PCA
 import wandb
 
 #from rlace import solve_adv_game, solve_adv_game_param_free, \
 #    init_classifier, get_majority_acc, solve_adv_game_param_free_twoPs
-from algorithms.rlace.rlace import solve_adv_game, init_classifier, get_majority_acc
+from algorithms.rlace.rlace import solve_adv_game, init_classifier, get_majority_acc, solve_adv_game_param_free
 
 import algorithms.inlp.debias
 from classifiers.classifiers import BinaryParamFreeClf
+from classifiers.compute_marginals import compute_concept_marginal, compute_pair_marginals
 from utils.cuda_loaders import get_device
 from utils.config_args import get_train_probes_config
-from evals.kl_eval import compute_kls, load_model_eval
+from evals.kl_eval import compute_kls_after_training, load_model_eval
 from evals.usage_eval import full_usage_eval, full_diag_eval
-from data.dataset_loaders import load_processed_data
+from utils.dataset_loaders import load_processed_data
+
 
 from paths import DATASETS, OUT
 
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
 
-device = get_device()
-cfg = get_train_probes_config()
-
-rlace_optimizer_class = torch.optim.SGD
-#rlace_scheduler_class = torch.optim.lr_scheduler.ReduceLROnPlateau
-rlace_scheduler_class = torch.optim.lr_scheduler.MultiStepLR
-
-logging.info(f"Running: {cfg['run_name']}")
-
-#%%#################
-# Loading Data     #
-####################
-
-# Output directory creation
-OUTPUT_DIR = os.path.join(OUT, 
-    f"run_output/{cfg['dataset_name']}/{cfg['model_name']}/"
-    f"{cfg['out_folder']}/")
-if not os.path.exists(OUTPUT_DIR):
-    os.mkdir(OUTPUT_DIR)
-    logging.info(f"Created output dir: {OUTPUT_DIR}")
-else: 
-    logging.info(f"Output dir exists: {OUTPUT_DIR}")
-
-DIAG_RLACE_U_OUTDIR = os.path.join(OUTPUT_DIR, "diag_rlace_u")
-if not os.path.exists(DIAG_RLACE_U_OUTDIR):
-    os.mkdir(DIAG_RLACE_U_OUTDIR)
-
-# Loading word lists for KL eval
-WORD_EMB, SG_EMB, PL_EMB, VERB_PROBS, SG_PL_PROB = load_model_eval(
-    cfg['dataset_name'], cfg['model_name'])
-
-# Load dataset
-X, U, y = load_processed_data(dataset_name, model_name)
-
-# Set seed
-np.random.seed(cfg['seed'])
-
-#%%#################
-# Wandb Logging    #
-####################
-datetimestr = datetime.today().strftime('%Y-%m-%d-%H:%M:%S')
-if cfg['wandb_name']:
-    wandb.init(
-        project="usagebasedprobing", 
-        entity="cguerner",
-        name=f"{cfg['out_folder']}_{cfg['wandb_name']}_{cfg['run_name']}_{datetimestr}"
-    )
-    wandb.config.update(cfg)
-    WB = True
-else:
-    WB = False
-
-
-#%%
-for i in trange(cfg['nruns']):
-    
-    #%%
-    idx = np.arange(0, X.shape[0])
+def get_data_indices(nobs, cfg):
+    idx = np.arange(0, nobs)
     np.random.shuffle(idx)
 
-    train_lastind = cfg['train_obs']
-    val_lastind = train_lastind + cfg['val_obs']
-    test_lastind = val_lastind + cfg['test_obs']
-    X_train, X_val, X_test = X[idx[:train_lastind]], X[idx[train_lastind:val_lastind]], X[idx[val_lastind:test_lastind]]
-    U_train, U_val, U_test = U[idx[:train_lastind]], U[idx[train_lastind:val_lastind]], U[idx[val_lastind:test_lastind]]
-    y_train, y_val, y_test = y[idx[:train_lastind]], y[idx[train_lastind:val_lastind]], y[idx[val_lastind:test_lastind]]
+    if cfg["concept"] == "number":
+        train_lastind = cfg['train_obs']
+        val_lastind = train_lastind + cfg['val_obs']
+        test_lastind = val_lastind + cfg['test_obs']
+    elif cfg["concept"] == "gender":
+        train_lastind = int(nobs*cfg["train_share"])
+        val_lastind = int(nobs*(cfg["train_share"] + cfg["val_share"]))
+        test_lastind = nobs
+    else:
+        raise ValueError("Concept value not supported.")
+    return idx[:train_lastind], idx[train_lastind:val_lastind], idx[val_lastind:test_lastind]
+
+def train_probes(X, U, y, cfg, wb, wb_run, diag_rlace_u_outdir, device="cpu"):
+    idx_train, idx_val, idx_test = get_data_indices(X.shape[0], cfg)
+    
+    X_train, X_val, X_test = X[idx_train], X[idx_val], X[idx_test]
+    U_train, U_val, U_test = U[idx_train], U[idx_val], U[idx_test]
+    y_train, y_val, y_test = y[idx_train], y[idx_val], y[idx_test]
+
+    #%%
+    #if cfg['pca_dim'] > 0:
+    #    logging.info(f"Applying PCA with dimension {cfg['pca_dim']}")
+    #    X_pca = PCA(n_components=cfg['pca_dim']) 
+    #    X_train_pca = X_pca.fit_transform(X_train)
+        #U_pca = PCA(n_components=cfg['pca_dim'])
+        #U_train = U_pca.fit_transform(U_train)
+
+    #    X_val_pca = X_pca.transform(X_val)
+    #    X_test_pca = X_pca.transform(X_test)
+        #U_val = U_pca.transform(U_val)
+        #U_test = U_pca.transform(U_test)
+    #else:
+    #    X_pca = None
+    #    X_train_pca = X_train
+    #    X_val_pca = X_val
+    #    X_test_pca = X_test
 
     #%%
     start = time.time()
     
-    diag_rlace_u_outfile = os.path.join(DIAG_RLACE_U_OUTDIR, f"{cfg['run_name']}.pt")
+    diag_rlace_u_outfile = os.path.join(diag_rlace_u_outdir, f"{cfg['run_name']}.pt")
+    
+    #dim = X_train.shape[1]
 
-    diag_rlace_output = solve_adv_game(
-        X_train, y_train, X_val, y_val, rank=cfg['k'], device=device, 
-        out_iters=cfg['niter'], optimizer_class=rlace_optimizer_class, 
-        optimizer_params_P=cfg['rlace_optimizer_params_P'], 
-        optimizer_params_predictor=cfg['rlace_optimizer_params_clf'], 
-        scheduler_class=rlace_scheduler_class, 
-        scheduler_params_P=cfg['rlace_scheduler_params_P'],
-        scheduler_params_predictor=cfg['rlace_scheduler_params_clf'],
-        batch_size=cfg['batch_size'],
-        torch_outfile=diag_rlace_u_outfile, wb=WB, wb_run=i,
-        dataset_name=cfg["dataset_name"], model_name=cfg["model_name"]
-    )
+    # ESTIMATE MARGINALS VIA COUNTS
+    #concept_marginal = compute_concept_marginal(y_train)
+    #pair_marginals = compute_pair_marginals(y_train, fact_train, foil_train)
+
+    # ESTIMATE P
+    rlace_optimizer_class = torch.optim.SGD
+    #rlace_scheduler_class = torch.optim.lr_scheduler.ReduceLROnPlateau
+    rlace_scheduler_class = torch.optim.lr_scheduler.MultiStepLR
+
+    if cfg["rlace_type"] == "theta":
+        rlace_output = solve_adv_game(
+            X_train, y_train, X_val, y_val, rank=cfg['k'], device=device, 
+            out_iters=cfg['niter'], optimizer_class=rlace_optimizer_class, 
+            optimizer_params_P=cfg['rlace_optimizer_params_P'], 
+            optimizer_params_predictor=cfg['rlace_optimizer_params_clf'], 
+            scheduler_class=rlace_scheduler_class, 
+            scheduler_params_P=cfg['rlace_scheduler_params_P'],
+            scheduler_params_predictor=cfg['rlace_scheduler_params_clf'],
+            batch_size=cfg['batch_size'],
+            torch_outfile=diag_rlace_u_outfile, wb=wb, wb_run=wb_run,
+            concept=cfg["concept"], model_name=cfg["model_name"],
+            X_pca=X_pca
+        )
+    elif cfg["rlace_type"] == "lm":
+        rlace_output = solve_adv_game_param_free(
+            X_train, U_train, y_train, X_val, U_val, y_val, 
+            version="original", rank=cfg['k'], device=device, 
+            out_iters=cfg['niter'], optimizer_class=rlace_optimizer_class, 
+            batch_size=cfg['batch_size'],
+            wb=wb, wb_run=wb_run,
+            concept=cfg["concept"], model_name=cfg["model_name"]
+        )
+    else: 
+        raise ValueError("Incorrect RLACE type")
+    
     end = time.time()
-    diag_rlace_output["runtime"] = end-start
+    rlace_output["runtime"] = end-start
     
     logging.info("Computing evals")
 
     diag_eval = full_diag_eval(
-        diag_rlace_output, X_train[:50000], y_train[:50000], 
-        X_val, y_val, X_test, y_test
+        rlace_output, X_train[:50000], y_train[:50000], X_val, y_val, 
+        X_test, y_test
     )
     usage_eval = full_usage_eval(
-        diag_rlace_output, X_train, U_train, y_train, X_test, U_test, y_test
+        rlace_output, X_train, U_train, y_train, X_test, U_test, y_test
     )
-
-    kl_eval = compute_kls(
-        X_test, diag_rlace_output["P"], diag_rlace_output["I_P"], 
-        WORD_EMB, SG_EMB, PL_EMB, VERB_PROBS, SG_PL_PROB
-    )
-    kl_means = kl_eval.loc["mean",:]
-
-    burn_kl_eval = compute_kls(
-        X_test, diag_rlace_output["P_burn"], diag_rlace_output["I_P_burn"], 
-        WORD_EMB, SG_EMB, PL_EMB, VERB_PROBS, SG_PL_PROB
-    )
-    burn_kl_means = burn_kl_eval.loc["mean",:]
-
-    if WB:
-        wandb.log({
-            f"diag_rlace/test/P_burn/diag/{i}/diag_acc_test": diag_eval["diag_acc_P_burn_test"],
-            f"diag_rlace/test/I_P_burn/diag/{i}/diag_acc_test": diag_eval["diag_acc_I_P_burn_test"],
-            f"diag_rlace/test/P_burn/usage/{i}/lm_acc_test": usage_eval["lm_acc_P_burn_test"], 
-            f"diag_rlace/test/I_P_burn/usage/{i}/lm_acc_test": usage_eval["lm_acc_I_P_burn_test"],
-            
-
-            f"diag_rlace/test/base/er_mis/{i}/overall_mi": kl_means["base_overall_mi"],
-            f"diag_rlace/test/base/er_mis/{i}/pairwise_mi": kl_means["base_pairwise_mi"],
-
-            f"diag_rlace/test/P_burn/fth_kls/{i}/faith_kl_all_split": burn_kl_means["P_faith_kl_all_split"],
-            f"diag_rlace/test/P_burn/fth_kls/{i}/faith_kl_all_merged": burn_kl_means["P_faith_kl_all_merged"],
-            f"diag_rlace/test/P_burn/fth_kls/{i}/faith_kl_words": burn_kl_means["P_faith_kl_words"],
-            f"diag_rlace/test/P_burn/fth_kls/{i}/faith_kl_tgt_split": burn_kl_means["P_faith_kl_tgt_split"],
-            f"diag_rlace/test/P_burn/fth_kls/{i}/faith_kl_tgt_merged": burn_kl_means["P_faith_kl_tgt_merged"],
-
-            f"diag_rlace/test/P_burn/er_mis/{i}/overall_mi": burn_kl_means["P_overall_mi"],
-            f"diag_rlace/test/P_burn/er_mis/{i}/pairwise_mi": burn_kl_means["P_pairwise_mi"],
-
-            f"diag_rlace/test/I_P_burn/fth_kls/{i}/faith_kl_all_split": burn_kl_means["I_P_faith_kl_all_split"],
-            f"diag_rlace/test/I_P_burn/fth_kls/{i}/faith_kl_all_merged": burn_kl_means["I_P_faith_kl_all_merged"],
-            f"diag_rlace/test/I_P_burn/fth_kls/{i}/faith_kl_words": burn_kl_means["I_P_faith_kl_words"],
-            f"diag_rlace/test/I_P_burn/fth_kls/{i}/faith_kl_tgt_split": burn_kl_means["I_P_faith_kl_tgt_split"],
-            f"diag_rlace/test/I_P_burn/fth_kls/{i}/faith_kl_tgt_merged": burn_kl_means["I_P_faith_kl_tgt_merged"],
-
-            f"diag_rlace/test/I_P_burn/er_mis/{i}/overall_mi": burn_kl_means["I_P_overall_mi"],
-            f"diag_rlace/test/I_P_burn/er_mis/{i}/pairwise_mi": burn_kl_means["I_P_pairwise_mi"],
-        })
-
+    #diag_eval = None
+    #usage_eval = None
+    #mikl_descs, concept_kls, other_kls = compute_kls_after_training(
+    #    cfg["concept"], cfg["model_name"], X_test, 
+    #    rlace_output["P_burn"], rlace_output["I_P_burn"]
+    #)
+    
     """
     #%%
     #versions = ["original", "positively_functional", "negatively_functional"]
@@ -235,29 +201,119 @@ for i in trange(cfg['nruns']):
     full_results = dict(
         run=i,
         config=cfg,
-        output=diag_rlace_output,
+        rlace_type=cfg["rlace_type"],
+        output=rlace_output,
         diag_eval=diag_eval,
         usage_eval=usage_eval,
-        kl_eval=kl_means,
-        burn_kl_mean=burn_kl_eval.loc["mean",:],
-        burn_kl_std=burn_kl_eval.loc["std",:],
+        #kl_eval=mikl_descs,
+        #concept_kl_samples=concept_kls,
+        #other_kl_samples=other_kls,
         maj_acc_test=get_majority_acc(y_test),
         maj_acc_val=get_majority_acc(y_val),
-        maj_acc_train=get_majority_acc(y_train)
+        maj_acc_train=get_majority_acc(y_train),
+        X_pca=None,
+        X_test=X_test
     )
     
-    #%%
-    outfile_path = os.path.join(OUTPUT_DIR, f"run_{cfg['run_name']}_{datetimestr}_{i}_{cfg['nruns']}.pkl")
-
-    with open(outfile_path, 'wb') as f:
-        pickle.dump(full_results, f, protocol=pickle.HIGHEST_PROTOCOL)
-
-    logging.info(f"Exported {outfile_path}")
-
-    #if WB:
-    #    run.finish()
+    return full_results
 
 
-logging.info("Done")
+#%%#################
+# MAIN     #
+####################
+if __name__ == '__main__':
+    device = get_device()
+    cfg = get_train_probes_config()
 
-# %%
+    logging.info(f"Running: {cfg['run_name']}")
+
+    # Output directory creation
+    OUTPUT_DIR = os.path.join(OUT, 
+        f"run_output/{cfg['concept']}/{cfg['model_name']}/"
+        f"{cfg['out_folder']}/")
+    if not os.path.exists(OUTPUT_DIR):
+        os.makedirs(OUTPUT_DIR)
+        logging.info(f"Created output dir: {OUTPUT_DIR}")
+    else: 
+        logging.info(f"Output dir exists: {OUTPUT_DIR}")
+
+    DIAG_RLACE_U_OUTDIR = os.path.join(OUTPUT_DIR, "diag_rlace_u")
+    if not os.path.exists(DIAG_RLACE_U_OUTDIR):
+        os.mkdir(DIAG_RLACE_U_OUTDIR)
+
+    # Loading word lists for KL eval
+    #other_emb, l0_emb, l1_emb, pair_probs, concept_marginals = load_model_eval(cfg['concept'], cfg['model_name'])
+
+    # Load dataset
+    X, U, y = load_processed_data(cfg['concept'], cfg['model_name'])
+
+    # Set seed
+    np.random.seed(cfg['seed'])
+
+    #%%#################
+    # Wandb Logging    #
+    ####################
+    datetimestr = datetime.today().strftime('%Y-%m-%d-%H:%M:%S')
+    if cfg['wandb_name']:
+        wandb.init(
+            project="usagebasedprobing", 
+            entity="cguerner",
+            name=f"{cfg['out_folder']}_{cfg['wandb_name']}_{cfg['run_name']}_{datetimestr}"
+        )
+        wandb.config.update(cfg)
+        WB = True
+    else:
+        WB = False
+
+    for i in trange(cfg['nruns']):
+        #X, U, y, cfg, wb, wb_run, diag_rlace_u_outdir, device="cpu"
+        run_output = train_probes(X, U, y, cfg, wb=WB, wb_run=i, 
+            diag_rlace_u_outdir=DIAG_RLACE_U_OUTDIR, device=device)        
+
+        outfile_path = os.path.join(OUTPUT_DIR, 
+            f"run_{cfg['run_name']}_{datetimestr}_{i}_{cfg['nruns']}.pkl")
+
+        with open(outfile_path, 'wb') as f:
+            pickle.dump(run_output, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+        logging.info(f"Exported {outfile_path}")
+        
+        if WB:
+            kl_eval_desc = run_output["kl_eval"].describe()
+            wandb.log({
+                f"diag_rlace/test/P/diag/{i}/diag_acc_test": run_output["diag_eval"]["diag_acc_P_test"],
+                f"diag_rlace/test/I_P/diag/{i}/diag_acc_test": run_output["diag_eval"]["diag_acc_I_P_test"],
+                f"diag_rlace/test/P/usage/{i}/lm_acc_test": run_output["usage_eval"]["lm_acc_P_test"], 
+                f"diag_rlace/test/I_P/usage/{i}/lm_acc_test": run_output["usage_eval"]["lm_acc_I_P_test"],
+                f"diag_rlace/test/P_burn/diag/{i}/diag_acc_test": run_output["diag_eval"]["diag_acc_P_burn_test"],
+                f"diag_rlace/test/I_P_burn/diag/{i}/diag_acc_test": run_output["diag_eval"]["diag_acc_I_P_burn_test"],
+                f"diag_rlace/test/P_burn/usage/{i}/lm_acc_test": run_output["usage_eval"]["lm_acc_P_burn_test"], 
+                f"diag_rlace/test/I_P_burn/usage/{i}/lm_acc_test": run_output["usage_eval"]["lm_acc_I_P_burn_test"],
+                
+                f"diag_rlace/test/P/fth_kls/{i}/faith_kl_all_split": kl_eval_desc.loc["mean", "all_P_faith_kl_all_split"],
+                f"diag_rlace/test/P/fth_kls/{i}/faith_kl_all_merged": kl_eval_desc.loc["mean", "all_P_faith_kl_all_merged"],
+                f"diag_rlace/test/P/fth_kls/{i}/faith_kl_words": kl_eval_desc.loc["mean", "all_P_faith_kl_words"],
+                f"diag_rlace/test/P/fth_kls/{i}/faith_kl_tgt_split": kl_eval_desc.loc["mean", "all_P_faith_kl_tgt_split"],
+                f"diag_rlace/test/P/fth_kls/{i}/faith_kl_tgt_merged": kl_eval_desc.loc["mean", "all_P_faith_kl_tgt_merged"],
+
+                f"diag_rlace/test/base/er_mis/{i}/overall_mi": kl_eval_desc.loc["mean", "all_base_overall_mi"],
+                f"diag_rlace/test/base/er_mis/{i}/pairwise_mi": kl_eval_desc.loc["mean", "all_base_pairwise_mi"],
+
+                f"diag_rlace/test/P/er_mis/{i}/overall_mi": kl_eval_desc.loc["mean", "all_P_overall_mi"],
+                f"diag_rlace/test/P/er_mis/{i}/lemma_mi": kl_eval_desc.loc["mean", "all_P_lemma_mi"],
+                f"diag_rlace/test/P/er_mis/{i}/pairwise_mi": kl_eval_desc.loc["mean", "all_P_pairwise_mi"],
+
+                f"diag_rlace/test/I_P/fth_kls/{i}/faith_kl_all_split": kl_eval_desc.loc["mean", "all_I_P_faith_kl_all_split"],
+                f"diag_rlace/test/I_P/fth_kls/{i}/faith_kl_all_merged": kl_eval_desc.loc["mean", "all_I_P_faith_kl_all_merged"],
+                f"diag_rlace/test/I_P/fth_kls/{i}/faith_kl_words": kl_eval_desc.loc["mean", "all_I_P_faith_kl_words"],
+                f"diag_rlace/test/I_P/fth_kls/{i}/faith_kl_tgt_split": kl_eval_desc.loc["mean", "all_I_P_faith_kl_tgt_split"],
+                f"diag_rlace/test/I_P/fth_kls/{i}/faith_kl_tgt_merged": kl_eval_desc.loc["mean", "all_I_P_faith_kl_tgt_merged"],
+
+                f"diag_rlace/test/I_P/er_mis/{i}/overall_mi": kl_eval_desc.loc["mean", "all_I_P_overall_mi"],
+                f"diag_rlace/test/I_P/er_mis/{i}/lemma_mi": kl_eval_desc.loc["mean", "all_I_P_lemma_mi"],
+                f"diag_rlace/test/I_P/er_mis/{i}/pairwise_mi": kl_eval_desc.loc["mean", "all_I_P_pairwise_mi"],
+            })
+
+    
+
+    logging.info("Done")
