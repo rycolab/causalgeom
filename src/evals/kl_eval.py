@@ -21,7 +21,10 @@ sys.path.append('./src/')
 
 from paths import DATASETS, OUT
 from utils.lm_loaders import get_tokenizer, get_V, BERT_LIST, GPT2_LIST
-from utils.dataset_loaders import load_hs, load_other_hs, load_model_eval
+from utils.dataset_loaders import load_hs, load_other_hs
+from data.embed_wordlists.embedder import load_concept_token_lists
+#from evals.eval_loaders import load_model_eval
+from data.filter_generations import load_filtered_hs, load_filtered_hs_wff
 
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
@@ -40,25 +43,31 @@ def load_run_Ps(run_path):
     I_P = run["output"]["I_P_burn"]
     return P, I_P
 
-#%%#################
-# KL Helpers       #
-####################
-def get_logs(hidden_state, other_emb, l0_emb, l1_emb):
-    other_log = other_emb @ hidden_state
-    l0_log = l0_emb @ hidden_state
-    l1_log = l1_emb @ hidden_state
-    return other_log, l0_log, l1_log
+def get_p_c(model_name, I_P="no_I_P"):
+    #TODO: make this flexible -- load the concept marginal for the non-AR models.
+    cs_counts_path = os.path.join(OUT, f"p_x/{model_name}/c_counts_{model_name}_{I_P}.pkl")
+    with open(cs_counts_path, "rb") as f:
+        cs = pickle.load(f)
 
-def get_probs(hidden_state, other_emb, l0_emb, l1_emb):
-    other_log, l0_log, l1_log = get_logs(
-        hidden_state, other_emb, l0_emb, l1_emb
-    )
-    all_logits = np.hstack([other_log, l0_log, l1_log])
-    all_probs = softmax(all_logits)
-    other_probs = all_probs[:other_log.shape[0]]
-    l0_end = other_log.shape[0] + l0_log.shape[0]
-    l0_probs = all_probs[other_log.shape[0]:l0_end]
-    l1_probs = all_probs[l0_end:]
+    counts = [cs["l0"], cs["l1"], cs["other"]]
+    p = counts / np.sum(counts)
+    return p 
+
+def load_model_eval(model_name, concept):
+    V = get_V(model_name)
+    l0_tl, l1_tl = load_concept_token_lists(concept, model_name)
+    p_c = get_p_c(model_name)
+    return V, l0_tl, l1_tl, p_c
+
+#%%#################
+# Distrib Helpers  #
+####################
+def get_probs(hidden_state, V, l0_tl, l1_tl):
+    logits = V @ hidden_state
+    all_probs = softmax(logits)
+    l0_probs = all_probs[l0_tl]
+    l1_probs = all_probs[l1_tl]
+    other_probs = np.delete(all_probs, np.hstack((l0_tl, l1_tl)))
     return all_probs, other_probs, l0_probs, l1_probs
 
 def get_merged_probs(other_probs, l0_probs, l1_probs):
@@ -81,8 +90,8 @@ def get_all_pairwise_distribs(base_distribs, P_distribs, I_P_distribs):
     I_P_pair_probs = normalize_pairs(I_P_distribs["l0"], I_P_distribs["l1"])
     return base_pair_probs, P_pair_probs, I_P_pair_probs
 
-def get_distribs(h, other_emb, l0_emb, l1_emb):
-    all_split, other, l0, l1 = get_probs(h, other_emb, l0_emb, l1_emb)
+def get_distribs(h, V, l0_tl, l1_tl):
+    all_split, other, l0, l1 = get_probs(h, V, l0_tl, l1_tl)
     lemma_split = np.hstack([l0, l1])
     lemma_merged, all_merged = get_merged_probs(
         other, l0, l1
@@ -97,25 +106,18 @@ def get_distribs(h, other_emb, l0_emb, l1_emb):
         lemma_merged=lemma_merged
     )
 
-def get_all_distribs(h, P, I_P, other_emb, l0_emb, l1_emb, X_pca=None):
-    base_distribs = get_distribs(h, other_emb, l0_emb, l1_emb)
-    if X_pca is None:
-        P_distribs = get_distribs(P @ h, other_emb, l0_emb, l1_emb)
-        I_P_distribs = get_distribs(I_P @ h, other_emb, l0_emb, l1_emb)
-    else:
-        h = h.reshape(1,-1)
-        P_distribs = get_distribs(
-            X_pca.inverse_transform(
-                (P @ X_pca.transform(h).reshape(-1)).reshape(1, -1)).reshape(-1), 
-            other_emb, l0_emb, l1_emb
-        )
-        I_P_distribs = get_distribs(
-            X_pca.inverse_transform(
-                (I_P @ X_pca.transform(h).reshape(-1)).reshape(1, -1)).reshape(-1), 
-            other_emb, l0_emb, l1_emb
-        )
+def get_all_distribs(h, P, I_P, V, l0_tl, l1_tl):
+    base_distribs = get_distribs(h, V, l0_tl, l1_tl)
+    P_distribs = get_distribs(h.T @ P, V, l0_tl, l1_tl)
+    I_P_distribs = get_distribs(h.T @ I_P, V, l0_tl, l1_tl)
     return base_distribs, P_distribs, I_P_distribs
 
+def renormalize(p):
+    return p / np.sum(p)
+
+#%%#################
+# KL Helpers       #
+####################
 def compute_kl(p, q, agg_func=np.sum):
     if not (np.isclose(np.sum(p), 1) and np.isclose(np.sum(q), 1)):
         logging.warn("Distribution not normalized before KL")
@@ -123,9 +125,6 @@ def compute_kl(p, q, agg_func=np.sum):
         return agg_func(kl_div(p, q))
     else:
         return agg_func(kl_div(p, q))
-
-def renormalize(p):
-    return p / np.sum(p)
 
 def compute_faith_kls(base, proj, prefix="", agg_func=np.sum):
     kls = {
@@ -174,6 +173,7 @@ def compute_faith_pct_chg(base, proj, prefix="", agg_func=np.mean):
     return pct_chgs
 
 # erasure KL
+"""
 def compute_erasure_kl(base_pair_probs, proj_pair_probs, agg_func=np.sum):
     obs_er_kls = []
     for base_pair, proj_pair in zip(base_pair_probs, proj_pair_probs):
@@ -270,8 +270,66 @@ def get_all_lemma_mis(concept_marginals, base_distribs, P_distribs, I_P_distribs
             concept_marginals, I_P_distribs["l0"], I_P_distribs["l1"]),
     )
     return res
+"""
+#%% MI helpers
+def get_h_c_bin(p_c):
+    p_c = renormalize(p_c[:2])
+    h_c = entropy(p_c)
+    return h_c
 
-# main runners
+def get_bin_p_c_h(l0_prob, l1_prob):
+    """ get p(c|h) for binary c"""
+    total_l0_prob = np.sum(l0_prob)
+    total_l1_prob = np.sum(l1_prob)
+    return renormalize(np.hstack([total_l0_prob, total_l1_prob]))
+
+def compute_surprisal(bin_p_c_h, c_index):
+    return -1 * np.log(bin_p_c_h[c_index])
+
+def compute_p_c_h_surprisal(l0_prob, l1_prob, c_index):
+    bin_p_c_h = get_bin_p_c_h(l0_prob, l1_prob)
+    return compute_surprisal(bin_p_c_h, c_index)
+
+def compute_all_p_c_h_surprisals(base_distribs, P_distribs, I_P_distribs, c_index):
+    return dict(
+        base_h_c_h = compute_p_c_h_surprisal(
+            base_distribs["l0"], base_distribs["l1"], c_index),
+        P_h_c_h = compute_p_c_h_surprisal(
+            P_distribs["l0"], P_distribs["l1"], c_index),
+        I_P_h_c_h = compute_p_c_h_surprisal(
+            I_P_distribs["l0"], I_P_distribs["l1"], c_index),
+    )
+
+def compute_mi(h_c, full_eval):
+    full_eval["h_c"] = h_c
+    for mi_type in ["base", "P", "I_P"]:
+        full_eval[f"{mi_type}_mi"] = h_c - full_eval[f"{mi_type}_h_c_h"]
+
+#%% Accuracy computations
+def correct_flag(fact_prob, foil_prob):
+    return (fact_prob > foil_prob)*1
+
+def highest_rank(probs, id):
+    probssortind = probs.argsort()
+    return (probssortind[-1] == id)*1
+
+def highest_concept(probs, id, l0_tl, l1_tl):
+    lemma_tl = np.hstack((l0_tl,l1_tl))
+    lemma_probs = probs[lemma_tl]
+    lemma_probs_sortind = lemma_probs.argsort()
+    lemma_tl_sorted = lemma_tl[lemma_probs_sortind]
+    return (lemma_tl_sorted[-1] == id) * 1
+
+def compute_factfoil_flags(probs, fact_id, foil_id, l0_tl, l1_tl, prefix):
+    return {
+        f"{prefix}_acc_correct": correct_flag(probs[fact_id], probs[foil_id]),
+        f"{prefix}_acc_fact_highest": highest_rank(probs, fact_id),
+        f"{prefix}_acc_foil_highest": highest_rank(probs, foil_id),
+        f"{prefix}_acc_fact_highest_concept": highest_concept(probs, fact_id, l0_tl, l1_tl),
+        f"{prefix}_acc_foil_highest_concept": highest_concept(probs, foil_id, l0_tl, l1_tl),
+    }
+    
+#%% metric aggregators
 def compute_all_faith_metrics(base_distribs, P_distribs, I_P_distribs):
     P_fth_kls = compute_faith_kls(base_distribs, P_distribs, prefix="P_")
     I_P_fth_kls = compute_faith_kls(base_distribs, I_P_distribs, prefix="I_P_")
@@ -285,7 +343,7 @@ def compute_all_faith_metrics(base_distribs, P_distribs, I_P_distribs):
     return P_fth_kls | P_fth_tvds | P_fth_pct_chg | I_P_fth_kls\
          | I_P_fth_tvds | I_P_fth_pct_chg
 
-    
+"""    
 def compute_all_erasure_kls(base_distribs, P_distribs, I_P_distribs, pair_probs):
     base_pair_probs, P_pair_probs, I_P_pair_probs = get_all_pairwise_distribs(
         base_distribs, P_distribs, I_P_distribs
@@ -298,27 +356,32 @@ def compute_all_erasure_kls(base_distribs, P_distribs, I_P_distribs, pair_probs)
         base_pair_probs, I_P_pair_probs, pair_probs, prefix="I_P_"
     )
     return P_er_kls | I_P_er_kls
+"""
+def compute_all_mi_components(base_distribs, P_distribs, I_P_distribs, c_index):
+    p_c_h_surprisals = compute_all_p_c_h_surprisals(base_distribs, P_distribs, I_P_distribs, c_index)
+    return p_c_h_surprisals
 
-def compute_all_erasure_mis(base_distribs, P_distribs, I_P_distribs, pair_probs, concept_marginals):
-    base_pair_probs, P_pair_probs, I_P_pair_probs = get_all_pairwise_distribs(
-        base_distribs, P_distribs, I_P_distribs
+def compute_all_acc_flags(base_distribs, P_distribs, I_P_distribs, 
+    fact_id, foil_id, l0_tl, l1_tl):
+    base_flags = compute_factfoil_flags(
+        base_distribs["all_split"], 
+        fact_id, foil_id, l0_tl, l1_tl, "base"
     )
-    
-    pairwise_mis = get_all_pairwise_mis(
-        pair_probs, base_pair_probs, P_pair_probs, I_P_pair_probs
+    P_flags = compute_factfoil_flags(
+        P_distribs["all_split"], 
+        fact_id, foil_id, l0_tl, l1_tl, "P"
     )
-    overall_mis = get_all_overall_mis(
-        concept_marginals, base_distribs, P_distribs, I_P_distribs
+    I_P_flags = compute_factfoil_flags(
+        I_P_distribs["all_split"], 
+        fact_id, foil_id, l0_tl, l1_tl, "I_P"
     )
-    lemma_mis = get_all_lemma_mis(
-        concept_marginals, base_distribs, P_distribs, I_P_distribs
-    )
-    return pairwise_mis | overall_mis | lemma_mis
+    return base_flags | P_flags | I_P_flags
 
-def compute_kls_one_sample(h, P, I_P, other_emb, l0_emb, l1_emb, pair_probs, 
-    concept_marginals, faith=True, er_kls=True, er_mis=True, X_pca=None):
+#%% main runners
+def compute_eval_one_sample(h, P, I_P, V, l0_tl, l1_tl, c_index, 
+    fact_id, foil_id, faith=True, mi=True, acc=True, X_pca=None):
     base_distribs, P_distribs, I_P_distribs = get_all_distribs(
-        h, P, I_P, other_emb, l0_emb, l1_emb, X_pca
+        h, P, I_P, V, l0_tl, l1_tl
     )
 
     faith_metrics, er_kl_metrics, er_mis_metrics = {},{},{}
@@ -326,36 +389,44 @@ def compute_kls_one_sample(h, P, I_P, other_emb, l0_emb, l1_emb, pair_probs,
         faith_metrics = compute_all_faith_metrics(
             base_distribs, P_distribs, I_P_distribs
         )
-    if er_kls:
-        er_kl_metrics = compute_all_erasure_kls(
-            base_distribs, P_distribs, I_P_distribs, pair_probs
+    #if er_kls:
+    #    er_kl_metrics = compute_all_erasure_kls(
+    #        base_distribs, P_distribs, I_P_distribs, pair_probs
+    #    )
+    if mi:
+        mi_components = compute_all_mi_components(
+            base_distribs, P_distribs, I_P_distribs, c_index
         )
-    if er_mis:
-        er_mis_metrics = compute_all_erasure_mis(
-            base_distribs, P_distribs, I_P_distribs, pair_probs, concept_marginals
+    if acc:
+        acc_flags = compute_all_acc_flags(
+            base_distribs, P_distribs, I_P_distribs, 
+            fact_id, foil_id, l0_tl, l1_tl
         )
-    return faith_metrics | er_kl_metrics | er_mis_metrics
+    return faith_metrics | mi_components | acc_flags #| er_kl_metrics
+
+def compute_eval(hs_wff, P, I_P, V, l0_tl, l1_tl, c_index, 
+    faith=True, mi=True, acc=True, X_pca=None):
+    #ind = get_hs_sample_index(hs, nsamples)    
+
+    pbar = tqdm(range(len(hs_wff)))
+    pbar.set_description("Computing eval on hs")
+    metrics_per_sample = []
+    for i in pbar:
+        h, faid, foid = hs_wff[i]
+        metrics_per_sample.append(
+            compute_eval_one_sample(
+                h, P, I_P, V, l0_tl, l1_tl, c_index, 
+                faid, foid, faith=faith, mi=mi, acc=acc, X_pca=X_pca
+        ))
+    df_metrics_per_sample = pd.DataFrame(metrics_per_sample)
+    return df_metrics_per_sample
 
 def get_hs_sample_index(hs, nsamples=200):
     idx = np.arange(0, hs.shape[0])
     np.random.shuffle(idx)
     return idx[:nsamples]
 
-def compute_kls(hs, P, I_P, other_emb, l0_emb, l1_emb, pair_probs, concept_marginals, 
-    nsamples=200, faith=True, er_kls=True, er_mis=True, X_pca = None):
-    ind = get_hs_sample_index(hs, nsamples)    
-
-    pbar = tqdm(ind)
-    pbar.set_description("Computing faithfulness and erasure KL on hidden states")
-    kls = []
-    for i in pbar:
-        kls.append(compute_kls_one_sample(
-            hs[i], P, I_P, other_emb, l0_emb, l1_emb, pair_probs, concept_marginals,
-            faith, er_kls, er_mis, X_pca
-        ))
-    kls = pd.DataFrame(kls)
-    return kls
-
+"""
 def compute_kls_all_hs(concept_name, model_name, concept_hs, other_hs, P, I_P):
     other_emb, l0_emb, l1_emb, pair_probs, concept_marginals = load_model_eval(concept_name, model_name)
 
@@ -373,7 +444,7 @@ def compute_kls_all_hs(concept_name, model_name, concept_hs, other_hs, P, I_P):
     
     all_descs = pd.concat([concept_kls_desc, other_kls_desc, all_kls_desc], axis=1)
     return all_descs, concept_kls, other_kls
-
+"""
 
 def compute_kls_from_run_output(concept_name, model_name, run_output_path, nsamples):
     #TODO: do this with Xtest now that it is logged to run output
@@ -389,7 +460,26 @@ def compute_kls_after_training(concept_name, model_name, X_test, P, I_P):
     
     return compute_kls_all_hs(concept_name, model_name, X_test, other_hs, 
         P, I_P)
-    
+
+def compute_eval_filtered_hs(model_name, concept, P, I_P, nsamples):
+    l0_hs_wff, l1_hs_wff = load_filtered_hs_wff(model_name, nsamples=nsamples)
+    V, l0_tl, l1_tl, p_c = load_model_eval(model_name, concept)
+    h_c = get_h_c_bin(p_c)
+
+    l0_eval = compute_eval(l0_hs_wff, P, I_P, V, l0_tl, l1_tl, 0)
+    l1_eval = compute_eval(l1_hs_wff, P, I_P, V, l0_tl, l1_tl, 1)
+    full_eval = pd.concat((l0_eval, l1_eval),axis=0).mean()
+    compute_mi(h_c, full_eval)
+    return full_eval
+
+
+#def compute_kls_from_generations(concept_name, model_name, P, I_P, nsamples=100):
+#    V, l0_tl, l1_tl, p_c = load_model_eval_ar(concept_name, model_name)
+#    l0_hs, l1_hs = load_filtered_hs(model_name, "no_I_P", nsamples)
+#    p_c, h_c = get_h_c_bin(model_name, "no_I_P")
+#    return compute_kls_all_hs(concept_name, model_name, X_test, other_hs, 
+#        P, I_P)
+
 
 #%%#################
 # Main             #
@@ -415,10 +505,10 @@ if __name__ == '__main__':
     args = get_args()
     logging.info(args)
 
-    model_name = args.model
-    concept_name = args.concept
-    #model_name = "bert-base-uncased"
-    #concept_name = "number"
+    #model_name = args.model
+    #concept_name = args.concept
+    model_name = "gpt2-large"
+    concept_name = "number"
     nsamples = 1000
     
     logging.info(f"Running KL and MI eval for {model_name}, {concept_name}")
@@ -428,6 +518,9 @@ if __name__ == '__main__':
         os.makedirs(outdir)
     outfile = os.path.join(outdir, f"kl_mi_{model_name}_{concept_name}.csv")
 
-    kls = compute_kls_from_run_output(concept_name, model_name, nsamples)
+    run_output_dir = os.path.join(OUT, f"run_output/{concept_name}/{model_name}")
+    run_path = os.path.join(run_output_dir, "230614/run_gpt2-large_k1_Plr0.001_Pms31,76_clflr0.0003_clfms31_2023-06-19-13:34:07_0_1.pkl")
+
+    kls = compute_kls_from_run_output(concept_name, model_name, run_path, nsamples)
     kls.to_csv(outfile)
     logging.info(f"Exported KLs for all subsets of hs to {outfile}")

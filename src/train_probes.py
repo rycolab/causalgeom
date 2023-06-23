@@ -24,7 +24,7 @@ import wandb
 
 #from rlace import solve_adv_game, solve_adv_game_param_free, \
 #    init_classifier, get_majority_acc, solve_adv_game_param_free_twoPs
-from algorithms.rlace.rlace import solve_adv_game, init_classifier, get_majority_acc
+from algorithms.rlace.rlace import solve_adv_game, init_classifier, get_majority_acc, solve_adv_game_param_free
 
 import algorithms.inlp.debias
 from classifiers.classifiers import BinaryParamFreeClf
@@ -65,22 +65,22 @@ def train_probes(X, U, y, cfg, wb, wb_run, diag_rlace_u_outdir, device="cpu"):
     y_train, y_val, y_test = y[idx_train], y[idx_val], y[idx_test]
 
     #%%
-    if cfg['pca_dim'] > 0:
-        logging.info(f"Applying PCA with dimension {cfg['pca_dim']}")
-        X_pca = PCA(n_components=cfg['pca_dim']) 
-        X_train_pca = X_pca.fit_transform(X_train)
+    #if cfg['pca_dim'] > 0:
+    #    logging.info(f"Applying PCA with dimension {cfg['pca_dim']}")
+    #    X_pca = PCA(n_components=cfg['pca_dim']) 
+    #    X_train_pca = X_pca.fit_transform(X_train)
         #U_pca = PCA(n_components=cfg['pca_dim'])
         #U_train = U_pca.fit_transform(U_train)
 
-        X_val_pca = X_pca.transform(X_val)
-        X_test_pca = X_pca.transform(X_test)
+    #    X_val_pca = X_pca.transform(X_val)
+    #    X_test_pca = X_pca.transform(X_test)
         #U_val = U_pca.transform(U_val)
         #U_test = U_pca.transform(U_test)
-    else:
-        X_pca = None
-        X_train_pca = X_train
-        X_val_pca = X_val
-        X_test_pca = X_test
+    #else:
+    #    X_pca = None
+    #    X_train_pca = X_train
+    #    X_val_pca = X_val
+    #    X_test_pca = X_test
 
     #%%
     start = time.time()
@@ -98,38 +98,50 @@ def train_probes(X, U, y, cfg, wb, wb_run, diag_rlace_u_outdir, device="cpu"):
     #rlace_scheduler_class = torch.optim.lr_scheduler.ReduceLROnPlateau
     rlace_scheduler_class = torch.optim.lr_scheduler.MultiStepLR
 
-    diag_rlace_output = solve_adv_game(
-        X_train_pca, y_train, X_val_pca, y_val, rank=cfg['k'], device=device, 
-        out_iters=cfg['niter'], optimizer_class=rlace_optimizer_class, 
-        optimizer_params_P=cfg['rlace_optimizer_params_P'], 
-        optimizer_params_predictor=cfg['rlace_optimizer_params_clf'], 
-        scheduler_class=rlace_scheduler_class, 
-        scheduler_params_P=cfg['rlace_scheduler_params_P'],
-        scheduler_params_predictor=cfg['rlace_scheduler_params_clf'],
-        batch_size=cfg['batch_size'],
-        torch_outfile=diag_rlace_u_outfile, wb=wb, wb_run=wb_run,
-        concept=cfg["concept"], model_name=cfg["model_name"],
-        X_pca=X_pca
-    )
+    if cfg["rlace_type"] == "theta":
+        rlace_output = solve_adv_game(
+            X_train, y_train, X_val, y_val, rank=cfg['k'], device=device, 
+            out_iters=cfg['niter'], optimizer_class=rlace_optimizer_class, 
+            optimizer_params_P=cfg['rlace_optimizer_params_P'], 
+            optimizer_params_predictor=cfg['rlace_optimizer_params_clf'], 
+            scheduler_class=rlace_scheduler_class, 
+            scheduler_params_P=cfg['rlace_scheduler_params_P'],
+            scheduler_params_predictor=cfg['rlace_scheduler_params_clf'],
+            batch_size=cfg['batch_size'],
+            torch_outfile=diag_rlace_u_outfile, wb=wb, wb_run=wb_run,
+            concept=cfg["concept"], model_name=cfg["model_name"],
+            X_pca=X_pca
+        )
+    elif cfg["rlace_type"] == "lm":
+        rlace_output = solve_adv_game_param_free(
+            X_train, U_train, y_train, X_val, U_val, y_val, 
+            version="original", rank=cfg['k'], device=device, 
+            out_iters=cfg['niter'], optimizer_class=rlace_optimizer_class, 
+            batch_size=cfg['batch_size'],
+            wb=wb, wb_run=wb_run,
+            concept=cfg["concept"], model_name=cfg["model_name"]
+        )
+    else: 
+        raise ValueError("Incorrect RLACE type")
+    
     end = time.time()
-    diag_rlace_output["runtime"] = end-start
+    rlace_output["runtime"] = end-start
     
     logging.info("Computing evals")
 
     diag_eval = full_diag_eval(
-        diag_rlace_output, X_train[:50000], y_train[:50000], X_val, y_val, 
-        X_test, y_test, X_pca=X_pca
+        rlace_output, X_train[:50000], y_train[:50000], X_val, y_val, 
+        X_test, y_test
     )
     usage_eval = full_usage_eval(
-        diag_rlace_output, X_train, U_train, y_train, X_test, U_test, 
-        y_test, X_pca=X_pca
+        rlace_output, X_train, U_train, y_train, X_test, U_test, y_test
     )
     #diag_eval = None
     #usage_eval = None
-    mikl_descs, concept_kls, other_kls = compute_kls_after_training(
-        cfg["concept"], cfg["model_name"], X_test, 
-        diag_rlace_output["P_burn"], diag_rlace_output["I_P_burn"]
-    )
+    #mikl_descs, concept_kls, other_kls = compute_kls_after_training(
+    #    cfg["concept"], cfg["model_name"], X_test, 
+    #    rlace_output["P_burn"], rlace_output["I_P_burn"]
+    #)
     
     """
     #%%
@@ -189,16 +201,17 @@ def train_probes(X, U, y, cfg, wb, wb_run, diag_rlace_u_outdir, device="cpu"):
     full_results = dict(
         run=i,
         config=cfg,
-        output=diag_rlace_output,
+        rlace_type=cfg["rlace_type"],
+        output=rlace_output,
         diag_eval=diag_eval,
         usage_eval=usage_eval,
-        kl_eval=mikl_descs,
-        concept_kl_samples=concept_kls,
-        other_kl_samples=other_kls,
+        #kl_eval=mikl_descs,
+        #concept_kl_samples=concept_kls,
+        #other_kl_samples=other_kls,
         maj_acc_test=get_majority_acc(y_test),
         maj_acc_val=get_majority_acc(y_val),
         maj_acc_train=get_majority_acc(y_train),
-        X_pca=X_pca,
+        X_pca=None,
         X_test=X_test
     )
     
@@ -229,7 +242,7 @@ if __name__ == '__main__':
         os.mkdir(DIAG_RLACE_U_OUTDIR)
 
     # Loading word lists for KL eval
-    other_emb, l0_emb, l1_emb, pair_probs, concept_marginals = load_model_eval(cfg['concept'], cfg['model_name'])
+    #other_emb, l0_emb, l1_emb, pair_probs, concept_marginals = load_model_eval(cfg['concept'], cfg['model_name'])
 
     # Load dataset
     X, U, y = load_processed_data(cfg['concept'], cfg['model_name'])

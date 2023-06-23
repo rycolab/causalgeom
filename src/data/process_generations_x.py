@@ -13,6 +13,7 @@ from tqdm import tqdm
 import pandas as pd
 import pickle
 import torch
+from scipy.stats import entropy
 
 #sys.path.append('../')
 sys.path.append('./src/')
@@ -20,8 +21,7 @@ sys.path.append('./src/')
 from paths import DATASETS, OUT
 
 from utils.lm_loaders import GPT2_LIST, get_concept_name
-#from utils.lm_loaders import GPT2_LIST
-from data.embed_wordlists.embedder import get_token_list_outfile_paths
+from data.embed_wordlists.embedder import load_concept_token_lists
 
 
 coloredlogs.install(level=logging.INFO)
@@ -44,15 +44,6 @@ def get_xs_count_dict(generations_folder, nsamples=None):
             xs[x] = xcount
     return xs
 
-#%%
-def load_concept_token_lists(concept, model_name):
-    _, l0_tl_file, l1_tl_file = get_token_list_outfile_paths(
-        concept, model_name)
-    #other_tl = np.load(other_tl_file)
-    l0_tl = np.load(l0_tl_file)
-    l1_tl = np.load(l1_tl_file)
-    return l0_tl, l1_tl
-
 def update_count(cdict, key, newcount):
     count = cdict.get(key, 0)
     count += newcount
@@ -74,6 +65,7 @@ def get_cs_count_dict(model_name, xs):
     concept_name = get_concept_name(model_name)
     l0_tl, l1_tl = load_concept_token_lists(concept_name, model_name)
     return create_concept_counts(xs, l0_tl, l1_tl)
+
 
 # %%
 def get_args():

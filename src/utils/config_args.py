@@ -19,14 +19,6 @@ def get_train_probes_args():
         default="test",
         help="Directory for exporting run eval"
     )
-    #argparser.add_argument(
-    #    "-dataset",
-    #    type=str,
-    #    choices=["linzen"] +  FR_DATASETS,
-    #    dest="dataset_name",
-    #    default="linzen",
-    #    help="Dataset to train on"
-    #)
     argparser.add_argument(
         "-concept",
         type=str,
@@ -41,6 +33,13 @@ def get_train_probes_args():
         dest="model_name",
         default="bert-base-uncased",
         help="Model used to extract hidden states & embeddings"
+    )
+    argparser.add_argument(
+        "-rlace_type",
+        type=str,
+        choices=["theta","lm"],
+        default="theta",
+        help="Which type of RLACE to use"
     )
     argparser.add_argument(
         "-k",
@@ -263,7 +262,7 @@ def set_train_probes_defaults(config):
         "verbose": True
     }
     #rlace_epsilon = 0.001 # stop 0.1% from majority acc (I TURNED THIS OFF)
-    config["run_name"] = f"{config['model_name']}_k{config['k']}_Plr{config['P_lr']}_Pms{config['P_milestones']}_clflr{config['clf_lr']}_clfms{config['clf_milestones']}"
+    config["run_name"] = f"{config['model_name']}_{config['rlace_type']}_k{config['k']}_Plr{config['P_lr']}_Pms{config['P_milestones']}_clflr{config['clf_lr']}_clfms{config['clf_milestones']}"
     return config
 
 def get_train_probes_config():

@@ -4,12 +4,16 @@ import os
 import sys
 import coloredlogs
 import torch
+import pickle
+import numpy as np
 from transformers import GPT2TokenizerFast, GPT2LMHeadModel
 from transformers import BertTokenizerFast, BertForMaskedLM
 from transformers import CamembertForMaskedLM, CamembertTokenizer
 
 sys.path.append('./src/')
-from paths import HF_CACHE
+
+from paths import HF_CACHE, DATASETS
+
 
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
@@ -112,3 +116,4 @@ def get_concept_name(model_name):
         return "gender"
     else:
         raise ValueError(f"No model to concept mapping")
+

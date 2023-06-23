@@ -21,9 +21,10 @@ from abc import ABC
 #sys.path.append('..')
 sys.path.append('./src/')
 
-#import functionals
+from algorithms.rlace.functionals import OriginalFunctional
+from classifiers.classifiers import BinaryParamFreeClf
 
-from evals.kl_eval import compute_kls, load_model_eval
+#from evals.kl_eval import compute_kls, load_model_eval
 
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
@@ -259,7 +260,8 @@ def solve_adv_game(X_train, y_train, X_dev, y_dev,
 
     burn_P, burn_loss = None, -1
 
-    other_emb, l0_emb, l1_emb, pair_probs, concept_marginals = load_model_eval(concept, model_name)
+    #TODO: fix this
+    #other_emb, l0_emb, l1_emb, pair_probs, concept_marginals = load_model_eval(concept, model_name)
 
     if wb:
         if wb_run is None:
@@ -304,13 +306,11 @@ def solve_adv_game(X_train, y_train, X_dev, y_dev,
             optimizer_predictor.step()
 
         if (i+1) % evaluate_every == 0:
-            #pbar.set_description("Evaluating current adversary...")
             loss_val, acc_val = run_validation(
                 X_val_train, y_val_train, X_dev, y_dev, P.detach().cpu().numpy(), 
                 rank
             )
-            #TODO: probably want to pick best_score and best_loss in the same if statement (evaluate on one)
-            if loss_val > best_loss:#if np.abs(score - maj) < np.abs(best_score - maj):
+            if loss_val > best_loss:
                 best_P, best_loss, best_loss_acc = symmetric(P).detach().cpu().numpy().copy(), loss_val, acc_val
             if np.abs(acc_val - maj) < np.abs(best_acc - maj):
                 best_P_acc, best_acc = symmetric(P).detach().cpu().numpy().copy(), acc_val
@@ -347,23 +347,23 @@ def solve_adv_game(X_train, y_train, X_dev, y_dev,
             pbar.refresh()  # to show immediately the update
             time.sleep(0.01)
 
-        if (i+1) % 5000 == 0:
-            mis_val = compute_mis(
-                X_dev, P.detach().cpu().numpy(), rank, other_emb, l0_emb, l1_emb, 
-                pair_probs, concept_marginals, X_pca
-            )
-            if wb:
-                wandb.log({
-                    f"diag_rlace/val/mis/{wb_run}/base_overall_mi": mis_val["base_overall_mi"],
-                    f"diag_rlace/val/mis/{wb_run}/P_overall_mi": mis_val["P_overall_mi"],
-                    f"diag_rlace/val/mis/{wb_run}/I_P_overall_mi": mis_val["I_P_overall_mi"],
-                    f"diag_rlace/val/mis/{wb_run}/base_lemma_mi": mis_val["base_lemma_mi"],
-                    f"diag_rlace/val/mis/{wb_run}/P_lemma_mi": mis_val["P_lemma_mi"],
-                    f"diag_rlace/val/mis/{wb_run}/I_P_lemma_mi": mis_val["I_P_lemma_mi"],
-                    f"diag_rlace/val/mis/{wb_run}/base_pairwise_mi": mis_val["base_pairwise_mi"],
-                    f"diag_rlace/val/mis/{wb_run}/P_pairwise_mi": mis_val["P_pairwise_mi"],
-                    f"diag_rlace/val/mis/{wb_run}/I_P_pairwise_mi": mis_val["I_P_pairwise_mi"],
-                })
+        #if (i+1) % 5000 == 0:
+        #    mis_val = compute_mis(
+        #        X_dev, P.detach().cpu().numpy(), rank, other_emb, l0_emb, l1_emb, 
+        #        pair_probs, concept_marginals, X_pca
+        #    )
+        #    if wb:
+        #        wandb.log({
+        #            f"diag_rlace/val/mis/{wb_run}/base_overall_mi": mis_val["base_overall_mi"],
+        #            f"diag_rlace/val/mis/{wb_run}/P_overall_mi": mis_val["P_overall_mi"],
+        #            f"diag_rlace/val/mis/{wb_run}/I_P_overall_mi": mis_val["I_P_overall_mi"],
+        #            f"diag_rlace/val/mis/{wb_run}/base_lemma_mi": mis_val["base_lemma_mi"],
+        #            f"diag_rlace/val/mis/{wb_run}/P_lemma_mi": mis_val["P_lemma_mi"],
+        #            f"diag_rlace/val/mis/{wb_run}/I_P_lemma_mi": mis_val["I_P_lemma_mi"],
+        #            f"diag_rlace/val/mis/{wb_run}/base_pairwise_mi": mis_val["base_pairwise_mi"],
+        #            f"diag_rlace/val/mis/{wb_run}/P_pairwise_mi": mis_val["P_pairwise_mi"],
+        #            f"diag_rlace/val/mis/{wb_run}/I_P_pairwise_mi": mis_val["I_P_pairwise_mi"],
+        #        })
         #if i > 1 and np.abs(best_score - maj) < epsilon:
         #if i > 1 and np.abs(best_loss - label_entropy) < epsilon:
         #    break
@@ -378,6 +378,179 @@ def solve_adv_game(X_train, y_train, X_dev, y_dev,
         )
     return output
 
+def run_validation_param_free(X_dev, U_dev, y_dev, P, rank, device):
+    _, I_P_svd = torch.Tensor(get_projection(P, rank)).to(device)
+    clf = BinaryParamFreeClf(X_dev @ I_P_svd, U_dev, y_dev, device)
+
+    return clf.loss(), clf.score()
+
+def solve_adv_game_param_free(X_train, U_train, y_train, 
+    X_dev, U_dev, y_dev, 
+    version="original", rank=1, device="cpu", out_iters=75000, 
+    in_iters_adv=1, in_iters_clf=1, 
+    epsilon=0.0015, batch_size=128, evaluate_every=1000, 
+    optimizer_class=SGD,  optimizer_params_P={"lr": 0.005, "weight_decay": 1e-4},
+    wb=False, wb_run=None, concept=None, model_name=None):
+    """
+    :param X: The input (np array)
+    :param Y: the lables (np array)
+    :param X_dev: Dev set (np array)
+    :param Y_dev: Dev labels (np array)
+    :param rank: Number of dimensions to neutralize from the input.
+    :param device:
+    :param out_iters: Number of batches to run
+    :param in_iters_adv: number of iterations for adversary's optimization
+    :param in_iters_clf: number of iterations from the predictor's optimization
+    :param epsilon: stopping criterion .Stops if abs(acc - majority) < epsilon.
+    :param batch_size:
+    :param evaluate_every: After how many batches to evaluate the current adversary.
+    :param optimizer_class: SGD/Adam etc.
+    :param optimizer_params: the optimizer's params (as a dict)
+    :return:
+    """
+
+    def get_loss_fn(X, U, y, P, bce_loss_fn, optimize_P=False):
+        I = torch.eye(X_train.shape[1]).to(device)
+        pred = ((X @ (I-P)) * (U)).sum(-1)
+        bce = bce_loss_fn(pred, y)
+        if optimize_P:
+            bce = -bce
+        return bce
+
+    if version == 'positively_functional':
+        functional = functionals.PositivelyFunctional(
+            get_loss_fn, get_score_param_free
+        )
+    elif version == 'negatively_functional':
+        functional = functionals.NegativelyFunctional(
+            get_loss_fn, get_score_param_free
+        )
+    elif version == 'original':
+        functional = OriginalFunctional(
+            get_loss_fn, run_validation_param_free
+        )
+    else:
+        ValueError(f'Received an invalid version ({version}) of functional RLACE')
+
+    logging.info("Loading data to GPU")
+    X_train = torch.from_numpy(X_train).float().to(device)
+    U_train = torch.from_numpy(U_train).float().to(device)
+    y_train = torch.from_numpy(y_train).float().to(device)
+
+    X_dev = torch.from_numpy(X_dev).float().to(device)
+    U_dev = torch.from_numpy(U_dev).float().to(device)
+    #y_dev = torch.tensor(y_dev).float()
+
+    num_labels = len(set(y_train.tolist()))
+    if num_labels == 2:
+        #predictor = torch.nn.Linear(X_train.shape[1], 1).to(device)
+        bce_loss_fn = torch.nn.BCEWithLogitsLoss()
+        #y_train = y_train
+        #y_dev = y_dev
+    else:
+        #predictor = torch.nn.Linear(X_train.shape[1], num_labels).to(device)
+        bce_loss_fn = torch.nn.CrossEntropyLoss()
+        #y_train = y_train
+        #y_dev = y_dev
+
+    P = 1e-1*torch.randn(X_train.shape[1], X_train.shape[1]).to(device)
+    P.requires_grad = True
+
+    #optimizer_predictor = optimizer_class(predictor.parameters(), **optimizer_params_predictor)
+    optimizer_P = optimizer_class([P],**optimizer_params_P)
+    
+    maj, label_entropy = get_majority_acc_entropy(y_train)
+    count_examples = 0
+    
+    best_P, best_P_acc, best_acc, best_loss = None, None, 1, -1
+    burn_P, burn_loss = None, -1
+
+    #TODO: fix this
+    #other_emb, l0_emb, l1_emb, pair_probs, concept_marginals = load_model_eval(concept, model_name)
+
+    if wb:
+        if wb_run is None:
+            wb_run = 0
+
+    pbar = tqdm.tqdm(range(out_iters), total = out_iters, ascii=True)
+    for i in pbar:
+
+        for j in range(in_iters_adv):
+            P = symmetric(P)
+            optimizer_P.zero_grad()
+
+            idx = np.arange(0, X_train.shape[0])
+            np.random.shuffle(idx)
+            X_batch, U_batch, y_batch = X_train[idx[:batch_size]], U_train[idx[:batch_size]], y_train[idx[:batch_size]]
+
+            loss_P = functional.get_loss(
+                X_batch, U_batch, y_batch, 
+                symmetric(P), bce_loss_fn,
+                device
+            )
+
+            loss_P.backward()
+            optimizer_P.step()
+
+            # project
+
+            with torch.no_grad():
+                D, U = torch.linalg.eigh(symmetric(P).detach().cpu())
+                D = D.detach().cpu().numpy()
+                D_plus_diag = solve_constraint(D, d=rank)
+                D = torch.tensor(np.diag(D_plus_diag).real).float().to(device)
+                U = U.to(device)
+                P.data = U @ D @ U.T
+
+        for j in range(in_iters_clf):
+            #optimizer_predictor.zero_grad()
+            #idx = np.arange(0, X_train_torch.shape[0])
+            #np.random.shuffle(idx)
+            
+            #X_batch, U_batch, y_batch = X_train_torch[idx[:batch_size]], U_train_torch[idx[:batch_size]], y_train_torch[idx[:batch_size]]
+
+            #loss_predictor = get_loss_fn(X_batch, U_batch, y_batch, symmetric(P), bce_loss_fn, optimize_P=False)
+            #loss_predictor.backward()
+            #optimizer_predictor.step()
+            count_examples += batch_size
+
+        if i % evaluate_every == 0:
+            loss_val, acc_val = functional.get_loss_and_score(
+                X_dev, U_dev, y_dev, P, rank, device
+            )
+            if functional.is_best_loss(loss_val):
+                best_P, best_loss, best_loss_acc = symmetric(P).detach().cpu().numpy().copy(), loss_val, acc_val
+            if functional.is_best_acc(acc_val):
+                best_P_acc, best_acc = symmetric(P).detach().cpu().numpy().copy(), acc_val
+            if i / out_iters > .8 and loss_val > burn_loss:
+                burn_P, burn_loss = symmetric(P).detach().cpu().numpy().copy(), loss_val
+                
+            # update progress bar
+            if wb:
+                wandb.log({
+                    f"diag_rlace/val/{wb_run}/loss": loss_val, 
+                    f"diag_rlace/val/{wb_run}/acc": acc_val,
+                    f"diag_rlace/val/{wb_run}/best_loss": best_loss,
+                    f"diag_rlace/val/{wb_run}/best_loss_acc": best_loss_acc,
+                    f"diag_rlace/val/{wb_run}/best_acc": best_acc,
+                    f"diag_rlace/val/{wb_run}/best_loss_acc_gap": np.abs(best_loss_acc - maj) - np.abs(best_acc - maj),
+                    f"diag_rlace/val/{wb_run}/burn_loss": burn_loss
+                })
+
+            pbar.set_description(
+                "{:.0f}/{:.0f}. Acc post-projection: {:.3f}%; best so-far: {:.3f}%; Maj: {:.3f}%; Gap: {:.3f}%; best loss: {:.4f}; current loss: {:.4f}".format(
+                    i, out_iters, acc_val * 100, best_acc * 100, 
+                    maj * 100, np.abs(best_acc - maj) * 100, best_loss, loss_val))
+            pbar.refresh()  # to show immediately the update
+            time.sleep(0.01)
+
+        #if i > 1 and np.abs(best_score - maj) < epsilon:
+        #if i > 1 and np.abs(best_loss - label_entropy) < epsilon:
+        #            break
+    output = prepare_output(
+        best_P, best_P_acc, burn_P, rank, best_acc, best_loss
+    )
+    return output
 
 if __name__ == "__main__":
     

@@ -43,8 +43,8 @@ def format_sample_masked(sample):
     hs = sample["hs"]
     fact_emb = sample["fact_embedding"]
     foil_emb = sample["foil_embedding"]
-    fact = sample["fact"]
-    foil = sample["foil"]
+    fact = sample["input_ids_fact"]
+    foil = sample["input_ids_foil"]
     tgt_label = define_target(sample["tgt_label"])
     max_tokens = count_tgt_tokens(sample)
     if tgt_label == 0 and max_tokens == 1:
@@ -63,8 +63,8 @@ def format_sample_ar(sample):
     hs = sample["fact_hs"][0,:]
     fact_emb = sample["fact_embedding"]
     foil_emb = sample["foil_embedding"]
-    fact = sample["fact"]
-    foil = sample["foil"]
+    fact = sample["input_ids_fact"]
+    foil = sample["input_ids_foil"]
     tgt_label = define_target(sample["tgt_label"])
     max_tokens = count_tgt_tokens(sample)
     if tgt_label == 0 and max_tokens == 1:

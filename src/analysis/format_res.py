@@ -21,9 +21,7 @@ sys.path.append('./src/')
 from paths import DATASETS, OUT, RESULTS
 #from utils.lm_loaders import get_tokenizer, get_V
 from evals.kl_eval import load_run_output, load_run_Ps, get_distribs, \
-    normalize_pairs, compute_overall_mi, compute_kl, renormalize,\
-        compute_kls_from_run_output
-from utils.dataset_loaders import load_hs, load_model_eval
+    compute_eval_filtered_hs
 from utils.lm_loaders import BERT_LIST, GPT2_LIST
 
 #from evals.usage_eval import diag_eval, usage_eval
@@ -115,7 +113,8 @@ def get_full_kls_df(res, P):
 
     full_P_kls = pd.concat([concept_P_mean, concept_P_std, other_P_mean, other_P_std, all_P_mean, all_P_std], axis=0)
     full_P_kls.sort_values(by = ["split", "distance_metric", "metric"], inplace=True)
-    return full_P_kls 
+    return full_P_kls
+    
 
 #%%
 def get_er_res(res, split, metric):
@@ -163,6 +162,8 @@ def get_full_er_df(res):
 ####################
 def get_baseline_kls(concept, model_name, nsamples=200):
     hs_sub = load_hs(concept, model_name, nsamples*2)
+    raise ValueError("THIS SCRIPT IS BROKEN, FIX")
+    #TODO: need to fix this -- this eval no longer words
     other_emb, l0_emb, l1_emb, pair_probs, concept_marginals = load_model_eval(concept, model_name)
 
     kls = []
@@ -184,19 +185,19 @@ def get_baseline_kls(concept, model_name, nsamples=200):
     return desc_kls
 
 #%%
-def recompute_eval(concept_name, model_name, run_output_path, outdir, nsamples):
-    desc_outfile = os.path.join(outdir, f"kl_mi_descs_{model_name}_{concept_name}.csv")
-    concept_outfile = os.path.join(outdir, f"kl_mi_concept_{model_name}_{concept_name}.csv")
-    other_outfile = os.path.join(outdir, f"kl_mi_other_{model_name}_{concept_name}.csv")
-
-    kl_descs, concept_kls, other_kls = compute_kls_from_run_output(
-        concept_name, model_name, run_output_path, nsamples)
-    kl_descs.to_csv(desc_outfile)
-    concept_kls.to_csv(concept_outfile)
-    other_kls.to_csv(other_outfile)
-    logging.info(f"Exported KLs for all subsets of hs.")
-
-    return kl_descs, concept_kls, other_kls
+#def recompute_eval(concept_name, model_name, run_output_path, outdir, nsamples):
+#    desc_outfile = os.path.join(outdir, f"kl_mi_descs_{model_name}_{concept_name}.csv")
+#    concept_outfile = os.path.join(outdir, f"kl_mi_concept_{model_name}_{concept_name}.csv")
+#    other_outfile = os.path.join(outdir, f"kl_mi_other_{model_name}_{concept_name}.csv")
+#
+#    kl_descs, concept_kls, other_kls = compute_kls_from_run_output(
+#        concept_name, model_name, run_output_path, nsamples)
+#    kl_descs.to_csv(desc_outfile)
+#    concept_kls.to_csv(concept_outfile)
+#    other_kls.to_csv(other_outfile)
+#    logging.info(f"Exported KLs for all subsets of hs.")
+#
+#    return kl_descs, concept_kls, other_kls
 
 #%%#################
 # Main             #
@@ -251,7 +252,7 @@ if __name__ == '__main__':
     #useRun = args.useRun
     model_name = "gpt2-large"
     concept_name = "number"
-    useRun=True
+    useRun=False
     exportAcc=True
     nsamples=1000
     #suffix = "nopca"
@@ -273,7 +274,7 @@ if __name__ == '__main__':
             os.makedirs(raw_outdir)
 
         #TODO: do this with Xtest from run output once available
-        klmidesc, _, _ = recompute_eval(concept_name, model_name, run_output_path, raw_outdir, nsamples)
+        klmidesc = compute_eval_filtered_hs(model_name, concept, P, I_P, 100)
     else:
         klmidesc = run_output["kl_eval"]
 
