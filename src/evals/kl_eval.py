@@ -461,8 +461,9 @@ def compute_kls_after_training(concept_name, model_name, X_test, P, I_P):
     return compute_kls_all_hs(concept_name, model_name, X_test, other_hs, 
         P, I_P)
 
-def compute_eval_filtered_hs(model_name, concept, P, I_P, nsamples):
-    l0_hs_wff, l1_hs_wff = load_filtered_hs_wff(model_name, nsamples=nsamples)
+def compute_eval_filtered_hs(model_name, concept, P, I_P, l0_hs_wff=None, l1_hs_wff=None):
+    if l0_hs_wff is None and l1_hs_wff is None:
+        l0_hs_wff, l1_hs_wff = load_filtered_hs_wff(model_name, nsamples=nsamples)
     V, l0_tl, l1_tl, p_c = load_model_eval(model_name, concept)
     h_c = get_h_c_bin(p_c)
 

@@ -155,22 +155,22 @@ def load_preprocessed_dataset(dataset_name, model_name, split=None):
 # Loading Processed HS Datasets #
 #################################
 def load_dataset_pickle(path, dataset_name):
-    #TODO: fix this once we're sure what we're computing
     with open(path, 'rb') as f:     
         data = pd.DataFrame(pickle.load(f))
-        if data.shape[1] == 3:
-            data.columns = ["h", "u", "y"]
-        elif data.shape[1] == 5:
-            data.columns = ["h", "u", "y", "fact", "foil"]
-        else:
-            raise ValueError("Unexpected processed dataset format")
+        assert data.shape[1] == 5, "Out of date processed dataset"
+        data.columns = ["h", "u", "y", "fact", "foil"]
+        #if data.shape[1] == 3:
+        #    data.columns = ["h", "u", "y"]
+        #elif data.shape[1] == 5:
+        #else:
+        #    raise ValueError("Unexpected processed dataset format")
     
     X = np.array([x for x in data["h"]])
     U = np.array([x for x in data["u"]])
     y = np.array([yi for yi in data["y"]])
-    #fact = np.array([fact for fact in data["fact"]])
-    #foil = np.array([foil for foil in data["foil"]])
-    return X, U, y#, fact, foil
+    fact = np.array([fact for fact in data["fact"]])
+    foil = np.array([foil for foil in data["foil"]])
+    return X, U, y, fact, foil
 
 def get_processed_dataset_path(dataset_name, model_name, split=None):
     if model_name in GPT2_LIST and split is None:
@@ -189,31 +189,35 @@ def load_processed_dataset(dataset_name, model_name, split=None):
     return load_dataset_pickle(dataset_path, dataset_name)
 
 def load_gender_split(model_name, split_name):
-    X_gsd, U_gsd, y_gsd = load_processed_dataset("ud_fr_gsd", model_name, split_name)
-    #X_gsd, U_gsd, y_gsd, fact_gsd, foil_gsd = load_processed_dataset("ud_fr_gsd", model_name, split_name)
-    X_partut, U_partut, y_partut = load_processed_dataset("ud_fr_partut", model_name, split_name)
-    #X_partut, U_partut, y_partut, fact_partut, foil_partut = load_processed_dataset("ud_fr_partut", model_name, split_name)
-    X_rhapsodie, U_rhapsodie, y_rhapsodie = load_processed_dataset("ud_fr_rhapsodie", model_name, split_name)
-    #X_rhapsodie, U_rhapsodie, y_rhapsodie, fact_rhapsodie, foil_rhapsodie = load_processed_dataset("ud_fr_rhapsodie", model_name, split_name)
+    #X_gsd, U_gsd, y_gsd = load_processed_dataset("ud_fr_gsd", model_name, split_name)
+    X_gsd, U_gsd, y_gsd, fact_gsd, foil_gsd = load_processed_dataset("ud_fr_gsd", model_name, split_name)
+    #X_partut, U_partut, y_partut = load_processed_dataset("ud_fr_partut", model_name, split_name)
+    X_partut, U_partut, y_partut, fact_partut, foil_partut = load_processed_dataset("ud_fr_partut", model_name, split_name)
+    #X_rhapsodie, U_rhapsodie, y_rhapsodie = load_processed_dataset("ud_fr_rhapsodie", model_name, split_name)
+    X_rhapsodie, U_rhapsodie, y_rhapsodie, fact_rhapsodie, foil_rhapsodie = load_processed_dataset("ud_fr_rhapsodie", model_name, split_name)
 
     X = np.vstack([X_gsd, X_partut, X_rhapsodie])
     U = np.vstack([U_gsd, U_partut, U_rhapsodie])
     y = np.hstack([y_gsd, y_partut, y_rhapsodie])
-    #fact = np.hstack([fact_gsd, fact_partut, fact_rhapsodie])
-    #foil = np.hstack([foil_gsd, foil_partut, foil_rhapsodie])
-    return X, U, y#, fact, foil
+    fact = np.hstack([fact_gsd, fact_partut, fact_rhapsodie])
+    foil = np.hstack([foil_gsd, foil_partut, foil_rhapsodie])
+    return X, U, y, fact, foil
 
 def load_gender_processed(model_name):
-    X_train, U_train, y_train = load_gender_split(model_name, "train")
-    #X_train, U_train, y_train, fact_train, foil_train = load_gender_split(model_name, "train")
-    X_dev, U_dev, y_dev = load_gender_split(model_name, "dev")
-    #X_dev, U_dev, y_dev, fact_dev, foil_dev = load_gender_split(model_name, "dev")
-    X_test, U_test, y_test = load_gender_split(model_name, "test")
-    #X_test, U_test, y_test, fact_test, foil_test = load_gender_split(model_name, "test")
+    #X_train, U_train, y_train = load_gender_split(model_name, "train")
+    X_train, U_train, y_train, fact_train, foil_train = load_gender_split(model_name, "train")
+    #X_dev, U_dev, y_dev = load_gender_split(model_name, "dev")
+    X_dev, U_dev, y_dev, fact_dev, foil_dev = load_gender_split(model_name, "dev")
+    #X_test, U_test, y_test = load_gender_split(model_name, "test")
+    X_test, U_test, y_test, fact_test, foil_test = load_gender_split(model_name, "test")
+    
+    #stacking into one
     X = np.vstack([X_train, X_dev, X_test])
     U = np.vstack([U_train, U_dev, U_test])
     y = np.hstack([y_train, y_dev, y_test])
-    return X, U, y
+    fact = np.hstack([fact_train, fact_dev, fact_test])
+    foil = np.hstack([foil_train, foil_dev, foil_test])
+    return X, U, y, fact, foil
 
 def load_processed_data(concept_name, model_name):
     if concept_name == "number":

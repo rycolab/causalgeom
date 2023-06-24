@@ -28,12 +28,13 @@ from algorithms.rlace.rlace import solve_adv_game, init_classifier, get_majority
 
 import algorithms.inlp.debias
 from classifiers.classifiers import BinaryParamFreeClf
-from classifiers.compute_marginals import compute_concept_marginal, compute_pair_marginals
+#from classifiers.compute_marginals import compute_concept_marginal, compute_pair_marginals
 from utils.cuda_loaders import get_device
 from utils.config_args import get_train_probes_config
-from evals.kl_eval import compute_kls_after_training, load_model_eval
+from evals.kl_eval import load_model_eval, compute_eval_filtered_hs
 from evals.usage_eval import full_usage_eval, full_diag_eval
 from utils.dataset_loaders import load_processed_data
+from data.embed_wordlists.embedder import load_concept_token_lists
 
 
 from paths import DATASETS, OUT
@@ -57,13 +58,35 @@ def get_data_indices(nobs, cfg):
         raise ValueError("Concept value not supported.")
     return idx[:train_lastind], idx[train_lastind:val_lastind], idx[val_lastind:test_lastind]
 
-def train_probes(X, U, y, cfg, wb, wb_run, diag_rlace_u_outdir, device="cpu"):
+def filter_hs_wff(X, facts, foils, l0_tl, l1_tl, nsamples=None):
+    l0_hs = []
+    l1_hs = []
+    for h, fact, foil in zip(X, facts, foils):
+        if fact in l0_tl:
+            l0_hs.append((h, fact, foil))
+        elif fact in l1_tl:
+            l1_hs.append((h, fact, foil))
+        else:
+            continue
+
+    if nsamples is not None:
+        random.shuffle(l0_hs)
+        random.shuffle(l1_hs)
+        ratio = len(l1_hs)/len(l0_hs)
+        l0_hs = l0_hs[:nsamples]
+        l1_hs = l1_hs[:int((nsamples*ratio))]
+    return l0_hs, l1_hs
+
+def train_probes(X, U, y, facts, foils, 
+    cfg, wb, wb_run, diag_rlace_u_outdir, 
+    l0_tl, l1_tl, device="cpu"):
     idx_train, idx_val, idx_test = get_data_indices(X.shape[0], cfg)
     
     X_train, X_val, X_test = X[idx_train], X[idx_val], X[idx_test]
     U_train, U_val, U_test = U[idx_train], U[idx_val], U[idx_test]
     y_train, y_val, y_test = y[idx_train], y[idx_val], y[idx_test]
-
+    facts_train, facts_val, facts_test = facts[idx_train], facts[idx_val], facts[idx_test]
+    foils_train, foils_val, foils_test = foils[idx_train], foils[idx_val], foils[idx_test]
     #%%
     #if cfg['pca_dim'] > 0:
     #    logging.info(f"Applying PCA with dimension {cfg['pca_dim']}")
@@ -81,6 +104,7 @@ def train_probes(X, U, y, cfg, wb, wb_run, diag_rlace_u_outdir, device="cpu"):
     #    X_train_pca = X_train
     #    X_val_pca = X_val
     #    X_test_pca = X_test
+    X_pca = None
 
     #%%
     start = time.time()
@@ -136,12 +160,15 @@ def train_probes(X, U, y, cfg, wb, wb_run, diag_rlace_u_outdir, device="cpu"):
     usage_eval = full_usage_eval(
         rlace_output, X_train, U_train, y_train, X_test, U_test, y_test
     )
-    #diag_eval = None
-    #usage_eval = None
-    #mikl_descs, concept_kls, other_kls = compute_kls_after_training(
-    #    cfg["concept"], cfg["model_name"], X_test, 
-    #    rlace_output["P_burn"], rlace_output["I_P_burn"]
-    #)
+    # TODO: this nsamples stuff is kinda meh
+    nsamples = 1000
+    l0_hs_wff_test, l1_hs_wff_test = filter_hs_wff(
+        X_test, facts_test, foils_test, l0_tl, l1_tl, nsamples
+    )
+    new_eval = compute_eval_filtered_hs(
+        cfg["model_name"], cfg["concept"], rlace_output["P_burn"], 
+        rlace_output["I_P_burn"], l0_hs_wff_test, l1_hs_wff_test
+    )
     
     """
     #%%
@@ -205,14 +232,15 @@ def train_probes(X, U, y, cfg, wb, wb_run, diag_rlace_u_outdir, device="cpu"):
         output=rlace_output,
         diag_eval=diag_eval,
         usage_eval=usage_eval,
-        #kl_eval=mikl_descs,
-        #concept_kl_samples=concept_kls,
-        #other_kl_samples=other_kls,
+        new_eval=new_eval,
         maj_acc_test=get_majority_acc(y_test),
         maj_acc_val=get_majority_acc(y_val),
         maj_acc_train=get_majority_acc(y_train),
-        X_pca=None,
-        X_test=X_test
+        X_test=X_test,
+        U_test=U_test,
+        foils_test=foils_test,
+        facts_test=facts_test,
+        #X_pca=X_pca,
     )
     
     return full_results
@@ -245,7 +273,8 @@ if __name__ == '__main__':
     #other_emb, l0_emb, l1_emb, pair_probs, concept_marginals = load_model_eval(cfg['concept'], cfg['model_name'])
 
     # Load dataset
-    X, U, y = load_processed_data(cfg['concept'], cfg['model_name'])
+    l0_tl, l1_tl = load_concept_token_lists(cfg['concept'], cfg['model_name'])
+    X, U, y, facts, foils = load_processed_data(cfg['concept'], cfg['model_name'])
 
     # Set seed
     np.random.seed(cfg['seed'])
@@ -267,8 +296,8 @@ if __name__ == '__main__':
 
     for i in trange(cfg['nruns']):
         #X, U, y, cfg, wb, wb_run, diag_rlace_u_outdir, device="cpu"
-        run_output = train_probes(X, U, y, cfg, wb=WB, wb_run=i, 
-            diag_rlace_u_outdir=DIAG_RLACE_U_OUTDIR, device=device)        
+        run_output = train_probes(X, U, y, facts, foils, cfg, WB, i, 
+            DIAG_RLACE_U_OUTDIR, l0_tl, l1_tl, device=device)        
 
         outfile_path = os.path.join(OUTPUT_DIR, 
             f"run_{cfg['run_name']}_{datetimestr}_{i}_{cfg['nruns']}.pkl")

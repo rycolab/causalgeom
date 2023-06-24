@@ -170,12 +170,12 @@ def embed_and_export_list(token_list, V, outfile):
 ####################
 if __name__=="__main__":
 
-    #args = get_args()
-    #logging.info(args)
-    #concept = args.concept
-    #model_name = args.model
-    concept = "number"
-    model_name = "gpt2-large"
+    args = get_args()
+    logging.info(args)
+    concept = args.concept
+    model_name = args.model
+    #concept = "number"
+    #model_name = "gpt2-large"
     
     logging.info(f"Tokenizing and saving embeddings from word and lemma lists for model {model_name}")
     wordlist_path, lemmalist_path = get_wordlist_paths(concept)
@@ -186,6 +186,7 @@ if __name__=="__main__":
         dirpath = os.path.dirname(filepath)
         if not os.path.exists(dirpath):
             os.makedirs(dirpath)
+            logging.info(f"Created directory: {dirpath}")
 
     tokenizer = get_tokenizer(model_name)
     V = get_V(model_name)

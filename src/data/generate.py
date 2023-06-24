@@ -190,6 +190,8 @@ if __name__=="__main__":
 
     if model_name == "gpt2-large":
         max_length = 1024
+    elif model_name == "gpt2-base-french":
+        max_length = 1024
     else:
         max_length = 100000
 
