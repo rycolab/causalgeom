@@ -67,7 +67,8 @@ def full_diag_eval(output, X_train, y_train, X_val, y_val, X_test, y_test, X_pca
     
     return diag_orig | diag_P | diag_I_P | diag_P_acc | diag_I_P_acc | diag_P_burn | diag_I_P_burn
 
-def usage_eval(P, P_type, X_train, U_train, y_train, X_test, U_test, y_test, X_pca=None):
+def usage_eval(P, P_type, X_train, U_train, y_train, 
+    X_test, U_test, y_test, X_pca=None):
     results = {}
     
     if X_pca is None:

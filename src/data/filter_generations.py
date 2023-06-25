@@ -97,12 +97,18 @@ def load_filtered_hs_wff(model_name, I_P="no_I_P", nsamples=None):
         l0_hs_wff = pickle.load(f)
     with open(os.path.join(filtered_hs_dir, "l1_hs_w_factfoil.pkl"), "rb") as f:
         l1_hs_wff = pickle.load(f)
+    
     if nsamples is not None:
         random.shuffle(l0_hs_wff)
         random.shuffle(l1_hs_wff)
         ratio = len(l1_hs_wff)/len(l0_hs_wff)
-        l0_hs_wff = l0_hs_wff[:nsamples]
-        l1_hs_wff = l1_hs_wff[:int((nsamples*ratio))]
+        if ratio > 1:
+            l0_hs_wff = l0_hs_wff[:nsamples]
+            l1_hs_wff = l1_hs_wff[:int((nsamples*ratio))]
+        else:
+            ratio = len(l0_hs_wff) / len(l1_hs_wff)
+            l0_hs_wff = l0_hs_wff[:int((nsamples*ratio))]
+            l1_hs_wff = l1_hs_wff[:nsamples]
     return l0_hs_wff, l1_hs_wff
 
 # %%
@@ -128,14 +134,15 @@ if __name__ == '__main__':
     logging.info(args)
     
     #nsamples=None
-    #model_name = args.model
+    model_name = args.model
     #if args.useP:
     #    I_P = "I_P"
     #else:
     #    I_P = "no_I_P"
-    model_name = "gpt2-large"
+    #model_name = "gpt2-large"
     I_P = "no_I_P"
-    nfiles = 100
+    #nfiles = 100
+    nfiles = None
 
     generations_folder = os.path.join(OUT, f"generated_text/{model_name}/{I_P}")
     outdir = os.path.join(OUT, f"filtered_generations/{model_name}/{I_P}")

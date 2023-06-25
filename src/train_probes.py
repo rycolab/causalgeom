@@ -58,25 +58,6 @@ def get_data_indices(nobs, cfg):
         raise ValueError("Concept value not supported.")
     return idx[:train_lastind], idx[train_lastind:val_lastind], idx[val_lastind:test_lastind]
 
-def filter_hs_wff(X, facts, foils, l0_tl, l1_tl, nsamples=None):
-    l0_hs = []
-    l1_hs = []
-    for h, fact, foil in zip(X, facts, foils):
-        if fact in l0_tl:
-            l0_hs.append((h, fact, foil))
-        elif fact in l1_tl:
-            l1_hs.append((h, fact, foil))
-        else:
-            continue
-
-    if nsamples is not None:
-        random.shuffle(l0_hs)
-        random.shuffle(l1_hs)
-        ratio = len(l1_hs)/len(l0_hs)
-        l0_hs = l0_hs[:nsamples]
-        l1_hs = l1_hs[:int((nsamples*ratio))]
-    return l0_hs, l1_hs
-
 def train_probes(X, U, y, facts, foils, 
     cfg, wb, wb_run, diag_rlace_u_outdir, 
     l0_tl, l1_tl, device="cpu"):
@@ -161,14 +142,14 @@ def train_probes(X, U, y, facts, foils,
         rlace_output, X_train, U_train, y_train, X_test, U_test, y_test
     )
     # TODO: this nsamples stuff is kinda meh
-    nsamples = 1000
-    l0_hs_wff_test, l1_hs_wff_test = filter_hs_wff(
-        X_test, facts_test, foils_test, l0_tl, l1_tl, nsamples
-    )
-    new_eval = compute_eval_filtered_hs(
-        cfg["model_name"], cfg["concept"], rlace_output["P_burn"], 
-        rlace_output["I_P_burn"], l0_hs_wff_test, l1_hs_wff_test
-    )
+    #nsamples = 1000
+    #l0_hs_wff_test, l1_hs_wff_test = filter_hs_wff(
+    #    X_test, facts_test, foils_test, l0_tl, l1_tl, nsamples
+    #)
+    #new_eval = compute_eval_filtered_hs(
+    #    cfg["model_name"], cfg["concept"], rlace_output["P_burn"], 
+    #    rlace_output["I_P_burn"], l0_hs_wff_test, l1_hs_wff_test
+    #)
     
     """
     #%%
@@ -232,12 +213,13 @@ def train_probes(X, U, y, facts, foils,
         output=rlace_output,
         diag_eval=diag_eval,
         usage_eval=usage_eval,
-        new_eval=new_eval,
+        #new_eval=new_eval,
         maj_acc_test=get_majority_acc(y_test),
         maj_acc_val=get_majority_acc(y_val),
         maj_acc_train=get_majority_acc(y_train),
         X_test=X_test,
         U_test=U_test,
+        y_test=y_test,
         foils_test=foils_test,
         facts_test=facts_test,
         #X_pca=X_pca,
@@ -308,7 +290,7 @@ if __name__ == '__main__':
         logging.info(f"Exported {outfile_path}")
         
         if WB:
-            kl_eval_desc = run_output["kl_eval"].describe()
+            #kl_eval_desc = run_output["kl_eval"].describe()
             wandb.log({
                 f"diag_rlace/test/P/diag/{i}/diag_acc_test": run_output["diag_eval"]["diag_acc_P_test"],
                 f"diag_rlace/test/I_P/diag/{i}/diag_acc_test": run_output["diag_eval"]["diag_acc_I_P_test"],

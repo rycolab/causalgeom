@@ -43,20 +43,39 @@ def load_run_Ps(run_path):
     I_P = run["output"]["I_P_burn"]
     return P, I_P
 
-def get_p_c(model_name, I_P="no_I_P"):
-    #TODO: make this flexible -- load the concept marginal for the non-AR models.
-    cs_counts_path = os.path.join(OUT, f"p_x/{model_name}/c_counts_{model_name}_{I_P}.pkl")
-    with open(cs_counts_path, "rb") as f:
-        cs = pickle.load(f)
+def get_p_c_path(concept, model_name):
+    if model_name == "bert-base-uncased" and concept == "number":
+        return os.path.join(DATASETS, "processed/en/word_lists/number_marginals.pkl")
+    elif model_name == "gpt2-large" and concept == "number":
+        return os.path.join(OUT, f"p_x/{model_name}/c_counts_{model_name}_no_I_P.pkl")
+    elif model_name == "camembert-base" and concept == "gender":
+        return os.path.join(DATASETS, "processed/fr/word_lists/gender_marginals.pkl")
+    elif model_name == "gpt2-base-french" and concept == "gender":
+        return os.path.join(OUT, f"p_x/{model_name}/c_counts_{model_name}_no_I_P.pkl")
+    else:
+        raise ValueError(f"No concept marginal for {model_name} and {concept_name}")
 
-    counts = [cs["l0"], cs["l1"], cs["other"]]
-    p = counts / np.sum(counts)
+def get_p_c(concept, model_name):
+    p_c_path = get_p_c_path(concept, model_name)
+    if model_name in BERT_LIST:
+        with open(p_c_path, 'rb') as f:
+            concept_marginals = pickle.load(f)
+        p = np.array([
+            concept_marginals["p_0_incl_other"], 
+            concept_marginals["p_1_incl_other"], 
+            concept_marginals["p_other_incl_other"]
+        ])
+    elif model_name in GPT2_LIST:
+        with open(p_c_path, "rb") as f:
+            cs = pickle.load(f)
+        counts = [cs["l0"], cs["l1"], cs["other"]]
+        p = counts / np.sum(counts)
     return p 
 
 def load_model_eval(model_name, concept):
     V = get_V(model_name)
     l0_tl, l1_tl = load_concept_token_lists(concept, model_name)
-    p_c = get_p_c(model_name)
+    p_c = get_p_c(concept, model_name)
     return V, l0_tl, l1_tl, p_c
 
 #%%#################
@@ -461,9 +480,7 @@ def compute_kls_after_training(concept_name, model_name, X_test, P, I_P):
     return compute_kls_all_hs(concept_name, model_name, X_test, other_hs, 
         P, I_P)
 
-def compute_eval_filtered_hs(model_name, concept, P, I_P, l0_hs_wff=None, l1_hs_wff=None):
-    if l0_hs_wff is None and l1_hs_wff is None:
-        l0_hs_wff, l1_hs_wff = load_filtered_hs_wff(model_name, nsamples=nsamples)
+def compute_eval_filtered_hs(model_name, concept, P, I_P, l0_hs_wff, l1_hs_wff):
     V, l0_tl, l1_tl, p_c = load_model_eval(model_name, concept)
     h_c = get_h_c_bin(p_c)
 

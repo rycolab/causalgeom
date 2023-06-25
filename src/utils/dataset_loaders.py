@@ -168,8 +168,8 @@ def load_dataset_pickle(path, dataset_name):
     X = np.array([x for x in data["h"]])
     U = np.array([x for x in data["u"]])
     y = np.array([yi for yi in data["y"]])
-    fact = np.array([fact for fact in data["fact"]])
-    foil = np.array([foil for foil in data["foil"]])
+    fact = np.array([fact for fact in data["fact"]]).flatten()
+    foil = np.array([foil for foil in data["foil"]]).flatten()
     return X, U, y, fact, foil
 
 def get_processed_dataset_path(dataset_name, model_name, split=None):

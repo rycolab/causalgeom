@@ -196,7 +196,7 @@ if __name__=="__main__":
         max_length = 100000
 
     count = 0
-    while count < 10000:
+    while count < 99999999999:
         seed = random.randint(0, 999999999)
         generate_multiple_sequences(
             model, 
