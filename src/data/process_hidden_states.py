@@ -49,11 +49,11 @@ def format_sample_masked(sample):
     max_tokens = count_tgt_tokens(sample)
     if tgt_label == 0 and max_tokens == 1:
         y = 0
-        u = foil - fact_emb
+        u = foil_emb - fact_emb
         return (hs, u, y, fact, foil)
     elif tgt_label == 1 and max_tokens == 1:
         y = 1
-        u = fact_emb - foil
+        u = fact_emb - foil_emb
         return (hs, u, y, fact, foil)
     else: # max_tokens > 1:
         return None 

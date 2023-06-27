@@ -154,12 +154,13 @@ def compute_faith_kls(base, proj, prefix="", agg_func=np.sum):
         f"{prefix}faith_kl_tgt_merged": compute_kl(renormalize(base["lemma_merged"]), renormalize(proj["lemma_merged"]), agg_func),
         f"{prefix}faith_kl_other_unnorm": compute_kl(base["other"], proj["other"], agg_func),
         f"{prefix}faith_kl_tgt_split_unnorm": compute_kl(base["lemma_split"], proj["lemma_split"], agg_func),
+        f"{prefix}faith_kl_tgt_merged_unnorm": compute_kl(base["lemma_merged"], proj["lemma_merged"], agg_func),
     }
     return kls
     
 def compute_tvd(p, q, agg_func=np.sum):
     if not (np.isclose(np.sum(p), 1) and np.isclose(np.sum(q), 1)):
-        logging.warn("Distribution not normalized before KL")
+        logging.warn("Distribution not normalized before TVD")
         return 0
     else:
         return agg_func(np.abs(p-q))
@@ -176,7 +177,7 @@ def compute_faith_tvds(base, proj, prefix="", agg_func=np.sum):
 
 def compute_pct_chg(p, q, agg_func=np.mean):
     if not (np.isclose(np.sum(p), 1) and np.isclose(np.sum(q), 1)):
-        logging.warn("Distribution not normalized before KL")
+        logging.warn("Distribution not normalized before PCTCHG")
         return 0
     else:
         return agg_func(np.abs(q-p) / p)

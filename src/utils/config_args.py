@@ -164,7 +164,7 @@ def get_train_probes_args():
     argparser.add_argument(
         '-wbn', 
         dest='wandb_name', 
-        default="test", 
+        default=None, 
         type=str, 
         help="Name of wandb run."
     )

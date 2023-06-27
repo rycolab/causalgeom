@@ -103,7 +103,7 @@ def train_probes(X, U, y, facts, foils,
     #rlace_scheduler_class = torch.optim.lr_scheduler.ReduceLROnPlateau
     rlace_scheduler_class = torch.optim.lr_scheduler.MultiStepLR
 
-    if cfg["rlace_type"] == "theta":
+    if cfg["k"] > 0 and cfg["rlace_type"] == "theta":
         rlace_output = solve_adv_game(
             X_train, y_train, X_val, y_val, rank=cfg['k'], device=device, 
             out_iters=cfg['niter'], optimizer_class=rlace_optimizer_class, 
@@ -117,7 +117,7 @@ def train_probes(X, U, y, facts, foils,
             concept=cfg["concept"], model_name=cfg["model_name"],
             X_pca=X_pca
         )
-    elif cfg["rlace_type"] == "lm":
+    elif cfg["k"] > 0 and cfg["rlace_type"] == "lm":
         rlace_output = solve_adv_game_param_free(
             X_train, U_train, y_train, X_val, U_val, y_val, 
             version="original", rank=cfg['k'], device=device, 
@@ -126,6 +126,12 @@ def train_probes(X, U, y, facts, foils,
             wb=wb, wb_run=wb_run,
             concept=cfg["concept"], model_name=cfg["model_name"]
         )
+    elif cfg["k"] == 0:
+        I = np.eye(X_train.shape[1])
+        rlace_output = {
+            "P_burn": I,
+            "I_P_burn": I
+        }
     else: 
         raise ValueError("Incorrect RLACE type")
     
@@ -265,7 +271,8 @@ if __name__ == '__main__':
     # Wandb Logging    #
     ####################
     datetimestr = datetime.today().strftime('%Y-%m-%d-%H:%M:%S')
-    if cfg['wandb_name']:
+    if cfg['wandb_name'] is not None:
+        logging.info(f"Logging to wandb turned ON, logging to: {wandb_name}")
         wandb.init(
             project="usagebasedprobing", 
             entity="cguerner",
@@ -274,6 +281,7 @@ if __name__ == '__main__':
         wandb.config.update(cfg)
         WB = True
     else:
+        logging.info(f"Logging to wandb turned OFF")
         WB = False
 
     for i in trange(cfg['nruns']):
@@ -287,44 +295,6 @@ if __name__ == '__main__':
         with open(outfile_path, 'wb') as f:
             pickle.dump(run_output, f, protocol=pickle.HIGHEST_PROTOCOL)
 
-        logging.info(f"Exported {outfile_path}")
-        
-        if WB:
-            #kl_eval_desc = run_output["kl_eval"].describe()
-            wandb.log({
-                f"diag_rlace/test/P/diag/{i}/diag_acc_test": run_output["diag_eval"]["diag_acc_P_test"],
-                f"diag_rlace/test/I_P/diag/{i}/diag_acc_test": run_output["diag_eval"]["diag_acc_I_P_test"],
-                f"diag_rlace/test/P/usage/{i}/lm_acc_test": run_output["usage_eval"]["lm_acc_P_test"], 
-                f"diag_rlace/test/I_P/usage/{i}/lm_acc_test": run_output["usage_eval"]["lm_acc_I_P_test"],
-                f"diag_rlace/test/P_burn/diag/{i}/diag_acc_test": run_output["diag_eval"]["diag_acc_P_burn_test"],
-                f"diag_rlace/test/I_P_burn/diag/{i}/diag_acc_test": run_output["diag_eval"]["diag_acc_I_P_burn_test"],
-                f"diag_rlace/test/P_burn/usage/{i}/lm_acc_test": run_output["usage_eval"]["lm_acc_P_burn_test"], 
-                f"diag_rlace/test/I_P_burn/usage/{i}/lm_acc_test": run_output["usage_eval"]["lm_acc_I_P_burn_test"],
-                
-                f"diag_rlace/test/P/fth_kls/{i}/faith_kl_all_split": kl_eval_desc.loc["mean", "all_P_faith_kl_all_split"],
-                f"diag_rlace/test/P/fth_kls/{i}/faith_kl_all_merged": kl_eval_desc.loc["mean", "all_P_faith_kl_all_merged"],
-                f"diag_rlace/test/P/fth_kls/{i}/faith_kl_words": kl_eval_desc.loc["mean", "all_P_faith_kl_words"],
-                f"diag_rlace/test/P/fth_kls/{i}/faith_kl_tgt_split": kl_eval_desc.loc["mean", "all_P_faith_kl_tgt_split"],
-                f"diag_rlace/test/P/fth_kls/{i}/faith_kl_tgt_merged": kl_eval_desc.loc["mean", "all_P_faith_kl_tgt_merged"],
-
-                f"diag_rlace/test/base/er_mis/{i}/overall_mi": kl_eval_desc.loc["mean", "all_base_overall_mi"],
-                f"diag_rlace/test/base/er_mis/{i}/pairwise_mi": kl_eval_desc.loc["mean", "all_base_pairwise_mi"],
-
-                f"diag_rlace/test/P/er_mis/{i}/overall_mi": kl_eval_desc.loc["mean", "all_P_overall_mi"],
-                f"diag_rlace/test/P/er_mis/{i}/lemma_mi": kl_eval_desc.loc["mean", "all_P_lemma_mi"],
-                f"diag_rlace/test/P/er_mis/{i}/pairwise_mi": kl_eval_desc.loc["mean", "all_P_pairwise_mi"],
-
-                f"diag_rlace/test/I_P/fth_kls/{i}/faith_kl_all_split": kl_eval_desc.loc["mean", "all_I_P_faith_kl_all_split"],
-                f"diag_rlace/test/I_P/fth_kls/{i}/faith_kl_all_merged": kl_eval_desc.loc["mean", "all_I_P_faith_kl_all_merged"],
-                f"diag_rlace/test/I_P/fth_kls/{i}/faith_kl_words": kl_eval_desc.loc["mean", "all_I_P_faith_kl_words"],
-                f"diag_rlace/test/I_P/fth_kls/{i}/faith_kl_tgt_split": kl_eval_desc.loc["mean", "all_I_P_faith_kl_tgt_split"],
-                f"diag_rlace/test/I_P/fth_kls/{i}/faith_kl_tgt_merged": kl_eval_desc.loc["mean", "all_I_P_faith_kl_tgt_merged"],
-
-                f"diag_rlace/test/I_P/er_mis/{i}/overall_mi": kl_eval_desc.loc["mean", "all_I_P_overall_mi"],
-                f"diag_rlace/test/I_P/er_mis/{i}/lemma_mi": kl_eval_desc.loc["mean", "all_I_P_lemma_mi"],
-                f"diag_rlace/test/I_P/er_mis/{i}/pairwise_mi": kl_eval_desc.loc["mean", "all_I_P_pairwise_mi"],
-            })
-
-    
+        logging.info(f"Exported {outfile_path}")    
 
     logging.info("Done")
