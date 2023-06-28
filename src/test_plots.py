@@ -43,12 +43,32 @@ fth = pd.read_csv("/cluster/work/cotterell/cguerner/usagebasedprobing/results/ft
 #%%
 import matplotlib.pyplot as plt 
 import seaborn as sns
+sns.set_style("darkgrid", {"grid.color": ".6", "grid.linestyle": ":"})
+
+#%%
 acc["model_concept"] = acc["concept"] + "_" + acc["model"]
+#acc["combo_accuracy"] = np.where(
+#    acc["model"].isin(["gpt2-large", "gpt2-base-french"]),
+#    acc["gen_accuracy"], acc["test_accuracy"])
 #accgen = acc[acc["concept"] == "gender"]
 accplot = acc.drop(
     acc[(acc["prefix"] == "base") | (acc["prefix"] == "P")].index, axis=0
-)[["model_concept", "k", "prefix", "test_accuracy"]]
+)[["model_concept", "k", "prefix", "test_accuracy", "gen_accuracy"]]
 accplot_mean = accplot.groupby(["model_concept", "k", "prefix"]).mean().reset_index()
+
+accplot_mean_gen = accplot_mean[accplot_mean["model_concept"].isin(
+    ["gender_gpt2-base-french", "number_gpt2-large"])].drop(
+        ["prefix", "test_accuracy"], axis=1
+    )
+accplot_mean_gen["metric"] = "I_P_gen_accuracy"
+accplot_mean_gen.columns = ["model_concept", "k", "value", "metric"]
+
+accplot_mean_test = accplot_mean.drop(["gen_accuracy", "prefix"], axis=1)
+accplot_mean_test["metric"] = "I_P_test_accuracy"
+accplot_mean_test.columns = ["model_concept", "k", "value", "metric"]
+
+accplot_mean_combo = pd.concat([accplot_mean_gen, accplot_mean_test], axis=0)
+
 accbase = acc[acc["prefix"] == "base"][["model_concept","maj_acc_test"]].groupby("model_concept").mean()
 
 #%%
@@ -60,28 +80,60 @@ pairs = [
     (axes[3], "gender_camembert-base"),
 ]
 for ax, name in pairs:
-    sns.lineplot(data=accplot_mean[accplot_mean["model_concept"] == name], x="k", y="test_accuracy", hue="prefix", ax=ax)
+    sns.lineplot(data=accplot_mean_combo[accplot_mean_combo["model_concept"] == name], x="k", y="value", hue="metric", ax=ax)
     ax.axhline(y=accbase.loc[name, "maj_acc_test"], color="g", linestyle="-")
     #ax.axhline(y=accbase.loc[name, "test_accuracy"], color="r", linestyle="-")
     ax.set_ylim(.5, 1)
-    ax.set_xlim(1,769)
+    if "bert" in name:
+        ax.set_xlim(-1,769)
+    elif "gpt2-base-french" in name:
+        ax.set_xlim(-1,768)
+    else:
+        ax.set_xlim(-1,1280)
+    ax.set_title(name)
+
+figpath = os.path.join(RESULTS, "acc.png")
+fig.savefig(figpath)
 
 #%%
 fth["model_concept"] = fth["concept"] + "_" + fth["model"]
-fthplot = fth[fth["prefix"]!="baseline"][["model_concept", "k", "test_kl_all_merged"]]
+fthplot = fth[fth["prefix"]!="baseline"][["model_concept", "k", "test_kl_all_merged", "gen_kl_all_merged"]]
 fthplot_mean = fthplot.groupby(["model_concept", "k"]).mean().reset_index()
-fthplot_mean.columns = ["model_concept", "k", "value"]
-fthplot_mean["metric"] = "fth_kl"
+
+fthplot_mean_gen = fthplot_mean[fthplot_mean["model_concept"].isin(
+    ["gender_gpt2-base-french", "number_gpt2-large"])].drop(
+        ["test_kl_all_merged"], axis=1
+    )
+fthplot_mean_gen["metric"] = "I_P_gen_kl"
+fthplot_mean_gen.columns = ["model_concept", "k", "bits", "metric"]
+
+fthplot_mean_test = fthplot_mean.drop(["gen_kl_all_merged"], axis=1)
+fthplot_mean_test["metric"] = "I_P_test_kl"
+fthplot_mean_test.columns = ["model_concept", "k", "bits", "metric"]
+
+fthplot_mean_combo = pd.concat([fthplot_mean_gen, fthplot_mean_test], axis=0)
 
 #fthbase = fth[fth["prefix"]=="baseline"][["model_concept", "test_kl_all_merged"]].groupby("model_concept").mean()
 
+#%%
 mi["model_concept"] = mi["concept"] + "_" + mi["model"]
-miplot = mi[mi["prefix"]=="I_P"][["model_concept", "k", "test_mi"]]
+miplot = mi[mi["prefix"]=="I_P"][["model_concept", "k", "test_mi", "gen_mi"]]
 miplot_mean = miplot.groupby(["model_concept", "k"]).mean().reset_index()
-miplot_mean.columns = ["model_concept", "k", "value"]
-miplot_mean["metric"] = "mi"
 
-comboplot = pd.concat((fthplot_mean, miplot_mean), axis=0)
+miplot_mean_gen = miplot_mean[miplot_mean["model_concept"].isin(
+    ["gender_gpt2-base-french", "number_gpt2-large"])].drop(
+        ["test_mi"], axis=1
+    )
+miplot_mean_gen["metric"] = "I_P_gen_mi"
+miplot_mean_gen.columns = ["model_concept", "k", "bits", "metric"]
+
+miplot_mean_test = miplot_mean.drop(["gen_mi"], axis=1)
+miplot_mean_test["metric"] = "I_P_test_ce"
+miplot_mean_test.columns = ["model_concept", "k", "bits", "metric"]
+
+miplot_mean_combo = pd.concat([miplot_mean_gen, miplot_mean_test], axis=0)
+
+mifth_comboplot = pd.concat((fthplot_mean_combo, miplot_mean_combo), axis=0)
 
 #mibase = mi[mi["prefix"]=="base"][["model_concept", "test_mi"]].groupby("model_concept").mean()
 
@@ -94,22 +146,31 @@ pairs = [
     (axes[3], "gender_camembert-base"),
 ]
 for ax, name in pairs:
-    sns.lineplot(data=comboplot[comboplot["model_concept"] == name], x="k", y="value", hue="metric", ax=ax)
+    sns.lineplot(data=mifth_comboplot[mifth_comboplot["model_concept"] == name], x="k", y="bits", hue="metric", ax=ax)
     #ax.axhline(y=fthbase.loc[name, "test_kl_all_merged"], color="g", linestyle="-")
     #ax.axhline(y=mibase.loc[name, "test_mi"], color="r", linestyle="-")
     #ax.set_ylim(0, 1)
-    ax.set_xlim(1,769)
+    if "bert" in name:
+        ax.set_xlim(-1,769)
+    elif "gpt2-base-french" in name:
+        ax.set_xlim(-1,768)
+    else:
+        ax.set_xlim(-1,1280)
+    ax.set_title(name)
+
+figpath = os.path.join(RESULTS, "fthmi.png")
+fig.savefig(figpath)
 
 #%%
-import seaborn as sns
-import matplotlib.pyplot as plt
+#import seaborn as sns
+#import matplotlib.pyplot as plt
 
-sns.set_style("darkgrid", {"grid.color": ".6", "grid.linestyle": ":"})
-g = sns.FacetGrid(accplot, col="model_concept", hue="prefix")
-g.map(sns.lineplot, "k", "test_accuracy")
-g.refline(y=tips["tip"].median())
+#sns.set_style("darkgrid", {"grid.color": ".6", "grid.linestyle": ":"})
+#g = sns.FacetGrid(accplot, col="model_concept", hue="prefix")
+#g.map(sns.lineplot, "k", "test_accuracy")
+#g.refline(y=tips["tip"].median())
 
-g.add_legend()
+#g.add_legend()
 
 
 #%%

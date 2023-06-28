@@ -124,7 +124,7 @@ def create_fth_df(test_eval, gen_eval, test_baseline, gen_baseline,
                 #test_eval[f"{prefix}_faith_kl_all_split"], 
                 #test_eval[f"{prefix}_faith_kl_tgt_split_unnorm"],
                 #test_eval[f"{prefix}_faith_kl_other_unnorm"], 
-                #test_eval[f"{prefix}_faith_kl_all_merged"],
+                test_eval[f"{prefix}_faith_kl_all_merged"],
                 #test_eval[f"{prefix}_faith_kl_tgt_split"],
                 #test_eval[f"{prefix}_faith_kl_tgt_merged"],
                 #test_eval[f"{prefix}_faith_kl_other"], 
@@ -319,6 +319,8 @@ def compute_run_eval(model_name, concept, run_name, run_path, nsamples=200):
     output = dict(
         test_eval=test_eval,
         gen_eval=gen_eval,
+        test_kl_baseline=test_kl_baseline,
+        gen_kl_baseline=gen_kl_baseline,
         acc_df=acc_df,
         fth_df=fth_df,
         er_df=er_df
@@ -375,50 +377,67 @@ def create_agg_dfs(pairs):
             er_dfs.append(run_eval["er_df"])
     return acc_dfs, fth_dfs, er_dfs
 
-if __name__=="__main__":
+#%%#################
+# Main             #
+####################
+def get_args():
+    argparser = argparse.ArgumentParser(description='Formatting Results Tables')
+    argparser.add_argument(
+        "-concept",
+        type=str,
+        choices=["gender", "number"],
+        help="Concept to create embedded word lists for"
+    )
+    argparser.add_argument(
+        "-model",
+        type=str,
+        choices=BERT_LIST + GPT2_LIST,
+        help="Models to create embedding files for"
+    )
+    argparser.add_argument(
+        "-folder",
+        type=str,
+        choices=["230627", "230627_fix", "230628"],
+        help="Run export folder to load"
+    )
+    return argparser.parse_args()
 
-    pairs = [
-        ("gpt2-large", "number", "230627"),
-        ("bert-base-uncased", "number", "230627"),
-        ("gpt2-base-french", "gender", "230627"),
-        ("camembert-base", "gender", "230627"),
-        ("gpt2-large", "number", "230627_fix"),
-        ("bert-base-uncased", "number", "230627_fix"),
-        ("gpt2-base-french", "gender", "230627_fix"),
-        ("camembert-base", "gender", "230627_fix"),
-        ("gpt2-large", "number", "230627"),
-        ("bert-base-uncased", "number", "230627"),
-        ("gpt2-base-french", "gender", "230627"),
-        ("camembert-base", "gender", "230627"),
-        ("gpt2-large", "number", "230627_fix"),
-        ("bert-base-uncased", "number", "230627_fix"),
-        ("gpt2-base-french", "gender", "230627_fix"),
-        ("camembert-base", "gender", "230627_fix"),
-        ("bert-base-uncased", "number", "230627"),
-        ("gpt2-base-french", "gender", "230627"),
-        ("camembert-base", "gender", "230627"),
-        ("gpt2-large", "number", "230627_fix"),
-        ("bert-base-uncased", "number", "230627_fix"),
-        ("gpt2-base-french", "gender", "230627_fix"),
-        ("camembert-base", "gender", "230627_fix"),
-        ("bert-base-uncased", "number", "230627"),
-        ("gpt2-base-french", "gender", "230627"),
-        ("camembert-base", "gender", "230627"),
-        ("gpt2-large", "number", "230627_fix"),
-        ("bert-base-uncased", "number", "230627_fix"),
-        ("gpt2-base-french", "gender", "230627_fix"),
-        ("camembert-base", "gender", "230627_fix"),
-    ]
+if __name__=="__main__":
+    args = get_args()
+    logging.info(args)
+
+    #pairs = [
+    #    ("gpt2-large", "number", "230627"),
+    #    ("bert-base-uncased", "number", "230627"),
+    #    ("gpt2-base-french", "gender", "230627"),
+    #    ("camembert-base", "gender", "230627"),
+    #    ("gpt2-large", "number", "230627_fix"),
+    #    ("bert-base-uncased", "number", "230627_fix"),
+    #    ("gpt2-base-french", "gender", "230627_fix"),
+    #   ("camembert-base", "gender", "230627_fix"),
+    #]
+    pairs = [(args.model, args.concept, args.folder)]
     nsamples = 200
+
+    logging.info(
+        f"Computing run eval from raw run output for"
+        f"{args.model} from {args.folder}"
+    )
 
     compute_evals(pairs, nsamples)
 
-    #all_acc_df, all_fth_df, all_er_df = create_agg_dfs(pairs)
+    #agg_pairs = [
+    #    ("gpt2-large", "number", "230627"),
+    #    ("bert-base-uncased", "number", "230627"),
+    #    ("gpt2-base-french", "gender", "230627"),
+    #    ("camembert-base", "gender", "230627"),
+    #]
+    #all_acc_dfs, all_fth_dfs, all_er_dfs = create_agg_dfs(agg_pairs)
 
     #outdir = RESULTS
-    #all_acc_df = pd.concat(acc_dfs,axis=0)
-    #all_fth_df = pd.concat(fth_dfs,axis=0)
-    #all_er_df = pd.concat(er_dfs,axis=0)
+    #all_acc_df = pd.concat(all_acc_dfs,axis=0)
+    #all_fth_df = pd.concat(all_fth_dfs,axis=0)
+    #all_er_df = pd.concat(all_er_dfs,axis=0)
     #all_acc_df.to_csv(os.path.join(outdir, f"acc.csv"), index=False)
     #all_fth_df.to_csv(os.path.join(outdir, f"fth.csv"), index=False)
     #all_er_df.to_csv(os.path.join(outdir, f"er.csv"), index=False)
