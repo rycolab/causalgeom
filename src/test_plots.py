@@ -72,30 +72,6 @@ accplot_mean_combo = pd.concat([accplot_mean_gen, accplot_mean_test], axis=0)
 accbase = acc[acc["prefix"] == "base"][["model_concept","maj_acc_test"]].groupby("model_concept").mean()
 
 #%%
-fig, axes = plt.subplots(1,4,figsize=(30,6))
-pairs = [
-    (axes[0], "number_gpt2-large"),
-    (axes[1], "number_bert-base-uncased"),
-    (axes[2], "gender_gpt2-base-french"),
-    (axes[3], "gender_camembert-base"),
-]
-for ax, name in pairs:
-    sns.lineplot(data=accplot_mean_combo[accplot_mean_combo["model_concept"] == name], x="k", y="value", hue="metric", ax=ax)
-    ax.axhline(y=accbase.loc[name, "maj_acc_test"], color="g", linestyle="-")
-    #ax.axhline(y=accbase.loc[name, "test_accuracy"], color="r", linestyle="-")
-    ax.set_ylim(.5, 1)
-    if "bert" in name:
-        ax.set_xlim(-1,769)
-    elif "gpt2-base-french" in name:
-        ax.set_xlim(-1,768)
-    else:
-        ax.set_xlim(-1,1280)
-    ax.set_title(name)
-
-figpath = os.path.join(RESULTS, "acc.png")
-fig.savefig(figpath)
-
-#%%
 fth["model_concept"] = fth["concept"] + "_" + fth["model"]
 fthplot = fth[fth["prefix"]!="baseline"][["model_concept", "k", "test_kl_all_merged", "gen_kl_all_merged"]]
 fthplot_mean = fthplot.groupby(["model_concept", "k"]).mean().reset_index()
@@ -138,29 +114,47 @@ mifth_comboplot = pd.concat((fthplot_mean_combo, miplot_mean_combo), axis=0)
 #mibase = mi[mi["prefix"]=="base"][["model_concept", "test_mi"]].groupby("model_concept").mean()
 
 #%%
-fig, axes = plt.subplots(1,4,figsize=(30,6))
+fig, axes = plt.subplots(2,4,figsize=(30,16))
 pairs = [
-    (axes[0], "number_gpt2-large"),
-    (axes[1], "number_bert-base-uncased"),
-    (axes[2], "gender_gpt2-base-french"),
-    (axes[3], "gender_camembert-base"),
+    (axes[0,0], "number_gpt2-large", "acc"),
+    (axes[0,1], "number_bert-base-uncased", "acc"),
+    (axes[0,2], "gender_gpt2-base-french", "acc"),
+    (axes[0,3], "gender_camembert-base", "acc"),
+    (axes[1,0], "number_gpt2-large", "bits"),
+    (axes[1,1], "number_bert-base-uncased", "bits"),
+    (axes[1,2], "gender_gpt2-base-french", "bits"),
+    (axes[1,3], "gender_camembert-base", "bits"),
 ]
-for ax, name in pairs:
-    sns.lineplot(data=mifth_comboplot[mifth_comboplot["model_concept"] == name], x="k", y="bits", hue="metric", ax=ax)
-    #ax.axhline(y=fthbase.loc[name, "test_kl_all_merged"], color="g", linestyle="-")
-    #ax.axhline(y=mibase.loc[name, "test_mi"], color="r", linestyle="-")
-    #ax.set_ylim(0, 1)
-    if "bert" in name:
-        ax.set_xlim(-1,769)
-    elif "gpt2-base-french" in name:
-        ax.set_xlim(-1,768)
+for ax, name, case in pairs:
+    if case == "acc":
+        sns.lineplot(data=accplot_mean_combo[accplot_mean_combo["model_concept"] == name], x="k", y="value", hue="metric", ax=ax)
+        ax.axhline(y=accbase.loc[name, "maj_acc_test"], color="g", linestyle="-")
+        #ax.axhline(y=accbase.loc[name, "test_accuracy"], color="r", linestyle="-")
+        ax.set_ylim(.5, 1)
+        if "bert" in name:
+            ax.set_xlim(-1,769)
+        elif "gpt2-base-french" in name:
+            ax.set_xlim(-1,768)
+        else:
+            ax.set_xlim(-1,1280)
+        ax.set_title(name)
     else:
-        ax.set_xlim(-1,1280)
-    ax.set_title(name)
+        sns.lineplot(data=mifth_comboplot[mifth_comboplot["model_concept"] == name], x="k", y="bits", hue="metric", ax=ax)
+        #ax.axhline(y=fthbase.loc[name, "test_kl_all_merged"], color="g", linestyle="-")
+        #ax.axhline(y=mibase.loc[name, "test_mi"], color="r", linestyle="-")
+        #ax.set_ylim(0, 1)
+        if "bert" in name:
+            ax.set_xlim(-1,769)
+        elif "gpt2-base-french" in name:
+            ax.set_xlim(-1,768)
+        else:
+            ax.set_xlim(-1,1280)
+        ax.set_title(name)
 
-figpath = os.path.join(RESULTS, "fthmi.png")
+figpath = os.path.join(RESULTS, "accfthmiplot.png")
 fig.savefig(figpath)
 
+"""
 #%%
 #import seaborn as sns
 #import matplotlib.pyplot as plt
@@ -208,3 +202,4 @@ res = usage_eval(I, "I_P", X_train, U_train, y_train,
 #base_path = os.path.join(OUT, f"run_output/{concept}/{model_name}")
 #run_output_path = os.path.join(base_path, "230624/run_camembert-base_theta_k1_Plr0.001_Pms26,51,76_clflr0.001_clfms26,51,76_2023-06-25-12:27:45_0_1.pkl")
 #run = load_run_output(run_output_path)
+"""

@@ -359,7 +359,6 @@ def compute_evals(pairs, nsamples):
         compute_eval_pair(model_name, concept, run_output_folder, nsamples)
     logging.info("Finished computing all pairs of evals")
 
-
 def create_agg_dfs(pairs):
     acc_dfs = []
     fth_dfs = []
@@ -416,30 +415,30 @@ if __name__=="__main__":
     #    ("gpt2-base-french", "gender", "230627_fix"),
     #   ("camembert-base", "gender", "230627_fix"),
     #]
-    pairs = [(args.model, args.concept, args.folder)]
-    nsamples = 200
+    #pairs = [(args.model, args.concept, args.folder)]
+    #nsamples = 200
 
-    logging.info(
-        f"Computing run eval from raw run output for"
-        f"{args.model} from {args.folder}"
-    )
+    #logging.info(
+    #    f"Computing run eval from raw run output for"
+    #    f"{args.model} from {args.folder}"
+    #)
 
-    compute_evals(pairs, nsamples)
+    #compute_evals(pairs, nsamples)
 
-    #agg_pairs = [
-    #    ("gpt2-large", "number", "230627"),
-    #    ("bert-base-uncased", "number", "230627"),
-    #    ("gpt2-base-french", "gender", "230627"),
-    #    ("camembert-base", "gender", "230627"),
-    #]
-    #all_acc_dfs, all_fth_dfs, all_er_dfs = create_agg_dfs(agg_pairs)
+    agg_pairs = [
+        ("gpt2-large", "number", "230627"),
+        ("bert-base-uncased", "number", "230627"),
+        ("gpt2-base-french", "gender", "230627"),
+        ("camembert-base", "gender", "230627"),
+    ]
+    all_acc_dfs, all_fth_dfs, all_er_dfs = create_agg_dfs(agg_pairs)
 
-    #outdir = RESULTS
-    #all_acc_df = pd.concat(all_acc_dfs,axis=0)
-    #all_fth_df = pd.concat(all_fth_dfs,axis=0)
-    #all_er_df = pd.concat(all_er_dfs,axis=0)
-    #all_acc_df.to_csv(os.path.join(outdir, f"acc.csv"), index=False)
-    #all_fth_df.to_csv(os.path.join(outdir, f"fth.csv"), index=False)
-    #all_er_df.to_csv(os.path.join(outdir, f"er.csv"), index=False)
+    outdir = RESULTS
+    all_acc_df = pd.concat(all_acc_dfs,axis=0)
+    all_fth_df = pd.concat(all_fth_dfs,axis=0)
+    all_er_df = pd.concat(all_er_dfs,axis=0)
+    all_acc_df.to_csv(os.path.join(outdir, f"acc.csv"), index=False)
+    all_fth_df.to_csv(os.path.join(outdir, f"fth.csv"), index=False)
+    all_er_df.to_csv(os.path.join(outdir, f"er.csv"), index=False)
     logging.info("Finished exporting all results.")
 
