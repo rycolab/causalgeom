@@ -14,6 +14,7 @@ import pandas as pd
 import pickle
 import torch
 import random 
+from transformers import TopPLogitsWarper, LogitsProcessorList
 
 #sys.path.append('..')
 sys.path.append('./src/')
@@ -53,7 +54,8 @@ def adjust_past_key_values(past_key_values, max_len):
         new_past_key_values += (new_sub_values,)
     return new_past_key_values
     
-def generate_sequence_until_eos(model, prompt_ids, batch_size, seed, max_length, eos_token, device="cpu", P=None):
+def generate_sequence_until_eos(model, prompt_ids, batch_size, seed, max_length, eos_token, 
+    device="cpu", P=None, nucleus=False, top_p=0.9):
     torch.manual_seed(seed)
     tokens = prompt_ids.repeat(batch_size, 1)
     token_h_pairs = []
@@ -61,6 +63,8 @@ def generate_sequence_until_eos(model, prompt_ids, batch_size, seed, max_length,
     past_key_values = None
     counter = 0
     all_tokens = [tokens]
+    processor = LogitsProcessorList()
+    processor.append(TopPLogitsWarper(0.9))
     while (check_eos(tokens[:,-1], eos_token) or (counter==0)):
         if past_key_values is not None and past_key_values[0][0].shape[2] == max_length:
             #copy = past_key_values[0][0].clone().detach()
@@ -80,11 +84,13 @@ def generate_sequence_until_eos(model, prompt_ids, batch_size, seed, max_length,
         hs = output.hidden_states[-1][:,-1,:]#.squeeze().squeeze()#.cpu()
         if P is not None:
             hs = torch.matmul(P, hs.T).T
-        check_logits = model.lm_head(hs)
+        logits = model.lm_head(hs)
         if counter == 0 and eos_token == 0:
-            check_logits = check_logits[:,1:]
-        #assert (torch.isclose(final_logits[-1,:], check_logits, atol = 1e-05)).all().item(), "Logits not equal"
-        probs = sm(check_logits)
+            logits = logits[:,1:]
+        if nucleus:
+            logits = processor(tokens, logits)
+        #assert (torch.isclose(final_logits[-1,:], logits, atol = 1e-05)).all().item(), "Logits not equal"
+        probs = sm(logits)
         sampled_tokens = torch.multinomial(probs, 1)
         save_h_indicator = []
         for i in range(batch_size):
@@ -109,7 +115,7 @@ def generate_sequence_until_eos(model, prompt_ids, batch_size, seed, max_length,
 #%%
 def generate_multiple_sequences(model, tokenizer, prompt_ids, 
     batch_size, seed, export_index, outdir, max_length,
-    n_generations=1, device="cpu", P=None):
+    n_generations=1, device="cpu", P=None, nucleus=False, top_p=0.9):
     all_token_h_pairs = []
     all_lengths = []
     eos_token_id = tokenizer.eos_token_id
@@ -117,7 +123,7 @@ def generate_multiple_sequences(model, tokenizer, prompt_ids,
         all_tokens, token_h_pairs = generate_sequence_until_eos(
             model, prompt_ids, batch_size, seed, 
             max_length, eos_token_id, 
-            device=device, P=P
+            device=device, P=P, nucleus=nucleus, top_p=top_p
         )
         all_lengths.append(len(token_h_pairs))
         all_token_h_pairs += token_h_pairs
@@ -140,6 +146,12 @@ def get_args():
         help="Model for computing hidden states"
     )
     argparser.add_argument(
+        "-nucleus",
+        action="store_true",
+        default=False,
+        help="Whether to use nucleus sampling",
+    )
+    argparser.add_argument(
         "-useP",
         action="store_true",
         default=False,
@@ -158,12 +170,15 @@ if __name__=="__main__":
     logging.info(args)
 
     model_name = args.model
-    useP = args.useP
+    nucleus = args.nucleus
+    #useP = args.useP
     export_index = args.export_index
     batch_size = 3
-    #model_name = "gpt2-base-french"
-    #useP = False
+    #model_name = "gpt2-large"
+    #nucleus=True
+    useP = False
     #export_index = 0
+    #test = True
 
 
     device = get_device()
@@ -176,7 +191,11 @@ if __name__=="__main__":
     concept = get_concept_name(model_name)
     best_run_path = get_best_runs(model_name, concept)
     
-    outdir = os.path.join(OUT, f"generated_text/{model_name}")
+    if nucleus:
+        outdir = os.path.join(OUT, f"generated_text_nucleus/{model_name}")
+    else:
+        outdir = os.path.join(OUT, f"generated_text/{model_name}")
+
     if useP:
         P, I_P = load_run_Ps(best_run_path)
         I_P = torch.tensor(I_P, device=device).float()
@@ -208,5 +227,6 @@ if __name__=="__main__":
             outdir, 
             max_length,
             device=device, 
-            P=I_P)
+            P=I_P,
+            nucleus=nucleus)
         count += 1

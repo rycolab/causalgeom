@@ -19,7 +19,7 @@ from scipy.stats import entropy
 from tqdm import trange
 
 #sys.path.append('..')
-#sys.path.append('./src/')
+sys.path.append('./src/')
 
 from paths import DATASETS, OUT, RESULTS, MODELS
 #from evals.kl_eval import load_run_output
@@ -111,7 +111,7 @@ def create_acc_df(test_eval, gen_eval, run_diag_eval, run_usage_eval,
 def create_fth_df(test_eval, gen_eval, test_baseline, gen_baseline,
     concept, model_name, run_name, k):
     fth_res = []
-    for prefix in ["I_P", "baseline"]: #"P", 
+    for prefix in ["P", "I_P", "baseline"]:
         if gen_eval is not None and prefix != "baseline":
             fth_res.append((f"{prefix}", 
                 #gen_eval[f"{prefix}_faith_kl_all_split"], 
@@ -359,23 +359,6 @@ def compute_evals(pairs, nsamples):
         compute_eval_pair(model_name, concept, run_output_folder, nsamples)
     logging.info("Finished computing all pairs of evals")
 
-def create_agg_dfs(pairs):
-    acc_dfs = []
-    fth_dfs = []
-    er_dfs = []
-    for model_name, concept, _ in pairs:
-        eval_dir = os.path.join(RESULTS, f"{concept}/{model_name}")
-        run_evals = [x for x in os.listdir(eval_dir) if x.endswith(".pkl")]
-
-        for run_eval in run_evals:
-            run_eval_path = os.path.join(eval_dir, run_eval)
-            with open(run_eval_path, 'rb') as f:      
-                run_eval = pickle.load(f)
-            acc_dfs.append(run_eval["acc_df"])
-            fth_dfs.append(run_eval["fth_df"])
-            er_dfs.append(run_eval["er_df"])
-    return acc_dfs, fth_dfs, er_dfs
-
 #%%#################
 # Main             #
 ####################
@@ -405,16 +388,6 @@ if __name__=="__main__":
     args = get_args()
     logging.info(args)
 
-    #pairs = [
-    #    ("gpt2-large", "number", "230627"),
-    #    ("bert-base-uncased", "number", "230627"),
-    #    ("gpt2-base-french", "gender", "230627"),
-    #    ("camembert-base", "gender", "230627"),
-    #    ("gpt2-large", "number", "230627_fix"),
-    #    ("bert-base-uncased", "number", "230627_fix"),
-    #    ("gpt2-base-french", "gender", "230627_fix"),
-    #   ("camembert-base", "gender", "230627_fix"),
-    #]
     pairs = [(args.model, args.concept, args.folder)]
     nsamples = 200
 
@@ -424,22 +397,4 @@ if __name__=="__main__":
     )
 
     compute_evals(pairs, nsamples)
-    """
-    agg_pairs = [
-        ("gpt2-large", "number", "230627"),
-        ("bert-base-uncased", "number", "230627"),
-        ("gpt2-base-french", "gender", "230627"),
-        ("camembert-base", "gender", "230627"),
-    ]
-    all_acc_dfs, all_fth_dfs, all_er_dfs = create_agg_dfs(agg_pairs)
-
-    outdir = RESULTS
-    all_acc_df = pd.concat(all_acc_dfs,axis=0)
-    all_fth_df = pd.concat(all_fth_dfs,axis=0)
-    all_er_df = pd.concat(all_er_dfs,axis=0)
-    all_acc_df.to_csv(os.path.join(outdir, f"acc.csv"), index=False)
-    all_fth_df.to_csv(os.path.join(outdir, f"fth.csv"), index=False)
-    all_er_df.to_csv(os.path.join(outdir, f"er.csv"), index=False)
-    """
     logging.info("Finished exporting all results.")
-

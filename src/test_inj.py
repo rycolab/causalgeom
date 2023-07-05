@@ -79,6 +79,8 @@ def get_inj_accs(hs_wff, case, V, l0_tl, l1_tl, P, I_P, V0inj, V1inj, alpha):
             l0id, l1id = foid, faid
         reslist.append(dict(
             base_correct = correct_flag(base_distribs["all_split"][faid], base_distribs["all_split"][foid]),
+            base_correct_highest = highest_rank(base_distribs["all_split"], faid),
+            base_correct_highest_concept = highest_concept(base_distribs["all_split"], faid, l0_tl, l1_tl),
             I_P_correct = correct_flag(I_P_distribs["all_split"][faid], I_P_distribs["all_split"][foid]),
             I_P_l0_highest = highest_rank(I_P_distribs["all_split"], l0id),
             I_P_l1_highest = highest_rank(I_P_distribs["all_split"], l1id),
@@ -113,12 +115,20 @@ def compute_inj_eval_run(model_name, concept, run, run_path, nsamples, alpha):
         test_l1_hs_wff, 1, V, l0_tl, l1_tl, P, I_P, V0inj, V1inj, alpha
     )
 
-    l0_means = pd.DataFrame(l0_reslist).mean()
-    l1_means = pd.DataFrame(l1_reslist).mean()
-    all_means = pd.DataFrame(l0_reslist + l1_reslist).mean()
-    combo_df = pd.concat((l0_means, l1_means, all_means), axis=1)
-    combo_df.columns = ["l0_means", "l1_means", "all_means"]
-    return combo_df
+    #l0_means = pd.DataFrame(l0_reslist).mean()
+    #l1_means = pd.DataFrame(l1_reslist).mean()
+    #all_means = pd.DataFrame(l0_reslist + l1_reslist).mean()
+    #combo_df = pd.concat((l0_means, l1_means, all_means), axis=1)
+    #combo_df.columns = ["l0_means", "l1_means", "all_means"]
+    #return combo_df
+    l0_df = pd.DataFrame(l0_reslist)
+    l0_df["y"] = 0
+    l1_df = pd.DataFrame(l1_reslist)
+    l1_df["y"] = 1
+    all_df = pd.concat((l0_df, l1_df), axis=0)
+    return all_df
+
+
 
 def eval_handler_pair(model_name, concept, run_output_folder, nsamples, alpha):
     rundir = os.path.join(OUT, f"run_output/{concept}/{model_name}/{run_output_folder}")
@@ -180,6 +190,6 @@ if __name__=="__main__":
         ("gpt2-large", "number", "230628"),
     ]
     alpha = 1
-    nsamples = 100
+    nsamples = 500
 
     compute_inj_eval_pairs(pairs, nsamples, alpha)

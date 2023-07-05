@@ -37,13 +37,17 @@ coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
 
 #%%
+testpath = os.path.join(RESULTS, "inj/number_gpt2-large_injacc_run_gpt2-large_theta_k1_Plr0.001_Pms31,76_clflr0.0003_clfms31_2023-06-26-23:02:09_0_3.csv")
+test = pd.read_csv(testpath, index_col=0)
+
+#%%
 folderpath = os.path.join(RESULTS, "inj")
 files = os.listdir(folderpath)
 
 dfs = []
 for fpath in files:
     path = os.path.join(folderpath, fpath)
-    df = pd.read_csv(path, index_col=0).reset_index(names="metric")
+    df = pd.read_csv(path, index_col=0)#.reset_index(names="metric")
     #df.columms = ["metric", "l0_means", "l1_means", "all_means"]
     splitpath = fpath.split("_")
     concept, model = splitpath[0], splitpath[1]
@@ -54,6 +58,11 @@ for fpath in files:
 
 # %%
 full_df = pd.concat(dfs, axis=0)
+full_df["I_P_correct_highest_concept"] = np.where(
+    full_df["y"] == 0, full_df["I_P_l0_highest_concept"] == 1,
+    full_df["I_P_l1_highest_concept"] == 1
+)
+full_df.groupby(["model", "concept", "I_P_correct])
 mean_df = full_df.groupby(["model", "concept", "metric"]).mean().reset_index()
 # %%
 test = mean_df[mean_df["model"] == "gpt2-large"].sort_values(by="metric")

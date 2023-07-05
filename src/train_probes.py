@@ -272,7 +272,7 @@ if __name__ == '__main__':
     ####################
     datetimestr = datetime.today().strftime('%Y-%m-%d-%H:%M:%S')
     if cfg['wandb_name'] is not None:
-        logging.info(f"Logging to wandb turned ON, logging to: {wandb_name}")
+        logging.info(f"Logging to wandb turned ON, logging to: {cfg['wandb_name']}")
         wandb.init(
             project="usagebasedprobing", 
             entity="cguerner",
