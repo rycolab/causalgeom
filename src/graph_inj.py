@@ -30,15 +30,20 @@ from evals.kl_eval import load_run_Ps, load_run_output, \
         renormalize, get_distribs, correct_flag, highest_rank, highest_concept
 from analysis.format_res import get_best_runs
 from data.filter_generations import load_filtered_hs, load_filtered_hs_wff
-from test_eval import filter_test_hs_wff, create_er_df, create_fth_df, \
+from evals.eval_run import filter_test_hs_wff, create_er_df, create_fth_df, \
     compute_kl_baseline
 
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
 
 #%%
-testpath = os.path.join(RESULTS, "inj/number_gpt2-large_injacc_run_gpt2-large_theta_k1_Plr0.001_Pms31,76_clflr0.0003_clfms31_2023-06-26-23:02:09_0_3.csv")
+testpath = os.path.join(RESULTS, "inj/gender_gpt2-base-french_injacc_run_gpt2-base-french_theta_k1_Plr0.01_Pms16,41,61,81,101_clflr0.01_clfms26,51,76_2023-06-27-14:41:32_0_2.csv")
 test = pd.read_csv(testpath, index_col=0)
+
+test["I_P_correct_highest_concept"] = np.where(
+    test["y"] == 0, test["I_P_l0_highest_concept"] == 1,
+    test["I_P_l1_highest_concept"] == 1
+)
 
 #%%
 folderpath = os.path.join(RESULTS, "inj")

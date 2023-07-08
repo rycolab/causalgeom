@@ -228,18 +228,27 @@ def filter_test_hs_wff(X, facts, foils, l0_tl, l1_tl, nsamples=None):
             l1_hs.append((h, fact, foil))
         else:
             continue
-
     if nsamples is not None:
-        random.shuffle(l0_hs)
-        random.shuffle(l1_hs)
-        ratio = len(l1_hs)/len(l0_hs)
-        if ratio > 1:
-            l0_hs = l0_hs[:nsamples]
-            l1_hs = l1_hs[:int((nsamples*ratio))]
-        else:
-            ratio = len(l0_hs) / len(l1_hs)
-            l0_hs = l0_hs[:int((nsamples*ratio))]
-            l1_hs = l1_hs[:nsamples]
+        l0_hs, l1_hs = sample_filtered_hs(l0_hs, l1_hs, nsamples)
+    return l0_hs, l1_hs
+
+def filter_hs_w_ys(X, facts, foils, y, value):
+    idx = np.nonzero(y==value)
+    sub_hs, sub_facts, sub_foils = X[idx], facts[idx], foils[idx]
+    sub_hs_wff = [x for x in zip(sub_hs, sub_facts, sub_foils)]
+    return sub_hs_wff
+
+def sample_filtered_hs(l0_hs, l1_hs, nsamples):
+    random.shuffle(l0_hs)
+    random.shuffle(l1_hs)
+    ratio = len(l1_hs)/len(l0_hs)
+    if ratio > 1:
+        l0_hs = l0_hs[:nsamples]
+        l1_hs = l1_hs[:int((nsamples*ratio))]
+    else:
+        ratio = len(l0_hs) / len(l1_hs)
+        l0_hs = l0_hs[:int((nsamples*ratio))]
+        l1_hs = l1_hs[:nsamples]
     return l0_hs, l1_hs
 
 
@@ -278,12 +287,21 @@ def compute_run_eval(model_name, concept, run_name, run_path, nsamples=200):
     # test set version of the eval
     V, l0_tl, l1_tl, _ = load_model_eval(model_name, concept)
     #l0_tl, l1_tl = load_concept_token_lists(concept, model_name)
-    test_l0_hs_wff, test_l1_hs_wff = filter_test_hs_wff(
-        run["X_test"], run["facts_test"], run["foils_test"], 
-        l0_tl, l1_tl, nsamples=nsamples
+    #test_l0_hs_wff, test_l1_hs_wff = filter_test_hs_wff(
+    #    run["X_test"], run["facts_test"], run["foils_test"], 
+    #    l0_tl, l1_tl, nsamples=nsamples
+    #)
+    l0_hs_wff = filter_hs_w_ys(
+        run["X_test"], run["facts_test"], run["foils_test"], run["y_test"], 0
     )
+    l1_hs_wff = filter_hs_w_ys(
+        run["X_test"], run["facts_test"], run["foils_test"], run["y_test"], 1
+    )
+    if nsamples is not None:
+        l0_hs_wff, l1_hs_wff = sample_filtered_hs(l0_hs_wff, l1_hs_wff, nsamples)
+
     test_eval = compute_eval_filtered_hs(
-        model_name, concept, P, I_P, test_l0_hs_wff, test_l1_hs_wff
+        model_name, concept, P, I_P, l0_hs_wff, l1_hs_wff
     )
     test_kl_baseline = compute_kl_baseline(
         run["X_test"], V, l0_tl, l1_tl, nsamples=nsamples

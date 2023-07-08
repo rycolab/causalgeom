@@ -35,8 +35,8 @@ from evals.kl_eval import load_run_Ps, load_run_output, \
 
 from analysis.format_res import get_best_runs
 from data.filter_generations import load_filtered_hs, load_filtered_hs_wff
-from test_eval import filter_test_hs_wff, create_er_df, create_fth_df, \
-    compute_kl_baseline
+from evals.eval_run import filter_hs_w_ys, create_er_df, create_fth_df, \
+    compute_kl_baseline, sample_filtered_hs
 from evals.kl_eval import get_distribs, correct_flag, highest_rank, highest_concept
 from tqdm import tqdm
 
@@ -58,6 +58,22 @@ def get_inj_vectors(V, l0_tl, l1_tl, P):
     V0meannorm = V0_mean / np.linalg.norm(V0_mean)
     V1meannorm = V1_mean / np.linalg.norm(V1_mean)
     return V0meannorm, V1meannorm
+
+def get_base_correct(hs_wff, case, V, l0_tl, l1_tl):
+    #Phn = []
+    reslist = []
+    for h, faid, foid in tqdm(hs_wff):
+        base_distribs = get_distribs(h, V, l0_tl, l1_tl)
+        if case == 0:
+            l0id, l1id = faid, foid
+        else:
+            l0id, l1id = foid, faid
+        reslist.append(dict(
+            base_correct = correct_flag(base_distribs["all_split"][faid], base_distribs["all_split"][foid]),
+            base_correct_highest = highest_rank(base_distribs["all_split"], faid),
+            base_correct_highest_concept = highest_concept(base_distribs["all_split"], faid, l0_tl, l1_tl)
+        ))
+    return reslist
 
 def get_inj_accs(hs_wff, case, V, l0_tl, l1_tl, P, I_P, V0inj, V1inj, alpha):
     Phn = []
