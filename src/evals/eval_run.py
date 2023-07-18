@@ -8,6 +8,8 @@ import argparse
 from datetime import datetime
 import csv
 
+os.environ['CURL_CA_BUNDLE'] = ''
+
 import numpy as np
 from tqdm import tqdm
 import pandas as pd
@@ -34,14 +36,35 @@ from evals.kl_eval import load_run_Ps, load_run_output, \
         renormalize, get_distribs
 
 from analysis.format_res import get_best_runs
-from data.filter_generations import load_filtered_hs, load_filtered_hs_wff
+from data.filter_generations import sample_filtered_hs, load_filtered_hs_wff
 
 
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
 
+#%% Dataset filtering by label helpers
+"""
+def filter_test_hs_wff(X, facts, foils, l0_tl, l1_tl, nsamples=None):
+    l0_hs = []
+    l1_hs = []
+    for h, fact, foil in zip(X, facts, foils):
+        if fact in l0_tl:
+            l0_hs.append((h, fact, foil))
+        elif fact in l1_tl:
+            l1_hs.append((h, fact, foil))
+        else:
+            continue
+    if nsamples is not None:
+        l0_hs, l1_hs = sample_filtered_hs(l0_hs, l1_hs, nsamples)
+    return l0_hs, l1_hs
+"""
+def filter_hs_w_ys(X, facts, foils, y, value):
+    idx = np.nonzero(y==value)
+    sub_hs, sub_facts, sub_foils = X[idx], facts[idx], foils[idx]
+    sub_hs_wff = [x for x in zip(sub_hs, sub_facts, sub_foils)]
+    return sub_hs_wff
 
-#%% Helpers
+#%% Result format helpers
 def create_df(records, column_names, concept, model_name, run_name, k):
     df = pd.DataFrame.from_records(
         records, columns=column_names
@@ -107,7 +130,6 @@ def create_acc_df(test_eval, gen_eval, run_diag_eval, run_usage_eval,
     return acc_df 
 
 # fth
-
 def create_fth_df(test_eval, gen_eval, test_baseline, gen_baseline,
     concept, model_name, run_name, k):
     fth_res = []
@@ -218,40 +240,6 @@ def create_er_df(test_eval, gen_eval, concept, model_name, run_name, k):
     return er_df
 
 #%% main runner
-def filter_test_hs_wff(X, facts, foils, l0_tl, l1_tl, nsamples=None):
-    l0_hs = []
-    l1_hs = []
-    for h, fact, foil in zip(X, facts, foils):
-        if fact in l0_tl:
-            l0_hs.append((h, fact, foil))
-        elif fact in l1_tl:
-            l1_hs.append((h, fact, foil))
-        else:
-            continue
-    if nsamples is not None:
-        l0_hs, l1_hs = sample_filtered_hs(l0_hs, l1_hs, nsamples)
-    return l0_hs, l1_hs
-
-def filter_hs_w_ys(X, facts, foils, y, value):
-    idx = np.nonzero(y==value)
-    sub_hs, sub_facts, sub_foils = X[idx], facts[idx], foils[idx]
-    sub_hs_wff = [x for x in zip(sub_hs, sub_facts, sub_foils)]
-    return sub_hs_wff
-
-def sample_filtered_hs(l0_hs, l1_hs, nsamples):
-    random.shuffle(l0_hs)
-    random.shuffle(l1_hs)
-    ratio = len(l1_hs)/len(l0_hs)
-    if ratio > 1:
-        l0_hs = l0_hs[:nsamples]
-        l1_hs = l1_hs[:int((nsamples*ratio))]
-    else:
-        ratio = len(l0_hs) / len(l1_hs)
-        l0_hs = l0_hs[:int((nsamples*ratio))]
-        l1_hs = l1_hs[:nsamples]
-    return l0_hs, l1_hs
-
-
 def compute_kl_baseline(hs, V, l0_tl, l1_tl, nsamples=200):
     hs_sub = hs[:nsamples*2, :]
 
@@ -285,7 +273,7 @@ def compute_run_eval(model_name, concept, run_name, run_path, nsamples=200):
     P, I_P = load_run_Ps(run_path)
 
     # test set version of the eval
-    V, l0_tl, l1_tl, _ = load_model_eval(model_name, concept)
+    V, l0_tl, l1_tl = load_model_eval(model_name, concept)
     #l0_tl, l1_tl = load_concept_token_lists(concept, model_name)
     #test_l0_hs_wff, test_l1_hs_wff = filter_test_hs_wff(
     #    run["X_test"], run["facts_test"], run["foils_test"], 
@@ -300,7 +288,7 @@ def compute_run_eval(model_name, concept, run_name, run_path, nsamples=200):
     if nsamples is not None:
         l0_hs_wff, l1_hs_wff = sample_filtered_hs(l0_hs_wff, l1_hs_wff, nsamples)
 
-    test_eval = compute_eval_filtered_hs(
+    test_eval_samples, test_eval = compute_eval_filtered_hs(
         model_name, concept, P, I_P, l0_hs_wff, l1_hs_wff
     )
     test_kl_baseline = compute_kl_baseline(
@@ -312,7 +300,7 @@ def compute_run_eval(model_name, concept, run_name, run_path, nsamples=200):
         gen_l0_hs_wff, gen_l1_hs_wff = load_filtered_hs_wff(
             model_name, nsamples=nsamples
         )
-        gen_eval = compute_eval_filtered_hs(
+        gen_eval_samples, gen_eval = compute_eval_filtered_hs(
             model_name, concept, P, I_P, gen_l0_hs_wff, gen_l1_hs_wff
         )
         gen_Xs = np.vstack([x[0] for x in gen_l0_hs_wff + gen_l1_hs_wff])
@@ -321,7 +309,10 @@ def compute_run_eval(model_name, concept, run_name, run_path, nsamples=200):
         )
     else:
         gen_eval = None
+        gen_eval_samples = None
         gen_kl_baseline = None
+
+    #TODO: add a nucleus version of this
 
     acc_df = create_acc_df(
         test_eval, gen_eval, run["diag_eval"], run["usage_eval"], 
@@ -336,7 +327,9 @@ def compute_run_eval(model_name, concept, run_name, run_path, nsamples=200):
     )
     output = dict(
         test_eval=test_eval,
+        test_eval_samples=test_eval_samples,
         gen_eval=gen_eval,
+        gen_eval_samples=gen_eval_samples,
         test_kl_baseline=test_kl_baseline,
         gen_kl_baseline=gen_kl_baseline,
         acc_df=acc_df,
@@ -407,7 +400,9 @@ if __name__=="__main__":
     logging.info(args)
 
     pairs = [(args.model, args.concept, args.folder)]
+    #pairs = [("gpt2-large", "number", "230628")]
     nsamples = 200
+    #nsamples = 10
 
     logging.info(
         f"Computing run eval from raw run output for"

@@ -33,10 +33,9 @@ from evals.kl_eval import load_run_Ps, load_run_output, \
     compute_eval_filtered_hs, load_model_eval, compute_kl, \
         renormalize, get_distribs
 
-from analysis.format_res import get_best_runs
-from data.filter_generations import load_filtered_hs, load_filtered_hs_wff
+from data.filter_generations import load_filtered_hs_wff, sample_filtered_hs
 from evals.eval_run import filter_hs_w_ys, create_er_df, create_fth_df, \
-    compute_kl_baseline, sample_filtered_hs
+    compute_kl_baseline
 from evals.kl_eval import get_distribs, correct_flag, highest_rank, highest_concept
 from tqdm import tqdm
 
@@ -74,6 +73,7 @@ def get_base_correct(hs_wff, case, V, l0_tl, l1_tl):
             base_correct_highest_concept = highest_concept(base_distribs["all_split"], faid, l0_tl, l1_tl)
         ))
     return reslist
+
 
 def get_inj_accs(hs_wff, case, V, l0_tl, l1_tl, P, I_P, V0inj, V1inj, alpha):
     Phn = []

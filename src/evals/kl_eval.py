@@ -24,7 +24,7 @@ from utils.lm_loaders import get_tokenizer, get_V, BERT_LIST, GPT2_LIST
 from utils.dataset_loaders import load_hs, load_other_hs
 from data.embed_wordlists.embedder import load_concept_token_lists
 #from evals.eval_loaders import load_model_eval
-from data.filter_generations import load_filtered_hs, load_filtered_hs_wff
+from data.filter_generations import load_filtered_hs_wff
 
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
@@ -43,21 +43,46 @@ def load_run_Ps(run_path):
     I_P = run["output"]["I_P_burn"]
     return P, I_P
 
-def get_p_c_path(concept, model_name):
-    if model_name == "bert-base-uncased" and concept == "number":
-        return os.path.join(DATASETS, "processed/en/word_lists/number_marginals.pkl")
-    elif model_name == "gpt2-large" and concept == "number":
+"""
+def get_p_c_path_ancestral(concept, model_name):
+    if model_name == "gpt2-large" and concept == "number":
         return os.path.join(OUT, f"p_x/{model_name}/c_counts_{model_name}_no_I_P.pkl")
-    elif model_name == "camembert-base" and concept == "gender":
-        return os.path.join(DATASETS, "processed/fr/word_lists/gender_marginals.pkl")
     elif model_name == "gpt2-base-french" and concept == "gender":
         return os.path.join(OUT, f"p_x/{model_name}/c_counts_{model_name}_no_I_P.pkl")
     else:
-        raise ValueError(f"No concept marginal for {model_name} and {concept_name}")
+        raise ValueError(f"No ancestral sampling concept marginal for {model_name} and {concept_name}")
 
-def get_p_c(concept, model_name):
-    p_c_path = get_p_c_path(concept, model_name)
-    if model_name in BERT_LIST:
+def get_p_c_path_nucleus(concept, model_name):
+    if model_name == "gpt2-large" and concept == "number":
+        #return os.path.join(OUT, f"p_x/{model_name}/c_counts_{model_name}_no_I_P.pkl")
+        return None
+    elif model_name == "gpt2-base-french" and concept == "gender":
+        #return os.path.join(OUT, f"p_x/{model_name}/c_counts_{model_name}_no_I_P.pkl")
+        return None
+    else:
+        raise ValueError(f"No nucleus sampling concept marginal for {model_name} and {concept_name}")
+
+def get_p_c_path_curated(concept, model_name):
+    if model_name in ["bert-base-uncased", "gpt2-large"] and concept == "number":
+        return os.path.join(DATASETS, "processed/en/word_lists/number_marginals.pkl")
+    elif model_name in ["camembert-base", "gpt2-base-french"] and concept == "gender":
+        return os.path.join(DATASETS, "processed/fr/word_lists/gender_marginals.pkl")
+    else:
+        raise ValueError(f"No curated dataset concept marginal for {model_name} and {concept_name}")
+
+def get_p_c_path(concept, model_name, source):
+    if source == "ancestral":
+        return get_p_c_path_ancestral(concept, model_name)
+    elif source == "nucleus":
+        return get_p_c_path_nucleus(concept, model_name)
+    elif source == "curated":
+        return get_p_c_path_curated(concept, model_name)
+    else:
+        raise ValueError(f"Invalid source argument for get_p_c")
+
+def get_p_c(concept, model_name, source):
+    p_c_path = get_p_c_path(concept, model_name, source)
+    if source == "curated":
         with open(p_c_path, 'rb') as f:
             concept_marginals = pickle.load(f)
         p = np.array([
@@ -65,18 +90,18 @@ def get_p_c(concept, model_name):
             concept_marginals["p_1_incl_other"], 
             concept_marginals["p_other_incl_other"]
         ])
-    elif model_name in GPT2_LIST:
+    else:
         with open(p_c_path, "rb") as f:
             cs = pickle.load(f)
         counts = [cs["l0"], cs["l1"], cs["other"]]
         p = counts / np.sum(counts)
     return p 
-
+"""
 def load_model_eval(model_name, concept):
     V = get_V(model_name)
     l0_tl, l1_tl = load_concept_token_lists(concept, model_name)
-    p_c = get_p_c(concept, model_name)
-    return V, l0_tl, l1_tl, p_c
+    #p_c = get_p_c(concept, model_name, source)
+    return V, l0_tl, l1_tl#, p_c
 
 #%%#################
 # Distrib Helpers  #
@@ -133,6 +158,7 @@ def get_all_distribs(h, P, I_P, V, l0_tl, l1_tl):
 
 def renormalize(p):
     return p / np.sum(p)
+
 
 #%%#################
 # KL Helpers       #
@@ -291,39 +317,83 @@ def get_all_lemma_mis(concept_marginals, base_distribs, P_distribs, I_P_distribs
     )
     return res
 """
-#%% MI helpers
-def get_h_c_bin(p_c):
-    p_c = renormalize(p_c[:2])
-    h_c = entropy(p_c)
-    return h_c
-
+#%% Erasure MI helpers
 def get_bin_p_c_h(l0_prob, l1_prob):
     """ get p(c|h) for binary c"""
     total_l0_prob = np.sum(l0_prob)
     total_l1_prob = np.sum(l1_prob)
     return renormalize(np.hstack([total_l0_prob, total_l1_prob]))
 
-def compute_surprisal(bin_p_c_h, c_index):
-    return -1 * np.log(bin_p_c_h[c_index])
+#def compute_surprisal(bin_p_c_h, c_index):
+#    return -1 * np.log(bin_p_c_h[c_index])
 
-def compute_p_c_h_surprisal(l0_prob, l1_prob, c_index):
+#def compute_p_c_h_surprisal(l0_prob, l1_prob, c_index):
+#    bin_p_c_h = get_bin_p_c_h(l0_prob, l1_prob)
+#    return compute_surprisal(bin_p_c_h, c_index)
+
+#def compute_all_p_c_h_surprisals(base_distribs, P_distribs, I_P_distribs, c_index):
+#    return dict(
+#        base_h_c_h = compute_p_c_h_surprisal(
+#            base_distribs["l0"], base_distribs["l1"], c_index),
+#        P_h_c_h = compute_p_c_h_surprisal(
+#            P_distribs["l0"], P_distribs["l1"], c_index),
+#        I_P_h_c_h = compute_p_c_h_surprisal(
+#            I_P_distribs["l0"], I_P_distribs["l1"], c_index),
+#    )
+
+def compute_h_c_h(l0_prob, l1_prob):
     bin_p_c_h = get_bin_p_c_h(l0_prob, l1_prob)
-    return compute_surprisal(bin_p_c_h, c_index)
+    return entropy(bin_p_c_h)
 
-def compute_all_p_c_h_surprisals(base_distribs, P_distribs, I_P_distribs, c_index):
+def compute_all_h_c_h(base_distribs, P_distribs, I_P_distribs):
     return dict(
-        base_h_c_h = compute_p_c_h_surprisal(
-            base_distribs["l0"], base_distribs["l1"], c_index),
-        P_h_c_h = compute_p_c_h_surprisal(
-            P_distribs["l0"], P_distribs["l1"], c_index),
-        I_P_h_c_h = compute_p_c_h_surprisal(
-            I_P_distribs["l0"], I_P_distribs["l1"], c_index),
+        base_h_c_h = compute_h_c_h(
+            base_distribs["l0"], base_distribs["l1"]),
+        P_h_c_h = compute_h_c_h(
+            P_distribs["l0"], P_distribs["l1"]),
+        I_P_h_c_h = compute_h_c_h(
+            I_P_distribs["l0"], I_P_distribs["l1"]),
     )
+
+def get_h_c_bin(p_c):
+    p_c = renormalize(p_c[:2])
+    h_c = entropy(p_c)
+    return h_c
+
+def compute_h_c_bin(l0_hs, l1_hs):
+    c_counts = np.array([len(l0_hs), len(l1_hs)])
+    p_c = c_counts / np.sum(c_counts)
+    h_c = get_h_c_bin(p_c)
+    return h_c
 
 def compute_mi(h_c, full_eval):
     full_eval["h_c"] = h_c
     for mi_type in ["base", "P", "I_P"]:
         full_eval[f"{mi_type}_mi"] = h_c - full_eval[f"{mi_type}_h_c_h"]
+
+#%% FTH MI Helpers
+def get_distrib_key(c_index):
+    if c_index == 0:
+        key = "l0"
+    elif c_index == 1:
+        key = "l1"
+    else:
+        raise ValueError(f"Wrong c_index value {c_index}, has to be {0, 1}")
+    return key
+
+def compute_faith_mi(base_distribs, P_distribs, I_P_distribs, c_index):
+    key = get_distrib_key(c_index)
+    pxh = renormalize(base_distribs[key])
+    pxPh = renormalize(P_distribs[key])
+    pxI_Ph = renormalize(I_P_distribs[key])
+    log_pxh = np.log(pxh)
+    log_pxPh = np.log(pxPh)
+    log_pxI_Ph = np.log(pxI_Ph)
+
+    return dict(
+        P_fth_mi = np.sum(pxh * (log_pxh - log_pxPh)),
+        I_P_fth_mi = np.sum(pxh * (log_pxh - log_pxI_Ph))
+    )
 
 #%% Accuracy computations
 def correct_flag(fact_prob, foil_prob):
@@ -350,7 +420,9 @@ def compute_factfoil_flags(probs, fact_id, foil_id, l0_tl, l1_tl, prefix):
     }
     
 #%% metric aggregators
-def compute_all_faith_metrics(base_distribs, P_distribs, I_P_distribs):
+def compute_all_faith_metrics(base_distribs, P_distribs, I_P_distribs, c_index):
+    fth_mis = compute_faith_mi(base_distribs, P_distribs, I_P_distribs, c_index)
+
     P_fth_kls = compute_faith_kls(base_distribs, P_distribs, prefix="P_")
     I_P_fth_kls = compute_faith_kls(base_distribs, I_P_distribs, prefix="I_P_")
 
@@ -360,7 +432,7 @@ def compute_all_faith_metrics(base_distribs, P_distribs, I_P_distribs):
     P_fth_pct_chg = compute_faith_pct_chg(base_distribs, P_distribs, prefix="P_")
     I_P_fth_pct_chg = compute_faith_pct_chg(base_distribs, I_P_distribs, prefix="I_P_")
     
-    return P_fth_kls | P_fth_tvds | P_fth_pct_chg | I_P_fth_kls\
+    return fth_mis | P_fth_kls | P_fth_tvds | P_fth_pct_chg | I_P_fth_kls\
          | I_P_fth_tvds | I_P_fth_pct_chg
 
 """    
@@ -377,9 +449,8 @@ def compute_all_erasure_kls(base_distribs, P_distribs, I_P_distribs, pair_probs)
     )
     return P_er_kls | I_P_er_kls
 """
-def compute_all_mi_components(base_distribs, P_distribs, I_P_distribs, c_index):
-    p_c_h_surprisals = compute_all_p_c_h_surprisals(base_distribs, P_distribs, I_P_distribs, c_index)
-    return p_c_h_surprisals
+def compute_all_erasure_components(base_distribs, P_distribs, I_P_distribs):
+    return compute_all_h_c_h(base_distribs, P_distribs, I_P_distribs)
 
 def compute_all_acc_flags(base_distribs, P_distribs, I_P_distribs, 
     fact_id, foil_id, l0_tl, l1_tl):
@@ -407,15 +478,15 @@ def compute_eval_one_sample(h, P, I_P, V, l0_tl, l1_tl, c_index,
     faith_metrics, er_kl_metrics, er_mis_metrics = {},{},{}
     if faith:
         faith_metrics = compute_all_faith_metrics(
-            base_distribs, P_distribs, I_P_distribs
+            base_distribs, P_distribs, I_P_distribs, c_index
         )
     #if er_kls:
     #    er_kl_metrics = compute_all_erasure_kls(
     #        base_distribs, P_distribs, I_P_distribs, pair_probs
     #    )
     if mi:
-        mi_components = compute_all_mi_components(
-            base_distribs, P_distribs, I_P_distribs, c_index
+        mi_components = compute_all_erasure_components(
+            base_distribs, P_distribs, I_P_distribs
         )
     if acc:
         acc_flags = compute_all_acc_flags(
@@ -438,8 +509,9 @@ def compute_eval(hs_wff, P, I_P, V, l0_tl, l1_tl, c_index,
                 h, P, I_P, V, l0_tl, l1_tl, c_index, 
                 faid, foid, faith=faith, mi=mi, acc=acc, X_pca=X_pca
         ))
-    df_metrics_per_sample = pd.DataFrame(metrics_per_sample)
-    return df_metrics_per_sample
+    df = pd.DataFrame(metrics_per_sample)
+    df["concept_label"] = c_index
+    return df
 
 def get_hs_sample_index(hs, nsamples=200):
     idx = np.arange(0, hs.shape[0])
@@ -482,15 +554,16 @@ def compute_kls_after_training(concept_name, model_name, X_test, P, I_P):
         P, I_P)
 
 def compute_eval_filtered_hs(model_name, concept, P, I_P, l0_hs_wff, l1_hs_wff):
-    V, l0_tl, l1_tl, p_c = load_model_eval(model_name, concept)
-    h_c = get_h_c_bin(p_c)
-
+    V, l0_tl, l1_tl = load_model_eval(model_name, concept)
+    
     l0_eval = compute_eval(l0_hs_wff, P, I_P, V, l0_tl, l1_tl, 0)
     l1_eval = compute_eval(l1_hs_wff, P, I_P, V, l0_tl, l1_tl, 1)
-    full_eval = pd.concat((l0_eval, l1_eval),axis=0).mean()
-    compute_mi(h_c, full_eval)
-    return full_eval
+    full_eval = pd.concat((l0_eval, l1_eval),axis=0)
+    full_eval_means = full_eval.mean()
 
+    h_c = compute_h_c_bin(l0_hs_wff, l1_hs_wff)
+    compute_mi(h_c, full_eval_means)
+    return full_eval, full_eval_means
 
 #def compute_kls_from_generations(concept_name, model_name, P, I_P, nsamples=100):
 #    V, l0_tl, l1_tl, p_c = load_model_eval_ar(concept_name, model_name)

@@ -12,8 +12,8 @@ import spacy
 from datasets import load_dataset
 import pandas as pd
 
-#sys.path.append('../../')
-sys.path.append('./src/')
+sys.path.append('../../')
+#sys.path.append('./src/')
 
 from paths import HF_CACHE, OUT, DATASETS
 
