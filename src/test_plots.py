@@ -58,137 +58,72 @@ accplot = res[res["metric"].isin([
     "gen_P_acc_correct", "gen_I_P_acc_correct"])]
 
 acc_renames = {
-    "test_P_acc_correct": "I-P Accuracy (Test Samples)",
-    "test_I_P_acc_correct": "P Accuracy (Test Samples)",
-    "test_P_acc_correct_l0": "I-P Accuracy (L0 Test Samples)",
-    "test_I_P_acc_correct_l0": "P Accuracy (L0 Test Samples)",
-    "test_P_acc_correct_l1": "I-P Accuracy (L1 Test Samples)",
-    "test_I_P_acc_correct_l1": "P Accuracy (L1 Test Samples)",
-    "gen_P_acc_correct": "I-P Accuracy (Generated Samples)",
-    "gen_I_P_acc_correct": "P Accuracy (Generated Samples)",
-    "gen_P_acc_correct_l0": "I-P Accuracy (L0 Generated Samples)",
-    "gen_I_P_acc_correct_l0": "P Accuracy (L0 Generated Samples)",
-    "gen_P_acc_correct_l1": "I-P Accuracy (L1 Generated Samples)",
-    "gen_I_P_acc_correct_l1": "P Accuracy (L1 Generated Samples)",
+    "test_P_acc_correct": "I-P Accuracy",
+    "test_I_P_acc_correct": "P Accuracy",
+    "test_P_acc_correct_l0": "I-P Accuracy (L0)",
+    "test_I_P_acc_correct_l0": "P Accuracy (L0)",
+    "test_P_acc_correct_l1": "I-P Accuracy (L1)",
+    "test_I_P_acc_correct_l1": "P Accuracy (L1)",
+    "gen_P_acc_correct": "I-P Accuracy",
+    "gen_I_P_acc_correct": "P Accuracy",
+    "gen_P_acc_correct_l0": "I-P Accuracy (L0)",
+    "gen_I_P_acc_correct_l0": "P Accuracy (L0)",
+    "gen_P_acc_correct_l1": "I-P Accuracy (L1)",
+    "gen_I_P_acc_correct_l1": "P Accuracy (L1)",
 }
 accplot["clean_metric"] = [acc_renames[x] for x in accplot["metric"]]
 
 #%%
-#accplot_mean = accplot.groupby(["model_concept", "k", "prefix"]).mean().reset_index()
-
-#accplot_mean_gen = accplot[accplot["model_concept"].isin(
-#    ["gender_gpt2-base-french", "number_gpt2-large"])].drop(
-#        ["prefix", "test_accuracy"], axis=1
-#    )
-#accplot_mean_gen["metric"] = "Accuracy (Generated Samples)"
-#accplot_mean_gen.columns = ["model_concept", "k", "value", "metric"]
-
-#accplot_mean_test = accplot.drop(["gen_accuracy", "prefix"], axis=1)
-#accplot_mean_test["metric"] = "Accuracy (Test Samples)"
-#accplot_mean_test.columns = ["model_concept", "k", "value", "metric"]
-
-#accplot_mean_combo = pd.concat([accplot_mean_gen, accplot_mean_test], axis=0)
-
-#accbase = acc[acc["prefix"] == "base"][["model_concept","maj_acc_test"]].groupby("model_concept").mean()
-
+miplot_basemi_prep = res[res["metric"].isin(['test_base_mi', 'gen_base_mi'])]
+miplot_basemi = miplot_basemi_prep.groupby(["model_concept", "metric"])["value"].mean().reset_index()
+#miplot_basemi.groupby(["model_concept", "metric"])["value"].std()
+miplot_basemi = pd.pivot(miplot_basemi, index="model_concept", columns="metric", values="value")
 #%%
-
-
 miplot = res[res["metric"].isin(
-    ['test_P_fth_mi_l0', 'test_P_fth_mi_l1', 'test_I_P_fth_mi_l0', 'test_I_P_fth_mi_l1',    
-    'test_base_mi', 'test_I_P_mi', 
+    [#'test_P_fth_mi_l0', 'test_P_fth_mi_l1', 
+    'test_I_P_fth_mi_l0', 'test_I_P_fth_mi_l1',    
+    'test_I_P_mi', 
     'test_reconstructed_info', 'test_encapsulation', 'test_perc_reconstructed', 
-    'gen_P_fth_mi_l0', 'gen_I_P_fth_mi_l0', 'gen_P_fth_mi_l1', 'gen_I_P_fth_mi_l1', 
-    'gen_base_mi', 'gen_I_P_mi',
+    #'gen_P_fth_mi_l0', 'gen_P_fth_mi_l1', 
+    'gen_I_P_fth_mi_l0', 'gen_I_P_fth_mi_l1', 
+    'gen_I_P_mi',
     'gen_reconstructed_info', 'gen_encapsulation', 'gen_perc_reconstructed'
     ])]
-#"test_P_acc_correct_l0", "test_I_P_acc_correct_l0", "test_P_acc_correct_l1", "test_I_P_acc_correct_l1",
-#"gen_P_acc_correct_l0", "gen_I_P_acc_correct_l0", "gen_P_acc_correct_l1", "gen_I_P_acc_correct_l1"
+
+gen_metrics = [
+    #'gen_I_P_fth_mi_l0', 'gen_I_P_fth_mi_l1', 
+    'gen_I_P_mi',
+    'gen_reconstructed_info', 'gen_encapsulation', 'gen_perc_reconstructed']
+test_metrics = [
+    #'test_I_P_fth_mi_l0', 'test_I_P_fth_mi_l1',    
+    'test_I_P_mi', 
+    'test_reconstructed_info', 'test_encapsulation', 'test_perc_reconstructed']
+
 mi_renames = {
-    "test_P_fth_mi_l0": "I-P Stability (L0 Test Samples)",
-    "test_I_P_fth_mi_l0": "P Stability (L0 Test Samples)",
-    "test_P_fth_mi_l1": "I-P Stability (L1 Test Samples)",
-    "test_I_P_fth_mi_l1": "P Stability (L1 Test Samples)",
-    "test_base_mi": "Total Info (Test Samples)",
-    "test_encapsulation": "Encapsulation (Test Samples)",
-    "test_reconstructed_info": "Reconstructed Info (Test Samples",
-    "test_perc_reconstructed": "Reconstructed % (Test Samples)",
-    "test_I_P_mi": "P Erasure MI (Test Samples)",
-    "gen_P_fth_mi_l0": "I-P Stability (L0 Gen Samples)",
-    "gen_I_P_fth_mi_l0": "P Stability (L0 Gen Samples)",
-    "gen_P_fth_mi_l1": "I-P Stability (L1 Gen Samples)",
-    "gen_I_P_fth_mi_l1": "P Stability (L1 Gen Samples)",
-    "gen_base_mi": "Total Info (Gen Samples)",
-    "gen_encapsulation": "Encapsulation (Gen Samples)",
-    "gen_I_P_mi": "P Erasure MI (Gen Samples)",
-    "gen_reconstructed_info": "Reconstructed Info (Gen Samples",
-    "gen_perc_reconstructed": "Reconstructed % (Gen Samples)",
+    #"test_P_fth_mi_l0": "Stability (L0)",
+    "test_I_P_fth_mi_l0": "Stability (L0)",
+    #"test_P_fth_mi_l1": "Stability (L1)",
+    "test_I_P_fth_mi_l1": "Stability (L1)",
+    "test_base_mi": "Total Info",
+    "test_encapsulation": "Encapsulation",
+    "test_reconstructed_info": "Reconstructed Info",
+    "test_perc_reconstructed": "Reconstructed %",
+    "test_I_P_mi": "Erasure",
+    #"gen_P_fth_mi_l0": "Stability (L0)",
+    "gen_I_P_fth_mi_l0": "Stability (L0)",
+    #"gen_P_fth_mi_l1": "Stability (L1)",
+    "gen_I_P_fth_mi_l1": "Stability (L1)",
+    "gen_base_mi": "Total Info",
+    "gen_encapsulation": "Encapsulation",
+    "gen_I_P_mi": "Erasure",
+    "gen_reconstructed_info": "Reconstructed Info",
+    "gen_perc_reconstructed": "Reconstructed %",
 }
 miplot["clean_metric"] = [mi_renames[x] for x in miplot["metric"]]
 
 #%%
-resfilter = res[(res["metric"].isin(
-    ["test_P_fth_mi_l0", "test_I_P_fth_mi_l0", "test_P_fth_mi_l1", 
-     "test_I_P_fth_mi_l1", "test_I_P_mi", "gen_P_fth_mi_l0", 
-     "gen_I_P_fth_mi_l0", "gen_P_fth_mi_l1", "gen_I_P_fth_mi_l1", "gen_I_P_mi"])) &
-    (res["k"].isin([0, 1, 2]))]
-resmean = resfilter.groupby(["model_concept", "k", "metric"])["value"].mean().reset_index()
-respivot = pd.pivot(resmean, index=["model_concept", "k"], columns="metric", values="value").reset_index()
-respivot = respivot[
-    ["model_concept", "k", "test_I_P_mi", "gen_I_P_mi",
-     "test_P_fth_mi_l0", "test_P_fth_mi_l1", "test_I_P_fth_mi_l0", "test_I_P_fth_mi_l1", 
-     "gen_P_fth_mi_l0", "gen_P_fth_mi_l1","gen_I_P_fth_mi_l0", "gen_I_P_fth_mi_l1"]]
-column_renames = mi_renames
-column_renames["model_concept"] = "Concept & Model"
-respivot.columns = [mi_renames[x] if x not in ["k"] else x for x in respivot.columns]
-respivot.to_csv(os.path.join(RESULTS, "erasure_stab.csv"), index=False)
-
-#%%
-"""
-fth["model_concept"] = fth["concept"] + "_" + fth["model"]
-fthplot = fth[fth["prefix"]!="baseline"][["model_concept", "k", "test_kl_all_merged", "gen_kl_all_merged"]]
-#fthplot_mean = fthplot.groupby(["model_concept", "k"]).mean().reset_index()
-
-fthplot_mean_gen = fthplot[fthplot["model_concept"].isin(
-    ["gender_gpt2-base-french", "number_gpt2-large"])].drop(
-        ["test_kl_all_merged"], axis=1
-    )
-fthplot_mean_gen["metric"] = "$(\mathbf{I}-\mathbf{P})\,\mathrm{D}_{\mathrm{KL}}$ (Generated Samples)"
-fthplot_mean_gen.columns = ["model_concept", "k", "bits", "metric"]
-
-fthplot_mean_test = fthplot.drop(["gen_kl_all_merged"], axis=1)
-fthplot_mean_test["metric"] = "$(\mathbf{I}-\mathbf{P})\,\mathrm{D}_{\mathrm{KL}}$ (Test Samples)"
-fthplot_mean_test.columns = ["model_concept", "k", "bits", "metric"]
-
-fthplot_mean_combo = pd.concat([fthplot_mean_gen, fthplot_mean_test], axis=0)
-
-#fthbase = fth[fth["prefix"]=="baseline"][["model_concept", "test_kl_all_merged"]].groupby("model_concept").mean()
-
-#%%
-mi["model_concept"] = mi["concept"] + "_" + mi["model"]
-miplot = mi[mi["prefix"].isin(["I_P"])][["model_concept", "k", "test_mi", "gen_mi"]]
-#miplot_mean = miplot.groupby(["model_concept", "k"]).mean().reset_index()
-
-miplot_mean_gen = miplot[miplot["model_concept"].isin(
-    ["gender_gpt2-base-french", "number_gpt2-large"])].drop(
-        ["test_mi"], axis=1
-    )
-miplot_mean_gen["metric"] = "$(\mathbf{I}-\mathbf{P})\,\mathrm{I}$ (Generated Samples)"
-miplot_mean_gen.columns = ["model_concept", "k", "bits", "metric"]
-
-miplot_mean_test = miplot.drop(["gen_mi"], axis=1)
-miplot_mean_test["metric"] = "$(\mathbf{I}-\mathbf{P})\,\mathrm{CE}$ (Test Samples)"
-miplot_mean_test.columns = ["model_concept", "k", "bits", "metric"]
-
-miplot_mean_combo = pd.concat([miplot_mean_gen, miplot_mean_test], axis=0)
-
-mifth_comboplot = pd.concat((fthplot_mean_combo, miplot_mean_combo), axis=0)
-
-#mibase = mi[mi["prefix"]=="base"][["model_concept", "test_mi"]].groupby("model_concept").mean()
-"""
-#%%
-acc_renames_values = [x for x in acc_renames.values()]
-mi_renames_values = [x for x in mi_renames.values()]
+acc_renames_values = list(set(acc_renames.values()))
+mi_renames_values = list(set(mi_renames.values()))
 all_keys = acc_renames_values + mi_renames_values
 cols = sns.color_palette("bright", len(all_keys))
 palette = {}
@@ -198,32 +133,244 @@ for k, v in zip(all_keys, cols):
 #%%
 #plt.rcParams["font.family"] = "serif"
 #plt.rcParams["font.serif"] = ["Times New Roman"]
-fig, axes = plt.subplots(4,4,figsize=(40,24))
+sample_source = "test"
+
+fig.clf()
+fig, axes = plt.subplots(2,4,
+    gridspec_kw=dict(left=0.07, right=0.73,
+                    bottom=0.12, top=0.9),
+    dpi=300,
+    figsize=(8,4)
+)
 #fig.tight_layout()
 #fig.subplots_adjust(hspace=0.3)
 fig.subplots_adjust(wspace=0.05, hspace=0.05)
 
 
 pairs = [
-    (axes[0,0], "number_gpt2-large", "acc"),
-    (axes[0,1], "number_bert-base-uncased", "acc"),
-    (axes[0,2], "gender_gpt2-base-french", "acc"),
-    (axes[0,3], "gender_camembert-base", "acc"),
-    (axes[1,0], "number_gpt2-large", "er_test"),
-    (axes[1,1], "number_bert-base-uncased", "er_test"),
-    (axes[1,2], "gender_gpt2-base-french", "er_test"),
-    (axes[1,3], "gender_camembert-base", "er_test"),
-    (axes[2,0], "number_gpt2-large", "er_gen"),
-    (axes[2,1], "number_bert-base-uncased", "er_gen"),
-    (axes[2,2], "gender_gpt2-base-french", "er_gen"),
-    (axes[2,3], "gender_camembert-base", "er_gen"),
-    (axes[3,0], "number_gpt2-large", "fth"),
-    (axes[3,1], "number_bert-base-uncased", "fth"),
-    (axes[3,2], "gender_gpt2-base-french", "fth"),
-    (axes[3,3], "gender_camembert-base", "fth"),
+    #(axes[0,0], "number_gpt2-large", "acc"),
+    #(axes[0,1], "number_bert-base-uncased", "acc"),
+    #(axes[0,2], "gender_gpt2-base-french", "acc"),
+    #(axes[0,3], "gender_camembert-base", "acc"),
+    (axes[0,0], "number_gpt2-large", "er_test"),
+    (axes[0,1], "number_bert-base-uncased", "er_test"),
+    (axes[0,2], "gender_gpt2-base-french", "er_test"),
+    (axes[0,3], "gender_camembert-base", "er_test"),
+    #(axes[2,0], "number_gpt2-large", "er_gen"),
+    #(axes[2,1], "number_bert-base-uncased", "er_gen"),
+    #(axes[2,2], "gender_gpt2-base-french", "er_gen"),
+    #(axes[2,3], "gender_camembert-base", "er_gen"),
+    (axes[1,0], "number_gpt2-large", "fth"),
+    (axes[1,1], "number_bert-base-uncased", "fth"),
+    (axes[1,2], "gender_gpt2-base-french", "fth"),
+    (axes[1,3], "gender_camembert-base", "fth"),
 ]
 for i, (ax, name, case) in enumerate(pairs):
-    ax.tick_params(labelsize="xx-large")
+    ax.tick_params(labelsize="medium")
+    if "bert" in name:
+        ax.set_xlim(-10,769)
+        #ax.set_xlim(0,4)
+    elif "gpt2-base-french" in name:
+        ax.set_xlim(-10,768)
+        #ax.set_xlim(0,4)
+    else:
+        ax.set_xlim(-10,1280)
+        #ax.set_xlim(0,4)
+    if case == "er_test":
+        #midfplot = miplot[
+        #    (miplot["model_concept"] == name) & 
+        #    (miplot["metric"].isin(
+        #        ['test_base_mi', 'test_I_P_mi', 
+        #        'test_reconstructed_info', 'test_encapsulation', 'test_perc_reconstructed', 
+        #        'gen_base_mi', 'gen_I_P_mi',
+        #        'gen_reconstructed_info', 'gen_encapsulation', 'gen_perc_reconstructed']))
+        #]
+        #sns.lineplot(data=midfplot, x="k", y="value", hue="clean_metric", ci="sd", palette=palette, ax=ax)
+        ax2 = ax.twinx()
+        y1df = miplot[
+            (miplot["k"] != 0) & 
+            (miplot["model_concept"] == name) & 
+            (miplot["metric"].isin([
+                'test_I_P_mi', 'test_reconstructed_info', 'test_encapsulation'
+            ]))
+        ]
+        sns.lineplot(
+            data=y1df, x="k", y="value", hue="clean_metric", ci="sd",palette=palette, ax=ax
+        )
+        y2df = miplot[
+            (miplot["k"] != 0) & 
+            (miplot["model_concept"] == name) & 
+            (miplot["metric"].isin(['test_perc_reconstructed']))
+        ]
+        sns.lineplot(
+            data=y2df, x="k", y="value", hue="clean_metric", ci="sd",palette=palette, ax=ax2)
+        ax2.set_ylim(0,2)
+        ax.axhline(
+            y=miplot_basemi.loc[name, "test_base_mi"], 
+            color=palette[mi_renames["test_base_mi"]], 
+            linestyle="-",
+            label= mi_renames["test_base_mi"],
+        )
+        #ax.axhline(y=mibase.loc[name, "test_mi"], color="r", linestyle="-")
+        #ax.set_ylim(0, 1)
+        namesplit = name.split("_")
+        concept, model = namesplit[0], namesplit[1]
+        ax.set_title(f"{concept[0].upper() + concept[1:]},\n {model}", fontsize="medium")
+        ax.set_ylabel("Information (Bits)", fontsize="medium")#, **ssfont)
+        ax2.set_ylabel("Percent", fontsize="medium")#, **ssfont)
+        #ax2.set_ylabel("MI/CE Bits", **ssfont)
+        #handles, labels = ax.get_legend_handles_labels()
+        #ax.legend(handles=handles[1:], labels=labels[1:])
+        #ax.legend().set_title("")
+        #ax.legend(fontsize="xx-large")#.fontsize = "x-large"
+        #ax.legend(fontsize="medium")
+        #ax2.legend().set_title("")
+        #ax2.legend(fontsize="medium", loc="upper center")
+        ax.set_xticklabels([])
+        ax.set_xlabel("$k$", fontsize=20)#, **ssfont)
+        #ax.set_ylim(-.25,9)
+        #ax.yticks(fontsize=20)
+        box = ax.get_position()
+        #ax.set_position([box.x0, box.y0, box.width * 0.9, box.height])
+        if i!=0:
+            ax.set_ylabel("")
+            ax.set_yticklabels([])
+            ax.set_yticks([])
+        if i!=3:
+            legend = ax.legend().set_visible(False)
+            #legend.remove()
+            legend = ax2.legend().set_visible(False)
+            #legend.remove()
+            ax2.set_ylabel("")
+            ax2.set_yticklabels([])
+            ax2.set_yticks([])
+        else:
+            axhandles, axlabels = ax.get_legend_handles_labels()
+            ax2handles, ax2labels = ax2.get_legend_handles_labels()
+            allaxhandles = axhandles + ax2handles
+            allaxlabels = axlabels + ax2labels
+            #mod_allaxhandles, mod_allaxlabels = [], []
+            #for hand, lab in zip(allaxhandles, allaxlabels):
+            #    if lab not in ['Stability (L0)', 'Stability (L1)']:
+            #        mod_allaxhandles.append(hand)
+            #        mod_allaxlabels.append(lab)
+            ax.legend(
+                allaxhandles, allaxlabels, loc='center left', bbox_to_anchor=(1.4, 0.5), fontsize="small"
+            )
+            ax2.legend().set_visible(False)            
+    elif case == "fth":
+        #ax2 = ax.twinx()
+        #y1df = mifth_comboplot[(mifth_comboplot["model_concept"] == name) & 
+        #                        (mifth_comboplot["metric"].isin(["I_P_gen_kl", "I_P_test_kl"]))]
+        fthdfplot = miplot[
+            (miplot["model_concept"] == name) & 
+            (miplot["metric"].isin(
+                ["test_P_fth_mi_l0", "test_I_P_fth_mi_l0", "test_P_fth_mi_l1", 
+                "test_I_P_fth_mi_l1", "gen_P_fth_mi_l0", "gen_I_P_fth_mi_l0", 
+                "gen_P_fth_mi_l1", "gen_I_P_fth_mi_l1"]))
+        ]
+        sns.lineplot(
+            data=fthdfplot, x="k", y="value", hue="clean_metric", 
+            ci="sd", palette=palette, ax=ax
+        )
+        #y2df = mifth_comboplot[(mifth_comboplot["model_concept"] == name) & 
+        #                        (mifth_comboplot["metric"].isin(["I_P_gen_mi", "I_P_test_ce"]))]
+        #sns.lineplot(data=y2df, x="k", y="bits", hue="metric", ax=ax2)
+        #ax2.set_ylim(-.5,1)
+        #ax.axhline(y=fthbase.loc[name, "test_kl_all_merged"], color="g", linestyle="-")
+        #ax.axhline(y=mibase.loc[name, "test_mi"], color="r", linestyle="-")
+        #ax.set_ylim(0, 1)
+        #ax.set_title(name)#, **ssfont)
+        ax.set_ylabel("Stability (Bits)", fontsize="medium")#, **ssfont)
+        #ax2.set_ylabel("MI/CE Bits", **ssfont)
+        #handles, labels = ax.get_legend_handles_labels()
+        #ax.legend(handles=handles[1:], labels=labels[1:])
+        #ax.legend().set_title("")
+        #ax.legend(fontsize="xx-large")#.fontsize = "x-large"
+        #ax.legend(fontsize="medium")#.fontsize = "x-large"
+        #ax.set_xlabel("$k$", fontsize="medium")#, **ssfont)
+        #ax.set_xticklabels([])
+        #ax.set_ylim(-.25,9)
+        #ax.yticks(fontsize=20)
+        #ax.set_position([box.x0, box.y0, box.width * 0.9, box.height])
+        if i!=4:
+            ax.set_ylabel("")
+            ax.set_yticklabels([])
+        if i!=7:
+            legend = ax.legend().set_visible(False)
+            #legend.remove()
+            #legend = ax2.legend().set_visible(False)
+            #legend.remove()
+        else:
+            axhandles, axlabels = ax.get_legend_handles_labels()
+            #ax2handles, ax2labels = ax2.get_legend_handles_labels()
+            #allaxhandles = axhandles + ax2handles
+            #allaxlabels = axlabels + axlabels
+            ax.legend(
+                #allaxhandles, allaxlabels, loc='center left', bbox_to_anchor=(1, 0.5)
+                axhandles, axlabels, loc='center left', 
+                bbox_to_anchor=(1.4, 0.5), fontsize="small"
+            )        
+            
+    else:
+        raise ValueError("Incorrect case specification")
+        
+    
+
+figpath = os.path.join(RESULTS, "accfthmiplot_test.png")
+fig.savefig(figpath)
+
+from matplotlib.backends.backend_pdf import PdfPages
+with PdfPages(figpath[:-4]+".pdf") as pp:
+    pp.savefig(fig)
+
+
+#%%
+accplottest = res[
+    (res["metric"].isin(["test_I_P_acc_correct", 'test_I_P_mi'])) & 
+    (res["k"].isin([0,1]))
+]
+accplottestmean = accplottest.groupby(["model_concept", "k", "metric"]).mean().reset_index()
+accplottestpiv = pd.pivot(accplottestmean, index=["model_concept", "k"], columns=["metric"], values="value").reset_index()
+
+genderplot = accplottestpiv[accplottestpiv["model_concept"].str.startswith("number")]
+sns.scatterplot(x = accplottestpiv["test_I_P_acc_correct"], y = accplottestpiv["test_I_P_mi"])
+
+#%%
+#plt.rcParams["font.family"] = "serif"
+#plt.rcParams["font.serif"] = ["Times New Roman"]
+sample_source = "test"
+fig, axes = plt.subplots(2,4,
+    gridspec_kw=dict(left=0.08, right=0.99,
+                    bottom=0.4, top=0.85),
+    dpi=300,
+    figsize=(8,4)
+)
+#fig.tight_layout()
+#fig.subplots_adjust(hspace=0.3)
+fig.subplots_adjust(wspace=0.05, hspace=0.05)
+
+
+pairs = [
+    #(axes[0,0], "number_gpt2-large", "acc"),
+    #(axes[0,1], "number_bert-base-uncased", "acc"),
+    #(axes[0,2], "gender_gpt2-base-french", "acc"),
+    #(axes[0,3], "gender_camembert-base", "acc"),
+    (axes[0,0], "number_gpt2-large", "er_test"),
+    (axes[0,1], "number_bert-base-uncased", "er_test"),
+    (axes[0,2], "gender_gpt2-base-french", "er_test"),
+    (axes[0,3], "gender_camembert-base", "er_test"),
+    #(axes[2,0], "number_gpt2-large", "er_gen"),
+    #(axes[2,1], "number_bert-base-uncased", "er_gen"),
+    #(axes[2,2], "gender_gpt2-base-french", "er_gen"),
+    #(axes[2,3], "gender_camembert-base", "er_gen"),
+    (axes[1,0], "number_gpt2-large", "fth"),
+    (axes[1,1], "number_bert-base-uncased", "fth"),
+    (axes[1,2], "gender_gpt2-base-french", "fth"),
+    (axes[1,3], "gender_camembert-base", "fth"),
+]
+for i, (ax, name, case) in enumerate(pairs):
+    ax.tick_params(labelsize="medium")
     if "bert" in name:
         ax.set_xlim(-10,769)
         #ax.set_xlim(0,4)
@@ -275,10 +422,7 @@ for i, (ax, name, case) in enumerate(pairs):
         y1df = miplot[
             (miplot["k"] != 0) & 
             (miplot["model_concept"] == name) & 
-            (miplot["metric"].isin(
-                ['test_base_mi', 'test_I_P_mi','test_reconstructed_info', 'test_encapsulation',
-                #'gen_base_mi', 'gen_I_P_mi', 'gen_reconstructed_info', 'gen_encapsulation',
-                ]))
+            (miplot["metric"].isin(test_metrics))
         ]
         sns.lineplot(data=y1df, x="k", y="value", hue="clean_metric", ci="sd",palette=palette, ax=ax)
         y2df = miplot[
@@ -291,15 +435,15 @@ for i, (ax, name, case) in enumerate(pairs):
         #ax.axhline(y=mibase.loc[name, "test_mi"], color="r", linestyle="-")
         #ax.set_ylim(0, 1)
         #ax.set_title(name)#, **ssfont)
-        ax.set_ylabel("I (Test Samples)", fontsize=18)#, **ssfont)
+        ax.set_ylabel(r"$I(C; \boldsymbol{P}H \mid \boldsymbol{X})", fontsize="medium")#, **ssfont)
         #ax2.set_ylabel("MI/CE Bits", **ssfont)
         #handles, labels = ax.get_legend_handles_labels()
         #ax.legend(handles=handles[1:], labels=labels[1:])
         ax.legend().set_title("")
         #ax.legend(fontsize="xx-large")#.fontsize = "x-large"
-        ax.legend(fontsize="large")
+        ax.legend(fontsize="medium")
         ax2.legend().set_title("")
-        ax2.legend(fontsize="large", loc="upper center")
+        ax2.legend(fontsize="medium", loc="upper center")
         ax.set_xticklabels([])
         ax.set_xlabel("$k$", fontsize=20)#, **ssfont)
         #ax.set_ylim(-.25,9)
@@ -381,12 +525,12 @@ for i, (ax, name, case) in enumerate(pairs):
         #ax.legend(handles=handles[1:], labels=labels[1:])
         ax.legend().set_title("")
         #ax.legend(fontsize="xx-large")#.fontsize = "x-large"
-        ax.legend(fontsize="small")#.fontsize = "x-large"
-        ax.set_xlabel("$k$", fontsize=20)#, **ssfont)
+        ax.legend(fontsize="medium")#.fontsize = "x-large"
+        ax.set_xlabel("$k$", fontsize="medium")#, **ssfont)
         #ax.set_xticklabels([])
         #ax.set_ylim(-.25,9)
         #ax.yticks(fontsize=20)
-        if i!=12:
+        if i!=4:
             ax.set_ylabel("")
             ax.set_yticklabels([])
     else:
@@ -398,16 +542,6 @@ for i, (ax, name, case) in enumerate(pairs):
 figpath = os.path.join(RESULTS, "accfthmiplot.png")
 fig.savefig(figpath)
 
-#%%
-accplottest = res[
-    (res["metric"].isin(["test_I_P_acc_correct", 'test_I_P_mi'])) & 
-    (res["k"].isin([0,1]))
-]
-accplottestmean = accplottest.groupby(["model_concept", "k", "metric"]).mean().reset_index()
-accplottestpiv = pd.pivot(accplottestmean, index=["model_concept", "k"], columns=["metric"], values="value").reset_index()
-
-genderplot = accplottestpiv[accplottestpiv["model_concept"].str.startswith("number")]
-sns.scatterplot(x = accplottestpiv["test_I_P_acc_correct"], y = accplottestpiv["test_I_P_mi"])
 #%%
 """
 #import seaborn as sns
