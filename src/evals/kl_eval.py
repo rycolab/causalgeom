@@ -366,10 +366,23 @@ def compute_h_c_bin(l0_hs, l1_hs):
     h_c = get_h_c_bin(p_c)
     return h_c
 
-def compute_mi(h_c, full_eval):
-    full_eval["h_c"] = h_c
+def compute_mi(h_c, full_eval_means):
+    full_eval_means["h_c"] = h_c
     for mi_type in ["base", "P", "I_P"]:
-        full_eval[f"{mi_type}_mi"] = h_c - full_eval[f"{mi_type}_h_c_h"]
+        full_eval_means[f"{mi_type}_mi"] = h_c - full_eval_means[f"{mi_type}_h_c_h"]
+
+#def compute_mi_x(h_x, full_eval):
+#    full_eval["h_x"] = h_x
+#    for mi_type in ["P", "I_P"]:
+#        full_eval[f"mi_x_{mi_type}h_c"] = h_x - full_eval[f"h_p_x_{mi_type}h"]
+
+def compute_h_x(p_x, l0_tl, l1_tl, full_eval_means):
+    l0_p_x = renormalize(p_x[l0_tl])
+    l1_p_x = renormalize(p_x[l1_tl])
+    h_l0_p_x = entropy(l0_p_x)
+    h_l1_p_x = entropy(l1_p_x)
+    full_eval_means["h_p_x_l0"] = h_l0_p_x
+    full_eval_means["h_p_x_l1"] = h_l1_p_x
 
 #%% FTH MI Helpers
 def get_distrib_key(c_index):
@@ -391,6 +404,8 @@ def compute_faith_mi(base_distribs, P_distribs, I_P_distribs, c_index):
     log_pxI_Ph = np.log(pxI_Ph)
 
     return dict(
+        h_p_x_Ph = entropy(pxPh),
+        h_p_x_I_Ph = entropy(pxI_Ph),
         P_fth_mi = np.sum(pxh * (log_pxh - log_pxPh)),
         I_P_fth_mi = np.sum(pxh * (log_pxh - log_pxI_Ph))
     )
@@ -553,7 +568,8 @@ def compute_kls_after_training(concept_name, model_name, X_test, P, I_P):
     return compute_kls_all_hs(concept_name, model_name, X_test, other_hs, 
         P, I_P)
 
-def compute_eval_filtered_hs(model_name, concept, P, I_P, l0_hs_wff, l1_hs_wff):
+def compute_eval_filtered_hs(model_name, concept, P, I_P, l0_hs_wff, l1_hs_wff,
+    p_x):
     V, l0_tl, l1_tl = load_model_eval(model_name, concept)
     
     l0_eval = compute_eval(l0_hs_wff, P, I_P, V, l0_tl, l1_tl, 0)
@@ -563,6 +579,9 @@ def compute_eval_filtered_hs(model_name, concept, P, I_P, l0_hs_wff, l1_hs_wff):
 
     h_c = compute_h_c_bin(l0_hs_wff, l1_hs_wff)
     compute_mi(h_c, full_eval_means)
+    #h_x = entropy(p_x)
+    #compute_mi_x(h_x, full_eval_means)
+    compute_h_x(p_x, l0_tl, l1_tl, full_eval_means)
     return full_eval, full_eval_means
 
 #def compute_kls_from_generations(concept_name, model_name, P, I_P, nsamples=100):
