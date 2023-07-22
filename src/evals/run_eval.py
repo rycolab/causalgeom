@@ -268,62 +268,60 @@ def compute_kl_baseline(hs, V, l0_tl, l1_tl, nsamples=200):
 
 
 def compute_run_eval(model_name, concept, run_name, run_path, nsamples=200):
-    assert model_name in GPT2_LIST, "Doesn't work for masked anymore"
+    #assert model_name in GPT2_LIST, "Doesn't work for masked anymore"
     run = load_run_output(run_path)
     P, I_P = load_run_Ps(run_path)
 
     # test set version of the eval
     V, l0_tl, l1_tl = load_model_eval(model_name, concept)
-    #l0_tl, l1_tl = load_concept_token_lists(concept, model_name)
-    #test_l0_hs_wff, test_l1_hs_wff = filter_test_hs_wff(
-    #    run["X_test"], run["facts_test"], run["foils_test"], 
-    #    l0_tl, l1_tl, nsamples=nsamples
-    #)
-    #l0_hs_wff = filter_hs_w_ys(
-    #    run["X_test"], run["facts_test"], run["foils_test"], run["y_test"], 0
-    #)
-    #l1_hs_wff = filter_hs_w_ys(
-    #    run["X_test"], run["facts_test"], run["foils_test"], run["y_test"], 1
-    #)
-    #if nsamples is not None:
-    #    l0_hs_wff, l1_hs_wff = sample_filtered_hs(l0_hs_wff, l1_hs_wff, nsamples)
+    l0_hs_wff = filter_hs_w_ys(
+        run["X_test"], run["facts_test"], run["foils_test"], run["y_test"], 0
+    )
+    l1_hs_wff = filter_hs_w_ys(
+        run["X_test"], run["facts_test"], run["foils_test"], run["y_test"], 1
+    )
+    if nsamples is not None:
+        l0_hs_wff, l1_hs_wff = sample_filtered_hs(l0_hs_wff, l1_hs_wff, nsamples)
 
-    #test_eval_samples, test_eval = compute_eval_filtered_hs(
-    #    model_name, concept, P, I_P, l0_hs_wff, l1_hs_wff
-    #)
+    test_eval_samples, test_eval = compute_eval_filtered_hs(
+        model_name, concept, P, I_P, l0_hs_wff, l1_hs_wff
+    )
     #test_kl_baseline = compute_kl_baseline(
     #    run["X_test"], V, l0_tl, l1_tl, nsamples=nsamples
     #)
 
     # generated hs version of the eval
-    #if model_name in GPT2_LIST:
-    gen_p_x = load_p_x(model_name, False)
-    gen_l0_hs_wff, gen_l1_hs_wff = load_filtered_hs_wff(
-        model_name, nsamples=nsamples
-    )
-    gen_eval_samples, gen_eval = compute_eval_filtered_hs(
-        model_name, concept, P, I_P, gen_l0_hs_wff, gen_l1_hs_wff, gen_p_x
-    )
-    #gen_Xs = np.vstack([x[0] for x in gen_l0_hs_wff + gen_l1_hs_wff])
-    #gen_kl_baseline = compute_kl_baseline(
-    #    gen_Xs, V, l0_tl, l1_tl, nsamples=nsamples
-    #)
+    if model_name in GPT2_LIST:
+        gen_p_x = load_p_x(model_name, False)
+        gen_p_x = None
+        gen_l0_hs_wff, gen_l1_hs_wff = load_filtered_hs_wff(
+            model_name, nsamples=nsamples
+        )
+        gen_eval_samples, gen_eval = compute_eval_filtered_hs(
+            model_name, concept, P, I_P, gen_l0_hs_wff, gen_l1_hs_wff, gen_p_x
+        )
+        #gen_Xs = np.vstack([x[0] for x in gen_l0_hs_wff + gen_l1_hs_wff])
+        #gen_kl_baseline = compute_kl_baseline(
+        #    gen_Xs, V, l0_tl, l1_tl, nsamples=nsamples
+        #)
 
-    nuc_p_x = load_p_x(model_name, True)
-    nucgen_l0_hs_wff, nucgen_l1_hs_wff = load_filtered_hs_wff(
-        model_name, nucleus=True, nsamples=nsamples
-    )
-    nucgen_eval_samples, nucgen_eval = compute_eval_filtered_hs(
-        model_name, concept, P, I_P, nucgen_l0_hs_wff, nucgen_l1_hs_wff, nuc_p_x
-    )
-    #nucgen_Xs = np.vstack([x[0] for x in nucgen_l0_hs_wff + nucgen_l1_hs_wff])
-    #nucgen_kl_baseline = compute_kl_baseline(
-    #    nucgen_Xs, V, l0_tl, l1_tl, nsamples=nsamples
-    #)
-    #else:
-    #    gen_eval = None
-    #    gen_eval_samples = None
-    #    gen_kl_baseline = None
+        nuc_p_x = load_p_x(model_name, True)
+        nucgen_l0_hs_wff, nucgen_l1_hs_wff = load_filtered_hs_wff(
+            model_name, nucleus=True, nsamples=nsamples
+        )
+        nucgen_eval_samples, nucgen_eval = compute_eval_filtered_hs(
+            model_name, concept, P, I_P, nucgen_l0_hs_wff, nucgen_l1_hs_wff, nuc_p_x
+        )
+        #nucgen_Xs = np.vstack([x[0] for x in nucgen_l0_hs_wff + nucgen_l1_hs_wff])
+        #nucgen_kl_baseline = compute_kl_baseline(
+        #    nucgen_Xs, V, l0_tl, l1_tl, nsamples=nsamples
+        #)
+    else:
+        gen_eval = None
+        gen_eval_samples = None
+        nucgen_eval = None
+        nucgen_eval_samples = None
+        #gen_kl_baseline = None
 
     #acc_df = create_acc_df(
     #    test_eval, gen_eval, run["diag_eval"], run["usage_eval"], 
@@ -337,8 +335,12 @@ def compute_run_eval(model_name, concept, run_name, run_path, nsamples=200):
     #    test_eval, gen_eval, concept, model_name, run_name, run["config"]["k"]
     #)
     output = dict(
-        #test_eval=test_eval,
-        #test_eval_samples=test_eval_samples,
+        model_name=model_name,
+        concept=concept,
+        k=run["config"]["k"],
+        maj_acc_test=run["maj_acc_test"],
+        test_eval=test_eval,
+        test_eval_samples=test_eval_samples,
         gen_eval=gen_eval,
         gen_eval_samples=gen_eval_samples,
         nucgen_eval=nucgen_eval,
@@ -354,7 +356,10 @@ def compute_run_eval(model_name, concept, run_name, run_path, nsamples=200):
 #%% LOADERS AND PARAMS    
 def compute_eval_pair(model_name, concept, run_output_folder, nsamples):
     rundir = os.path.join(OUT, f"run_output/{concept}/{model_name}/{run_output_folder}")
-    outdir = os.path.join(RESULTS, f"{concept}/{model_name}")
+    if run_output_folder == "230718":
+        outdir = os.path.join(RESULTS, f"new_{concept}/{model_name}")
+    else:
+        outdir = os.path.join(RESULTS, f"{concept}/{model_name}")
     #outdir = RESULTS
     if not os.path.exists(outdir):
         os.makedirs(outdir)
@@ -403,7 +408,7 @@ def get_args():
     argparser.add_argument(
         "-folder",
         type=str,
-        choices=["230627", "230627_fix", "230628"],
+        choices=["230627", "230627_fix", "230628", "230718"],
         help="Run export folder to load"
     )
     return argparser.parse_args()

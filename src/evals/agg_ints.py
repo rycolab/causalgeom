@@ -58,23 +58,33 @@ df = pd.DataFrame.from_records(run_ints)
 
 #%%
 df["model_concept"] = df["concept"] + "_" + df["model"]
+#df = df[[
+#    'model_concept', "run",  #'dev_total_samples', 'dev_nsamples',#'test_total_samples', 'test_nsamples',
+#    'base_correct', 'base_correct_highest', 'base_correct_highest_concept',
+#    'I_P_correct', 'I_P_l0_highest', 'I_P_l1_highest',
+#    'I_P_l0_highest_concept', 'I_P_l1_highest_concept',
+#    'avgh_inj0_correct', 'avgh_inj0_l0_highest',
+#    'avgh_inj0_l0_highest_concept', 'avgh_inj1_correct',
+#    'avgh_inj1_l1_highest', 'avgh_inj1_l1_highest_concept',
+#    'avgp_inj0_correct', 'avgp_inj0_l0_highest',
+#    'avgp_inj0_l0_highest_concept', 'avgp_inj1_correct',
+#    'avgp_inj1_l1_highest', 'avgp_inj1_l1_highest_concept']]
+
 df = df[[
     'model_concept', "run",  #'dev_total_samples', 'dev_nsamples',#'test_total_samples', 'test_nsamples',
-    'base_correct', 'base_correct_highest', 'base_correct_highest_concept',
-    'avgh_inj0_correct', 'avgh_inj0_l0_highest',
-    'avgh_inj0_l0_highest_concept', 'avgh_inj1_correct',
-    'avgh_inj1_l1_highest', 'avgh_inj1_l1_highest_concept',
-    'avgp_inj0_correct', 'avgp_inj0_l0_highest',
-    'avgp_inj0_l0_highest_concept', 'avgp_inj1_correct',
-    'avgp_inj1_l1_highest', 'avgp_inj1_l1_highest_concept']]
+    'base_correct', 'base_correct_highest_concept',
+    'I_P_correct', 'I_P_l0_highest_concept', 'I_P_l1_highest_concept',
+    'avgh_inj0_correct', 'avgh_inj0_l0_highest_concept', 
+    'avgh_inj1_correct', 'avgh_inj1_l1_highest_concept',
+    'avgp_inj0_correct', 'avgp_inj0_l0_highest_concept', 
+    'avgp_inj1_correct', 'avgp_inj1_l1_highest_concept']]
 
-numlist = ['base_correct', 'base_correct_highest', 'base_correct_highest_concept',
-    'avgh_inj0_correct', 'avgh_inj0_l0_highest',
-    'avgh_inj0_l0_highest_concept', 'avgh_inj1_correct',
-    'avgh_inj1_l1_highest', 'avgh_inj1_l1_highest_concept',
-    'avgp_inj0_correct', 'avgp_inj0_l0_highest',
-    'avgp_inj0_l0_highest_concept', 'avgp_inj1_correct',
-    'avgp_inj1_l1_highest', 'avgp_inj1_l1_highest_concept']
+numlist = ['base_correct', 'base_correct_highest_concept',
+    'I_P_correct', 'I_P_l0_highest_concept', 'I_P_l1_highest_concept',
+    'avgh_inj0_correct', 'avgh_inj0_l0_highest_concept', 
+    'avgh_inj1_correct', 'avgh_inj1_l1_highest_concept',
+    'avgp_inj0_correct', 'avgp_inj0_l0_highest_concept', 
+    'avgp_inj1_correct', 'avgp_inj1_l1_highest_concept']
 for col in numlist:
     df[col] = df[col].astype(float)
 
@@ -87,21 +97,23 @@ meandf.to_csv(os.path.join(RESULTS, "int.csv"))
 longdf = pd.melt(df, id_vars=["model_concept", "run"], value_vars=numlist)
 
 cleanmetricnames = {
-    'base_correct': "Original Accuracy",
-    'base_correct_highest': "Original Top Rank",
-    'base_correct_highest_concept': "Original Top Concept Rank",
-    'avgh_inj0_correct': "C=0 Accuracy",
-    'avgh_inj0_l0_highest': "C=0 Top Rank",
-    'avgh_inj0_l0_highest_concept': "C=0 Top Concept Rank",
-    'avgh_inj1_correct': "C=1 Accuracy",
-    'avgh_inj1_l1_highest': "C=1 Top Rank",
-    'avgh_inj1_l1_highest_concept': "C=1 Top Concept Rank",
-    'avgp_inj0_correct': "C=0 Accuracy",
-    'avgp_inj0_l0_highest': "C=0 Top Rank",
-    'avgp_inj0_l0_highest_concept': "C=0 Top Concept Rank",
-    'avgp_inj1_correct': "C=1 Accuracy",
-    'avgp_inj1_l1_highest': "C=1 Top Rank",
-    'avgp_inj1_l1_highest_concept': "C=1 Top Concept Rank",
+    'base_correct': "Orig. Accuracy",
+    'base_correct_highest_concept': "Orig. Top Concept",
+    'I_P_correct': "Ph Accuracy", 
+    'I_P_l0_highest_concept': "Ph C=0 Top Concept",
+    'I_P_l1_highest_concept': "Ph C=1 Top Concept",
+    'avgh_inj0_correct': "Do C=0 Accuracy",
+    'avgh_inj0_l0_highest': "Do C=0 Top",
+    'avgh_inj0_l0_highest_concept': "Do C=0 Top Concept",
+    'avgh_inj1_correct': "Do C=1 Accuracy",
+    'avgh_inj1_l1_highest': "Do C=1 Top",
+    'avgh_inj1_l1_highest_concept': "Do C=1 Top Concept",
+    'avgp_inj0_correct': "Do C=0 Accuracy",
+    'avgp_inj0_l0_highest': "Do C=0 Top",
+    'avgp_inj0_l0_highest_concept': "Do C=0 Top Concept",
+    'avgp_inj1_correct': "Do C=1 Accuracy",
+    'avgp_inj1_l1_highest': "Do C=1 Top",
+    'avgp_inj1_l1_highest_concept': "Do C=1 Top Concept",
 }
 longdf["clean_variable"] = [cleanmetricnames[x] for x in longdf["variable"]]
 #longdf["type"] = longdf["variable"].apply(lambda x: x.split("_")[0])
@@ -111,6 +123,7 @@ longdf["clean_variable"] = [cleanmetricnames[x] for x in longdf["variable"]]
 #%%
 avgh_cols = [
     'base_correct', 'base_correct_highest', 'base_correct_highest_concept',
+    'I_P_correct', 'I_P_l0_highest_concept', 'I_P_l1_highest_concept',
     'avgh_inj0_correct', 'avgh_inj0_l0_highest',
     'avgh_inj0_l0_highest_concept', 'avgh_inj1_correct',
     'avgh_inj1_l1_highest', 'avgh_inj1_l1_highest_concept'
@@ -118,6 +131,7 @@ avgh_cols = [
 longdf_avgh = longdf[longdf["variable"].isin(avgh_cols)]
 avgp_cols = [
     'base_correct', 'base_correct_highest', 'base_correct_highest_concept',
+    'I_P_correct', 'I_P_l0_highest_concept', 'I_P_l1_highest_concept',
     'avgp_inj0_correct', 'avgp_inj0_l0_highest',
     'avgp_inj0_l0_highest_concept', 'avgp_inj1_correct',
     'avgp_inj1_l1_highest', 'avgp_inj1_l1_highest_concept'
@@ -129,7 +143,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt 
 sns.set_style("darkgrid", {"grid.color": ".6", "grid.linestyle": ":"})
 
-intervention = "avgh"
+intervention = "avgp"
 
 clean_names_list = list(set(cleanmetricnames.values()))
 cols = sns.color_palette("bright", len(clean_names_list))

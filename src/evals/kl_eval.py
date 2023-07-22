@@ -569,7 +569,7 @@ def compute_kls_after_training(concept_name, model_name, X_test, P, I_P):
         P, I_P)
 
 def compute_eval_filtered_hs(model_name, concept, P, I_P, l0_hs_wff, l1_hs_wff,
-    p_x):
+    p_x=None):
     V, l0_tl, l1_tl = load_model_eval(model_name, concept)
     
     l0_eval = compute_eval(l0_hs_wff, P, I_P, V, l0_tl, l1_tl, 0)
@@ -579,9 +579,8 @@ def compute_eval_filtered_hs(model_name, concept, P, I_P, l0_hs_wff, l1_hs_wff,
 
     h_c = compute_h_c_bin(l0_hs_wff, l1_hs_wff)
     compute_mi(h_c, full_eval_means)
-    #h_x = entropy(p_x)
-    #compute_mi_x(h_x, full_eval_means)
-    compute_h_x(p_x, l0_tl, l1_tl, full_eval_means)
+    if p_x is not None:
+        compute_h_x(p_x, l0_tl, l1_tl, full_eval_means)
     return full_eval, full_eval_means
 
 #def compute_kls_from_generations(concept_name, model_name, P, I_P, nsamples=100):

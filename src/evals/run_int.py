@@ -82,6 +82,7 @@ def score_post_int(base_distrib, I_P_distrib, l0_avgh_probs, l1_avgh_probs,
     else:
         l0id, l1id = foid, faid
     return dict(
+        case=case,
         base_correct = correct_flag(base_distrib[faid], base_distrib[foid]),
         base_correct_highest = highest_rank(base_distrib, faid),
         base_correct_highest_concept = highest_concept(base_distrib, faid, l0_tl, l1_tl),
