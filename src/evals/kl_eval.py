@@ -12,9 +12,11 @@ import numpy as np
 from tqdm import tqdm
 import pandas as pd
 import pickle
+import torch
 
 from scipy.special import softmax, kl_div
 from scipy.stats import entropy
+from transformers import TopPLogitsWarper, LogitsProcessorList
 
 #sys.path.append('..')
 sys.path.append('./src/')
@@ -106,8 +108,12 @@ def load_model_eval(model_name, concept):
 #%%#################
 # Distrib Helpers  #
 ####################
-def get_probs(hidden_state, V, l0_tl, l1_tl):
+def get_probs(hidden_state, V, l0_tl, l1_tl, nucleus):
     logits = V @ hidden_state
+    if nucleus:
+        logits = torch.FloatTensor(logits).unsqueeze(0)
+        tokens = torch.LongTensor([0]).unsqueeze(0)
+        logits = processor(tokens, logits).squeeze(0).numpy()
     all_probs = softmax(logits)
     l0_probs = all_probs[l0_tl]
     l1_probs = all_probs[l1_tl]
@@ -134,8 +140,8 @@ def get_all_pairwise_distribs(base_distribs, P_distribs, I_P_distribs):
     I_P_pair_probs = normalize_pairs(I_P_distribs["l0"], I_P_distribs["l1"])
     return base_pair_probs, P_pair_probs, I_P_pair_probs
 
-def get_distribs(h, V, l0_tl, l1_tl):
-    all_split, other, l0, l1 = get_probs(h, V, l0_tl, l1_tl)
+def get_distribs(h, V, l0_tl, l1_tl, nucleus):
+    all_split, other, l0, l1 = get_probs(h, V, l0_tl, l1_tl, nucleus)
     lemma_split = np.hstack([l0, l1])
     lemma_merged, all_merged = get_merged_probs(
         other, l0, l1
@@ -150,10 +156,10 @@ def get_distribs(h, V, l0_tl, l1_tl):
         lemma_merged=lemma_merged
     )
 
-def get_all_distribs(h, P, I_P, V, l0_tl, l1_tl):
-    base_distribs = get_distribs(h, V, l0_tl, l1_tl)
-    P_distribs = get_distribs(h.T @ P, V, l0_tl, l1_tl)
-    I_P_distribs = get_distribs(h.T @ I_P, V, l0_tl, l1_tl)
+def get_all_distribs(h, P, I_P, V, l0_tl, l1_tl, nucleus):
+    base_distribs = get_distribs(h, V, l0_tl, l1_tl, nucleus)
+    P_distribs = get_distribs(h.T @ P, V, l0_tl, l1_tl, nucleus)
+    I_P_distribs = get_distribs(h.T @ I_P, V, l0_tl, l1_tl, nucleus)
     return base_distribs, P_distribs, I_P_distribs
 
 def renormalize(p):
@@ -438,17 +444,16 @@ def compute_factfoil_flags(probs, fact_id, foil_id, l0_tl, l1_tl, prefix):
 def compute_all_faith_metrics(base_distribs, P_distribs, I_P_distribs, c_index):
     fth_mis = compute_faith_mi(base_distribs, P_distribs, I_P_distribs, c_index)
 
-    P_fth_kls = compute_faith_kls(base_distribs, P_distribs, prefix="P_")
-    I_P_fth_kls = compute_faith_kls(base_distribs, I_P_distribs, prefix="I_P_")
+    #P_fth_kls = compute_faith_kls(base_distribs, P_distribs, prefix="P_")
+    #I_P_fth_kls = compute_faith_kls(base_distribs, I_P_distribs, prefix="I_P_")
 
-    P_fth_tvds = compute_faith_tvds(base_distribs, P_distribs, prefix="P_")
-    I_P_fth_tvds = compute_faith_tvds(base_distribs, I_P_distribs, prefix="I_P_")
+    #P_fth_tvds = compute_faith_tvds(base_distribs, P_distribs, prefix="P_")
+    #I_P_fth_tvds = compute_faith_tvds(base_distribs, I_P_distribs, prefix="I_P_")
 
-    P_fth_pct_chg = compute_faith_pct_chg(base_distribs, P_distribs, prefix="P_")
-    I_P_fth_pct_chg = compute_faith_pct_chg(base_distribs, I_P_distribs, prefix="I_P_")
+    #P_fth_pct_chg = compute_faith_pct_chg(base_distribs, P_distribs, prefix="P_")
+    #I_P_fth_pct_chg = compute_faith_pct_chg(base_distribs, I_P_distribs, prefix="I_P_")
     
-    return fth_mis | P_fth_kls | P_fth_tvds | P_fth_pct_chg | I_P_fth_kls\
-         | I_P_fth_tvds | I_P_fth_pct_chg
+    return fth_mis #| P_fth_kls | P_fth_tvds | P_fth_pct_chg | I_P_fth_kls | I_P_fth_tvds | I_P_fth_pct_chg
 
 """    
 def compute_all_erasure_kls(base_distribs, P_distribs, I_P_distribs, pair_probs):
@@ -485,9 +490,9 @@ def compute_all_acc_flags(base_distribs, P_distribs, I_P_distribs,
 
 #%% main runners
 def compute_eval_one_sample(h, P, I_P, V, l0_tl, l1_tl, c_index, 
-    fact_id, foil_id, faith=True, mi=True, acc=True, X_pca=None):
+    fact_id, foil_id, faith=True, mi=True, acc=True, X_pca=None, nucleus=False):
     base_distribs, P_distribs, I_P_distribs = get_all_distribs(
-        h, P, I_P, V, l0_tl, l1_tl
+        h, P, I_P, V, l0_tl, l1_tl, nucleus
     )
 
     faith_metrics, er_kl_metrics, er_mis_metrics = {},{},{}
@@ -511,7 +516,7 @@ def compute_eval_one_sample(h, P, I_P, V, l0_tl, l1_tl, c_index,
     return faith_metrics | mi_components | acc_flags #| er_kl_metrics
 
 def compute_eval(hs_wff, P, I_P, V, l0_tl, l1_tl, c_index, 
-    faith=True, mi=True, acc=True, X_pca=None):
+    faith=True, mi=True, acc=True, X_pca=None, nucleus=False):
     #ind = get_hs_sample_index(hs, nsamples)    
 
     pbar = tqdm(range(len(hs_wff)))
@@ -522,7 +527,8 @@ def compute_eval(hs_wff, P, I_P, V, l0_tl, l1_tl, c_index,
         metrics_per_sample.append(
             compute_eval_one_sample(
                 h, P, I_P, V, l0_tl, l1_tl, c_index, 
-                faid, foid, faith=faith, mi=mi, acc=acc, X_pca=X_pca
+                faid, foid, faith=faith, mi=mi, acc=acc, X_pca=X_pca, 
+                nucleus=nucleus
         ))
     df = pd.DataFrame(metrics_per_sample)
     df["concept_label"] = c_index
@@ -569,11 +575,11 @@ def compute_kls_after_training(concept_name, model_name, X_test, P, I_P):
         P, I_P)
 
 def compute_eval_filtered_hs(model_name, concept, P, I_P, l0_hs_wff, l1_hs_wff,
-    p_x=None):
+    p_x=None, nucleus=False):
     V, l0_tl, l1_tl = load_model_eval(model_name, concept)
     
-    l0_eval = compute_eval(l0_hs_wff, P, I_P, V, l0_tl, l1_tl, 0)
-    l1_eval = compute_eval(l1_hs_wff, P, I_P, V, l0_tl, l1_tl, 1)
+    l0_eval = compute_eval(l0_hs_wff, P, I_P, V, l0_tl, l1_tl, 0, nucleus)
+    l1_eval = compute_eval(l1_hs_wff, P, I_P, V, l0_tl, l1_tl, 1, nucleus)
     full_eval = pd.concat((l0_eval, l1_eval),axis=0)
     full_eval_means = full_eval.mean()
 
