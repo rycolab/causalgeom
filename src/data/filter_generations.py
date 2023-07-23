@@ -154,12 +154,12 @@ if __name__ == '__main__':
     logging.info(args)
     
     
-    #model_name = args.model
-    #nucleus = args.nucleus
-    #nfiles=None
-    model_name = "gpt2-large"
-    nucleus = False
-    nfiles = 10
+    model_name = args.model
+    nucleus = args.nucleus
+    nfiles=1000
+    #model_name = "gpt2-large"
+    #nucleus = False
+    #nfiles = 10
 
     if nucleus:
         generations_folder = os.path.join(OUT, f"generated_text_nucleus/{model_name}/no_I_P")

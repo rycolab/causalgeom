@@ -44,10 +44,13 @@ model_name = "gpt2-large"
 concept = "number"
 #run_path = os.path.join(OUT, "run_output/gender/gpt2-base-french/230627/run_gpt2-base-french_theta_k128_Plr0.01_Pms16,41,61,81,101_clflr0.01_clfms26,51,76_2023-06-26-23:00:59_0_3.pkl")
 #run_path = os.path.join(OUT, "run_output/gender/gpt2-base-french/230627_fix/run_gpt2-base-french_theta_k128_Plr0.01_Pms16,41,61,81,101_clflr0.01_clfms26,51,76_2023-06-28-09:52:58_0_2.pkl")
-nsamples = 400
+nsamples = 10
+msamples = 10
+nucleus=False
 
 #%%
-from evals.eval_run import filter_hs_w_ys, sample_filtered_hs
+#from evals.run_eval import sample_filtered_hs
+from test_contain import prep_data
 
 run_path = os.path.join(OUT, "run_output/number/gpt2-large/230627/run_gpt2-large_theta_k1_Plr0.001_Pms31,76_clflr0.0003_clfms31_2023-06-26-23:02:09_0_3.pkl")
 
@@ -57,58 +60,19 @@ P, I_P = load_run_Ps(run_path)
 # test set version of the eval
 V, l0_tl, l1_tl = load_model_eval(model_name, concept)
 
-#%%
-#l0_tl, l1_tl = load_concept_token_lists(concept, model_name)
-#test_l0_hs_wff, test_l1_hs_wff = filter_test_hs_wff(
-#    run["X_test"], run["facts_test"], run["foils_test"], 
-#    l0_tl, l1_tl, nsamples=nsamples
-#)
-l0_hs_wff = filter_hs_w_ys(
-    run["X_test"], run["facts_test"], run["foils_test"], run["y_test"], 0
-)
-l1_hs_wff = filter_hs_w_ys(
-    run["X_test"], run["facts_test"], run["foils_test"], run["y_test"], 1
-)
-if nsamples is not None:
-    l0_hs_wff, l1_hs_wff = sample_filtered_hs(l0_hs_wff, l1_hs_wff, nsamples)
 
-#%%
-from evals.kl_eval import get_all_distribs
-h, _, _ = l0_hs_wff[0]
-
-base_distribs, P_distribs, I_P_distribs = get_all_distribs(
-    h, P, I_P, V, l0_tl, l1_tl
-)
-
-#%%
-from evals.kl_eval import get_bin_p_c_h
-
-base_bin = get_bin_p_c_h(base_distribs["l0"], base_distribs["l1"])
-P_bin = get_bin_p_c_h(P_distribs["l0"], P_distribs["l1"])
-I_P_bin = get_bin_p_c_h(I_P_distribs["l0"], I_P_distribs["l1"])
-
-#%%
-from scipy.stats import entropy
-
--1 * np.sum(base_bin * np.log(base_bin))
--1 * np.sum(P_bin * np.log(P_bin))
 # %%
-from evals.kl_eval import compute_all_h_c_h
-
-compute_all_h_c_h(base_distribs, P_distribs, I_P_distribs)
+p_c, l0_hs_wff, l1_hs_wff, all_hs = prep_data(model_name, nsamples)
 
 #%%
-from evals.kl_eval import get_distrib_key, renormalize
-c_index=0
-key = get_distrib_key(c_index)
-pxh = renormalize(base_distribs[key])
-pxPh = renormalize(P_distribs[key])
-pxI_Ph = renormalize(I_P_distribs[key])
-log_pxh = np.log(pxh)
-log_pxPh = np.log(pxPh)
-log_pxI_Ph = np.log(pxI_Ph)
-
-res = dict(
-    P_fth_mi = np.sum(pxh * (log_pxh - log_pxPh)),
-    I_P_fth_mi = np.sum(pxh * (log_pxh - log_pxI_Ph))
+from test_contain import compute_concept_qxhs
+l0_qxhs_bot = compute_concept_qxhs(
+    l0_hs_wff, all_hs, "hpar", I_P, P, V, msamples, nucleus=nucleus
 )
+l1_qxhs_bot = compute_concept_qxhs(
+    l1_hs_wff, all_hs, "hpar", I_P, P, V, msamples, nucleus=nucleus
+)
+
+
+# %%
+folderpath = os.path.join(RESULTS, "stabcont/gender/gpt2-base-french")

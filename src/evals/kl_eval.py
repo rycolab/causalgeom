@@ -108,9 +108,9 @@ def load_model_eval(model_name, concept):
 #%%#################
 # Distrib Helpers  #
 ####################
-def get_probs(hidden_state, V, l0_tl, l1_tl, nucleus):
+def get_probs(hidden_state, V, l0_tl, l1_tl, processor=None):
     logits = V @ hidden_state
-    if nucleus:
+    if processor is not None:
         logits = torch.FloatTensor(logits).unsqueeze(0)
         tokens = torch.LongTensor([0]).unsqueeze(0)
         logits = processor(tokens, logits).squeeze(0).numpy()
@@ -140,8 +140,8 @@ def get_all_pairwise_distribs(base_distribs, P_distribs, I_P_distribs):
     I_P_pair_probs = normalize_pairs(I_P_distribs["l0"], I_P_distribs["l1"])
     return base_pair_probs, P_pair_probs, I_P_pair_probs
 
-def get_distribs(h, V, l0_tl, l1_tl, nucleus):
-    all_split, other, l0, l1 = get_probs(h, V, l0_tl, l1_tl, nucleus)
+def get_distribs(h, V, l0_tl, l1_tl, processor=None):
+    all_split, other, l0, l1 = get_probs(h, V, l0_tl, l1_tl, processor)
     lemma_split = np.hstack([l0, l1])
     lemma_merged, all_merged = get_merged_probs(
         other, l0, l1
@@ -156,10 +156,10 @@ def get_distribs(h, V, l0_tl, l1_tl, nucleus):
         lemma_merged=lemma_merged
     )
 
-def get_all_distribs(h, P, I_P, V, l0_tl, l1_tl, nucleus):
-    base_distribs = get_distribs(h, V, l0_tl, l1_tl, nucleus)
-    P_distribs = get_distribs(h.T @ P, V, l0_tl, l1_tl, nucleus)
-    I_P_distribs = get_distribs(h.T @ I_P, V, l0_tl, l1_tl, nucleus)
+def get_all_distribs(h, P, I_P, V, l0_tl, l1_tl, processor=None):
+    base_distribs = get_distribs(h, V, l0_tl, l1_tl, processor)
+    P_distribs = get_distribs(h.T @ P, V, l0_tl, l1_tl, processor)
+    I_P_distribs = get_distribs(h.T @ I_P, V, l0_tl, l1_tl, processor)
     return base_distribs, P_distribs, I_P_distribs
 
 def renormalize(p):
@@ -366,9 +366,13 @@ def get_h_c_bin(p_c):
     h_c = entropy(p_c)
     return h_c
 
-def compute_h_c_bin(l0_hs, l1_hs):
+def compute_p_c_bin(l0_hs, l1_hs):
     c_counts = np.array([len(l0_hs), len(l1_hs)])
     p_c = c_counts / np.sum(c_counts)
+    return p_c
+
+def compute_h_c_bin(l0_hs, l1_hs):
+    p_c = compute_p_c_bin(l0_hs, l1_hs)
     h_c = get_h_c_bin(p_c)
     return h_c
 
@@ -490,9 +494,9 @@ def compute_all_acc_flags(base_distribs, P_distribs, I_P_distribs,
 
 #%% main runners
 def compute_eval_one_sample(h, P, I_P, V, l0_tl, l1_tl, c_index, 
-    fact_id, foil_id, faith=True, mi=True, acc=True, X_pca=None, nucleus=False):
+    fact_id, foil_id, faith=True, mi=True, acc=True, X_pca=None, nucproc=None):
     base_distribs, P_distribs, I_P_distribs = get_all_distribs(
-        h, P, I_P, V, l0_tl, l1_tl, nucleus
+        h, P, I_P, V, l0_tl, l1_tl, nucproc
     )
 
     faith_metrics, er_kl_metrics, er_mis_metrics = {},{},{}
@@ -518,6 +522,11 @@ def compute_eval_one_sample(h, P, I_P, V, l0_tl, l1_tl, c_index,
 def compute_eval(hs_wff, P, I_P, V, l0_tl, l1_tl, c_index, 
     faith=True, mi=True, acc=True, X_pca=None, nucleus=False):
     #ind = get_hs_sample_index(hs, nsamples)    
+    if nucleus:
+        processor = LogitsProcessorList()
+        processor.append(TopPLogitsWarper(0.9))
+    else:
+        processor=None
 
     pbar = tqdm(range(len(hs_wff)))
     pbar.set_description("Computing eval on hs")
@@ -528,7 +537,7 @@ def compute_eval(hs_wff, P, I_P, V, l0_tl, l1_tl, c_index,
             compute_eval_one_sample(
                 h, P, I_P, V, l0_tl, l1_tl, c_index, 
                 faid, foid, faith=faith, mi=mi, acc=acc, X_pca=X_pca, 
-                nucleus=nucleus
+                nucproc=processor
         ))
     df = pd.DataFrame(metrics_per_sample)
     df["concept_label"] = c_index

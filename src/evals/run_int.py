@@ -182,11 +182,11 @@ def eval_handler_pair(model_name, concept, run_output_folder,
     if not os.path.exists(outdir):
         os.makedirs(outdir)
 
-    runs = [x for x in os.listdir(rundir) if x.endswith(".pkl")]
+    run_files = [x for x in os.listdir(rundir) if x.endswith(".pkl")]
 
-    for run in runs:
-        run_path = os.path.join(rundir, run)
-        outpath = os.path.join(outdir, f"{concept}_{model_name}_intacc_{run[:-4]}.csv")
+    for run_file in run_files:
+        run_path = os.path.join(rundir, run_file)
+        outpath = os.path.join(outdir, f"{concept}_{model_name}_intacc_{run_file[:-4]}.csv")
 
         run = load_run_output(run_path)
         if run["config"]["k"] != 1:
