@@ -28,7 +28,6 @@ from utils.lm_loaders import get_V, GPT2_LIST, BERT_LIST
 from evals.kl_eval import load_run_Ps, load_run_output, load_model_eval, renormalize
 from data.filter_generations import load_filtered_hs_wff
 from evals.run_eval import filter_hs_w_ys, sample_filtered_hs
-from evals.run_int import get_hs_proj
 from evals.kl_eval import compute_p_c_bin
 
 coloredlogs.install(level=logging.INFO)
@@ -39,7 +38,8 @@ warnings.filterwarnings("ignore")
 def compute_inner_loop_qxhs(mode, h, all_hs, P, I_P, V, msamples, processor=None):
     """ mode param determines whether averaging over hbot or hpar"""
     all_pxnewh = []
-    idx = np.random.choice(all_hs.shape[0], msamples+1, replace=False)
+    idx = np.arange(0, all_hs.shape[0])
+    np.random.shuffle(idx)
     for other_h in all_hs[idx[:msamples]]:
         if mode == "hbot":
             newh = other_h.T @ I_P + h.T @ P
@@ -54,10 +54,9 @@ def compute_inner_loop_qxhs(mode, h, all_hs, P, I_P, V, msamples, processor=None
             logits = processor(tokens, logits).squeeze(0).numpy()
         pxnewh = softmax(logits)
         all_pxnewh.append(pxnewh)
-    all_pxnewh = np.vstack(all_pxnewh).mean(axis=0)
-    return all_pxnewh
+    return np.vstack(all_pxnewh)
 
-def compute_concept_qxhs(c_hs, all_hs, inner_mode, I_P, P, V, msamples, nucleus=False):
+def compute_qxhs(c_hs, all_hs, inner_mode, I_P, P, V, msamples, nucleus=False):
     c_qxhs = []
     if nucleus:
         processor = LogitsProcessorList()
@@ -65,10 +64,10 @@ def compute_concept_qxhs(c_hs, all_hs, inner_mode, I_P, P, V, msamples, nucleus=
     else:
         processor=None
     for h,_,_ in tqdm(c_hs):
-        inner_qxh = compute_inner_loop_qxhs(
+        inner_qxhs = compute_inner_loop_qxhs(
             inner_mode, h, all_hs, P, I_P, V, msamples, processor=processor
         )
-        c_qxhs.append(inner_qxh)
+        c_qxhs.append(inner_qxhs.mean(axis=0))
     return np.vstack(c_qxhs)
 
 def compute_avg_of_cond_ents(pxs, case, l0_tl, l1_tl):
@@ -85,7 +84,7 @@ def compute_avg_of_cond_ents(pxs, case, l0_tl, l1_tl):
     return np.mean(ents)
 
 #%% COMPUTING H(X | C)
-def compute_concept_pxhs(c_hs, V, nucleus=False):
+def compute_pxhs(c_hs, V, nucleus=False):
     c_pxhs = []
     if nucleus:
         processor = LogitsProcessorList()
@@ -120,27 +119,32 @@ def prep_data(model_name, nsamples):
     all_hs = np.vstack(all_concept_hs + other_hs_no_x)
 
     p_c = compute_p_c_bin(l0_hs_wff, l1_hs_wff)
-    l0_hs_wff, l1_hs_wff = sample_filtered_hs(l0_hs_wff, l1_hs_wff, nsamples)
+    #l0_hs_wff, l1_hs_wff = sample_filtered_hs(l0_hs_wff, l1_hs_wff, nsamples)
     return p_c, l0_hs_wff, l1_hs_wff, all_hs
 
 
-def compute_all_pxs(l0_hs_wff, l1_hs_wff, all_hs, I_P, P, V, msamples, nucleus):
-    l0_qxhs_par = compute_concept_qxhs(
-        l0_hs_wff, all_hs, "hbot", I_P, P, V, msamples, nucleus=nucleus
+def compute_all_pxs(l0_hs_wff, l1_hs_wff, all_hs, I_P, P, V, 
+    nsamples, msamples, nucleus):
+    
+    l0_hs_n, l1_hs_n = sample_filtered_hs(l0_hs_wff, l1_hs_wff, nsamples)
+    l0_qxhs_par = compute_qxhs(
+        l0_hs_n, all_hs, "hbot", I_P, P, V, msamples, nucleus=nucleus
     )
-    l1_qxhs_par = compute_concept_qxhs(
-        l1_hs_wff, all_hs, "hbot", I_P, P, V, msamples, nucleus=nucleus
-    )
-
-    l0_qxhs_bot = compute_concept_qxhs(
-        l0_hs_wff, all_hs, "hpar", I_P, P, V, msamples, nucleus=nucleus
-    )
-    l1_qxhs_bot = compute_concept_qxhs(
-        l1_hs_wff, all_hs, "hpar", I_P, P, V, msamples, nucleus=nucleus
+    l1_qxhs_par = compute_qxhs(
+        l1_hs_n, all_hs, "hbot", I_P, P, V, msamples, nucleus=nucleus
     )
 
-    l0_pxhs = compute_concept_pxhs(l0_hs_wff, V, nucleus=nucleus)
-    l1_pxhs = compute_concept_pxhs(l1_hs_wff, V, nucleus=nucleus)
+    l0_hs_n, l1_hs_n = sample_filtered_hs(l0_hs_wff, l1_hs_wff, nsamples)
+    l0_qxhs_bot = compute_qxhs(
+        l0_hs_n, all_hs, "hpar", I_P, P, V, msamples, nucleus=nucleus
+    )
+    l1_qxhs_bot = compute_qxhs(
+        l1_hs_n, all_hs, "hpar", I_P, P, V, msamples, nucleus=nucleus
+    )
+
+    l0_hs_n, l1_hs_n = sample_filtered_hs(l0_hs_wff, l1_hs_wff, nsamples)
+    l0_pxhs = compute_pxhs(l0_hs_n, V, nucleus=nucleus)
+    l1_pxhs = compute_pxhs(l1_hs_n, V, nucleus=nucleus)
     return l0_qxhs_par, l1_qxhs_par, l0_qxhs_bot, l1_qxhs_bot, l0_pxhs, l1_pxhs
 
 
@@ -201,6 +205,86 @@ def compute_stability(l0_qxhs_bot, l1_qxhs_bot, l0_pxhs, l1_pxhs,
         stab_mi=stab_mi
     )
 
+#%% COMPUTE CONCEPT MIs
+def compute_bin_pch(pxh, l0_tl, l1_tl):
+    pch_l0 = pxh[l0_tl].sum()
+    pch_l1 = pxh[l1_tl].sum()
+    pch_other = np.delete(pxh, np.hstack((l0_tl, l1_tl))).sum()
+    pch = renormalize(np.array([pch_l0, pch_l1, pch_other]))
+    pch_bin = renormalize(np.array([pch_l0, pch_l1]))
+    return pch_bin
+
+def compute_pchs_from_pxhs(pxhs, l0_tl, l1_tl):
+    pchs = []
+    for pxh in pxhs:
+        #pxh = inner_pxhs[0]
+        pch_bin = compute_bin_pch(pxh, l0_tl, l1_tl)
+        pchs.append(pch_bin)
+    return np.vstack(pchs)
+
+def compute_qchs(c_hs, all_hs, inner_mode, I_P, P, V, l0_tl, l1_tl, 
+    msamples, nucleus):
+    qchs = []
+    if nucleus:
+        processor = LogitsProcessorList()
+        processor.append(TopPLogitsWarper(0.9))
+    else:
+        processor=None
+    for h,_,_ in tqdm(c_hs):
+        #h,_,_ = c_hs[0]
+        inner_qxhs = compute_inner_loop_qxhs(
+            inner_mode, h, all_hs, P, I_P, V, msamples, processor=processor
+        )
+        qch = compute_pchs_from_pxhs(inner_qxhs, l0_tl, l1_tl).mean(axis=0)
+        qchs.append(qch)
+    return np.vstack(qchs)
+
+def compute_concept_mis(l0_hs_wff, l1_hs_wff, all_hs, I_P, P, 
+    V, l0_tl, l1_tl, nsamples, msamples, nucleus, p_c):
+    # H(C)
+    ent_pc = entropy(p_c)
+
+    # H(C | H_bot)
+    l0_hs_n, l1_hs_n = sample_filtered_hs(l0_hs_wff, l1_hs_wff, nsamples)
+    l0_qchs_bot = compute_qchs(
+        l0_hs_n, all_hs, "hpar", I_P, P, V, l0_tl, l1_tl, msamples, nucleus
+    )
+    l1_qchs_bot = compute_qchs(
+        l1_hs_n, all_hs, "hpar", I_P, P, V, l0_tl, l1_tl, msamples, nucleus
+    )
+    qchs_bot = np.vstack([l0_qchs_bot, l1_qchs_bot])
+    ent_qchs_bot = entropy(qchs_bot, axis=1).mean()
+
+    # H(C | H_par)
+    l0_hs_n, l1_hs_n = sample_filtered_hs(l0_hs_wff, l1_hs_wff, nsamples)
+    l0_qchs_par = compute_qchs(
+        l0_hs_n, all_hs, "hbot", I_P, P, V, l0_tl, l1_tl, msamples, nucleus
+    )
+    l1_qchs_par = compute_qchs(
+        l1_hs_n, all_hs, "hbot", I_P, P, V, l0_tl, l1_tl, msamples, nucleus
+    )
+    qchs_par = np.vstack([l0_qchs_par, l1_qchs_par])
+    ent_qchs_par = entropy(qchs_par, axis=1).mean()
+
+    # H(C | H)
+    l0_hs_n, l1_hs_n = sample_filtered_hs(l0_hs_wff, l1_hs_wff, nsamples)
+    l0_pxhs = compute_pxhs(l0_hs_n, V, nucleus)
+    l1_pxhs = compute_pxhs(l1_hs_n, V, nucleus)
+    l0_pchs = compute_pchs_from_pxhs(l0_pxhs, l0_tl, l1_tl)
+    l1_pchs = compute_pchs_from_pxhs(l1_pxhs, l0_tl, l1_tl)
+    pchs = np.vstack([l0_pchs, l1_pchs])
+    ent_pchs = entropy(pchs, axis=1).mean()
+
+    return dict(
+        ent_qchs_bot = ent_qchs_bot,
+        ent_qchs_par = ent_qchs_par,
+        ent_pchs = ent_pchs,
+        ent_pc = ent_pc,
+        mi_c_hbot = ent_pc - ent_qchs_bot,
+        mi_c_hpar = ent_pc - ent_qchs_par,
+        mi_c_h = ent_pc - ent_pchs,
+    )
+
 #%%
 def compute_res_run(model_name, concept, run, run_path, nsamples, msamples, nucleus):
     #run = load_run_output(run_path)
@@ -211,7 +295,7 @@ def compute_res_run(model_name, concept, run, run_path, nsamples, msamples, nucl
 
     p_c, l0_hs_wff, l1_hs_wff, all_hs = prep_data(model_name, nsamples)
     l0_qxhs_par, l1_qxhs_par, l0_qxhs_bot, l1_qxhs_bot, l0_pxhs, l1_pxhs = compute_all_pxs(
-        l0_hs_wff, l1_hs_wff, all_hs, I_P, P, V, msamples, nucleus
+        l0_hs_wff, l1_hs_wff, all_hs, I_P, P, V, nsamples, msamples, nucleus
     )
     containment_res = compute_containment(
         l0_qxhs_par, l1_qxhs_par, l0_pxhs, l1_pxhs, l0_tl, l1_tl, p_c
@@ -219,14 +303,17 @@ def compute_res_run(model_name, concept, run, run_path, nsamples, msamples, nucl
     stability_res = compute_stability(
         l0_qxhs_bot, l1_qxhs_bot, l0_pxhs, l1_pxhs, l0_tl, l1_tl, p_c
     )
-    return containment_res | stability_res
+    concept_mis = compute_concept_mis(l0_hs_wff, l1_hs_wff, all_hs, I_P, P, 
+        V, l0_tl, l1_tl, nsamples, msamples, nucleus, p_c)
+    return containment_res | stability_res | concept_mis
+    
 
-def compute_eval(model_name, concept, run_output_folder, k, nsamples, msamples, nucleus):
+def compute_eval(model_name, concept, run_output_folder, k, nsamples, msamples, nucleus, output_folder):
     rundir = os.path.join(OUT, f"run_output/{concept}/{model_name}/{run_output_folder}")
     if run_output_folder == "230718":
-        outdir = os.path.join(RESULTS, f"stabcont/new_{concept}/{model_name}")
+        outdir = os.path.join(RESULTS, f"{output_folder}/new_{concept}/{model_name}")
     else:
-        outdir = os.path.join(RESULTS, f"stabcont/{concept}/{model_name}")
+        outdir = os.path.join(RESULTS, f"{output_folder}/{concept}/{model_name}")
     #outdir = RESULTS
     if not os.path.exists(outdir):
         os.makedirs(outdir)
@@ -291,6 +378,16 @@ def get_args():
         help="K value for the runs"
     )
     argparser.add_argument(
+        "-nsamples",
+        type=int,
+        help="Number of samples for outer loops"
+    )
+    argparser.add_argument(
+        "-msamples",
+        type=int,
+        help="Number of samples for inner loops"
+    )
+    argparser.add_argument(
         "-nucleus",
         action="store_true",
         default=False,
@@ -306,17 +403,20 @@ if __name__=="__main__":
     concept = args.concept
     nucleus = args.nucleus
     k = args.k
+    nsamples=args.nsamples
+    msamples=args.msamples
+    output_folder = "finaleval_bigsamples"
     #model_name = "gpt2-large"
     #concept = "number"
     #nucleus = False
     #k=1
-    nsamples=50
-    msamples=10
     #nsamples=3
     #msamples=3
+    
 
     for folder in ["230627", "230627_fix", "230628", "230718"]:
         compute_eval(
-            model_name, concept, folder, k, nsamples, msamples, nucleus
+            model_name, concept, folder, k, nsamples, msamples, nucleus,
+            output_folder
         )
     logging.info("Finished exporting all results.")

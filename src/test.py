@@ -65,14 +65,7 @@ V, l0_tl, l1_tl = load_model_eval(model_name, concept)
 p_c, l0_hs_wff, l1_hs_wff, all_hs = prep_data(model_name, nsamples)
 
 #%%
-from test_contain import compute_concept_qxhs
-l0_qxhs_bot = compute_concept_qxhs(
-    l0_hs_wff, all_hs, "hpar", I_P, P, V, msamples, nucleus=nucleus
-)
-l1_qxhs_bot = compute_concept_qxhs(
-    l1_hs_wff, all_hs, "hpar", I_P, P, V, msamples, nucleus=nucleus
-)
+from test_contain import compute_inner_loop_qxhs, compute_pxhs
+from evals.kl_eval import renormalize
+from evals.run_eval import filter_hs_w_ys, sample_filtered_hs
 
-
-# %%
-folderpath = os.path.join(RESULTS, "stabcont/gender/gpt2-base-french")

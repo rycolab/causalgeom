@@ -14,6 +14,8 @@ from tqdm import tqdm, trange
 import pickle
 from scipy.special import softmax
 from random import sample, shuffle
+from transformers import TopPLogitsWarper, LogitsProcessorList
+import torch
 
 #sys.path.append('..')
 sys.path.append('./src/')
@@ -65,13 +67,12 @@ def get_hs_proj(hs, P):
     #hs_proj_mean = np.mean(hs_proj, axis=0)
     return hs_proj#, hs_proj_mean
 
-def compute_avg_int(h_erase, hs_proj, nsamples, V):
+def compute_avg_int(h_erase, hs_proj, nsamples, V, processor=None):
     all_probs = []
     idx = np.random.choice(hs_proj.shape[0], nsamples, replace=False)
     for h_proj in hs_proj[idx]:
         #h_sg = hs_proj[0]
-        logits = V @ (h_erase + h_proj)
-        probs = softmax(logits)
+        probs = compute_pxh((h_erase + h_proj), V, processor)
         all_probs.append(probs)
     return np.mean(np.vstack(all_probs), axis=0)
  
@@ -113,20 +114,34 @@ def score_post_int(base_distrib, I_P_distrib, l0_avgh_probs, l1_avgh_probs,
         avgp_inj1_l1_highest_concept = highest_concept(l1_avgp_probs, l1id, l0_tl, l1_tl),
     )
 
+def compute_pxh(h, V, processor=None):
+    logits = V @ h
+    if processor is not None:
+        logits = torch.FloatTensor(logits).unsqueeze(0)
+        tokens = torch.LongTensor([0]).unsqueeze(0)
+        logits = processor(tokens, logits).squeeze(0).numpy()
+    return softmax(logits)
+
+
 def intervene_test_set(test_hs, case, l0_dev_hs, l1_dev_hs, V, l0_tl, l1_tl, 
-    I_P, nsamples):
+    I_P, nsamples, nucleus=False):
     l0_dev_hs_mean = np.mean(l0_dev_hs, axis=0)    
-    l1_dev_hs_mean = np.mean(l1_dev_hs, axis=0)    
+    l1_dev_hs_mean = np.mean(l1_dev_hs, axis=0)
+    if nucleus:
+        processor = LogitsProcessorList()
+        processor.append(TopPLogitsWarper(0.9))
+    else:
+        processor=None
     scores = []
     for h, faid, foid in tqdm(test_hs):
         #h, faid, foid = test_hs[0]
-        base_distrib = softmax(V @ h)
+        base_distrib = compute_pxh(h, V, processor)
         h_erase = h.T @ I_P
-        I_P_distrib = softmax(V @ h_erase)
-        l0_avgh_probs = softmax(V @ (h_erase + l0_dev_hs_mean))
-        l1_avgh_probs = softmax(V @ (h_erase + l1_dev_hs_mean))
-        l0_avgp_probs = compute_avg_int(h_erase, l0_dev_hs, nsamples, V)
-        l1_avgp_probs = compute_avg_int(h_erase, l1_dev_hs, nsamples, V)
+        I_P_distrib = compute_pxh(h_erase, V, processor)
+        l0_avgh_probs = compute_pxh((h_erase + l0_dev_hs_mean), V, processor)
+        l1_avgh_probs = compute_pxh((h_erase + l1_dev_hs_mean), V, processor)
+        l0_avgp_probs = compute_avg_int(h_erase, l0_dev_hs, nsamples, V, processor)
+        l1_avgp_probs = compute_avg_int(h_erase, l1_dev_hs, nsamples, V, processor)
         score = score_post_int(
             base_distrib, I_P_distrib, l0_avgh_probs, l1_avgh_probs, 
             l0_avgp_probs, l1_avgp_probs, faid, foid, case, l0_tl, l1_tl
@@ -136,7 +151,7 @@ def intervene_test_set(test_hs, case, l0_dev_hs, l1_dev_hs, V, l0_tl, l1_tl,
 
 #%%
 def compute_int_eval_run(model_name, concept, run, run_path, 
-    nsamples_dev=20, nsamples_test=None):
+    nsamples_dev=20, nsamples_test=None, nucleus=False):
     P, I_P = load_run_Ps(run_path)
     V, l0_tl, l1_tl = load_model_eval(model_name, concept)
 
@@ -155,11 +170,11 @@ def compute_int_eval_run(model_name, concept, run, run_path,
 
     scores_l0 = intervene_test_set(
         test_l0_hs, 0, l0_train_Phs, l1_train_Phs, V, 
-        l0_tl, l1_tl, I_P, nsamples_dev
+        l0_tl, l1_tl, I_P, nsamples_dev, nucleus=nucleus
     )
     scores_l1 = intervene_test_set(
         test_l1_hs, 1, l0_train_Phs, l1_train_Phs, V, 
-        l0_tl, l1_tl, I_P, nsamples_dev
+        l0_tl, l1_tl, I_P, nsamples_dev, nucleus=nucleus
     )
 
     scores = scores_l0 + scores_l1
@@ -174,8 +189,8 @@ def compute_int_eval_run(model_name, concept, run, run_path,
     return meanscores
 
 #%%
-def eval_handler_pair(model_name, concept, run_output_folder, 
-    nsamples_dev=20, nsamples_test=None):
+def compute_int_eval_folder(model_name, concept, run_output_folder, 
+    nsamples_dev=20, nsamples_test=None, nucleus=False):
     rundir = os.path.join(OUT, f"run_output/{concept}/{model_name}/{run_output_folder}")
     outdir = os.path.join(RESULTS, "int")
     #outdir = RESULTS
@@ -186,7 +201,7 @@ def eval_handler_pair(model_name, concept, run_output_folder,
 
     for run_file in run_files:
         run_path = os.path.join(rundir, run_file)
-        outpath = os.path.join(outdir, f"{concept}_{model_name}_intacc_{run_file[:-4]}.csv")
+        outpath = os.path.join(outdir, f"{concept}_{model_name}_{nucleus}_intacc_{run_file[:-4]}.csv")
 
         run = load_run_output(run_path)
         if run["config"]["k"] != 1:
@@ -197,7 +212,8 @@ def eval_handler_pair(model_name, concept, run_output_folder,
         else:
             int_accs_df = compute_int_eval_run(
                 model_name, concept, run, run_path, 
-                nsamples_dev=nsamples_dev, nsamples_test=nsamples_test
+                nsamples_dev=nsamples_dev, nsamples_test=nsamples_test, 
+                nucleus=nucleus
             )
             int_accs_df.to_csv(outpath)
             #with open(outpath, "wb") as f:
@@ -206,12 +222,6 @@ def eval_handler_pair(model_name, concept, run_output_folder,
 
     logging.info(f"Finished computing evals for pair {model_name}, {concept}, folder {run_output_folder}")
 
-
-def compute_int_eval_pairs(pairs, nsamples_dev=20, nsamples_test=None):
-    for model_name, concept, run_output_folder in pairs:
-        eval_handler_pair(model_name, concept, run_output_folder, 
-            nsamples_dev=nsamples_dev, nsamples_test=nsamples_test)
-    logging.info("Finished computing all pairs of evals")
 
 #%%#################
 # Main             #
@@ -236,20 +246,37 @@ def get_args():
         choices=["230627", "230627_fix", "230628"],
         help="Run export folder to load"
     )
+    argparser.add_argument(
+        "-nucleus",
+        action="store_true",
+        default=False,
+        help="Whether to use nucleus sampling",
+    )
     return argparser.parse_args()
 
 if __name__=="__main__":
     args = get_args()
     logging.info(args)
 
-    pairs = [(args.model, args.concept, args.folder)]
-    #pairs = [("gpt2-large", "number", "230628")]
-    dev_nsamples = 10
-    test_nsamples = 50
+    #TODO: train on dev and test on test
+    model_name = args.model
+    concept = args.concept
+    nucleus = args.nucleus
+    nsamples_dev = 20
+    nsamples_test = 50
+    #model_name = "gpt2-large"
+    #concept = "number"
+    #nucleus = True
+    #nsamples_dev = 3
+    #nsamples_test = 3
 
     logging.info(
         f"Computing run ints from raw run output for"
-        f"{args.model} from {args.folder}"
+        f"{args.model} with nucleus {nucleus}"
     )    
 
-    compute_int_eval_pairs(pairs, nsamples_dev=dev_nsamples, nsamples_test=test_nsamples)
+    for folder in ["230718", "230627", "230627_fix", "230628"]:
+        compute_int_eval_folder(
+            model_name, concept, folder, nsamples_dev, nsamples_test, nucleus
+        )
+    logging.info("Finished exporting all results.")

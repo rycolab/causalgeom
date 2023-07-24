@@ -137,7 +137,6 @@ if nsamples is not None:
 l0_hs, l0_P_hs, _, _ = compute_hs_logits(l0_hs_wff, P, V)
 l1_hs, l1_P_hs, _, _ = compute_hs_logits(l1_hs_wff, P, V)
 
-
 l0_rand_var, l1_rand_var, l0_rand_normvar, l1_rand_normvar = compute_random_hs_logits(
     P.shape[0], 3, l0_hs_wff, l1_hs_wff
 )
@@ -156,6 +155,22 @@ resdict = {
     "l1_l2var_P_hs": compute_norm_variance(l1_P_hs),
     "l1_l2var_randP_hs": l1_rand_normvar
 }
+
+#%%
+h = l0_hs_wff[0][0]
+#%%
+# projection onto concept subspace k=1
+rank=1
+D,U = np.linalg.eigh(P)
+U = U.T
+W = U[-rank:]
+
+Wh = (W @ h).item()
+
+v = np.random.normal(size=P.shape[0])
+nv = v / np.linalg.norm(v)
+
+nvh = (nv @ h).item()
 
 #%%
 print("Singular hs:")
