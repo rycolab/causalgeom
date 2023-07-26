@@ -456,8 +456,8 @@ def compute_all_faith_metrics(base_distribs, P_distribs, I_P_distribs, c_index):
 
     #P_fth_pct_chg = compute_faith_pct_chg(base_distribs, P_distribs, prefix="P_")
     #I_P_fth_pct_chg = compute_faith_pct_chg(base_distribs, I_P_distribs, prefix="I_P_")
-    
-    return fth_mis #| P_fth_kls | P_fth_tvds | P_fth_pct_chg | I_P_fth_kls | I_P_fth_tvds | I_P_fth_pct_chg
+    #| P_fth_kls | P_fth_tvds | P_fth_pct_chg | I_P_fth_kls | I_P_fth_tvds | I_P_fth_pct_chg
+    return fth_mis 
 
 """    
 def compute_all_erasure_kls(base_distribs, P_distribs, I_P_distribs, pair_probs):
@@ -496,7 +496,7 @@ def compute_all_acc_flags(base_distribs, P_distribs, I_P_distribs,
 def compute_eval_one_sample(h, P, I_P, V, l0_tl, l1_tl, c_index, 
     fact_id, foil_id, faith=True, mi=True, acc=True, X_pca=None, nucproc=None):
     base_distribs, P_distribs, I_P_distribs = get_all_distribs(
-        h, P, I_P, V, l0_tl, l1_tl, nucproc
+        h, P, I_P, V, l0_tl, l1_tl, None
     )
 
     faith_metrics, er_kl_metrics, er_mis_metrics = {},{},{}
@@ -587,11 +587,14 @@ def compute_eval_filtered_hs(model_name, concept, P, I_P, l0_hs_wff, l1_hs_wff,
     p_x=None, nucleus=False):
     V, l0_tl, l1_tl = load_model_eval(model_name, concept)
     
-    l0_eval = compute_eval(l0_hs_wff, P, I_P, V, l0_tl, l1_tl, 0, nucleus)
-    l1_eval = compute_eval(l1_hs_wff, P, I_P, V, l0_tl, l1_tl, 1, nucleus)
+    l0_eval = compute_eval(l0_hs_wff, P, I_P, V, l0_tl, l1_tl, 0)
+    l1_eval = compute_eval(l1_hs_wff, P, I_P, V, l0_tl, l1_tl, 1)
     full_eval = pd.concat((l0_eval, l1_eval),axis=0)
     full_eval_means = full_eval.mean()
 
+    p_c = compute_p_c_bin(l0_hs_wff, l1_hs_wff)
+    full_eval_means["p_c_l0"] = p_c[0]
+    full_eval_means["p_c_l1"] = p_c[1]
     h_c = compute_h_c_bin(l0_hs_wff, l1_hs_wff)
     compute_mi(h_c, full_eval_means)
     if p_x is not None:

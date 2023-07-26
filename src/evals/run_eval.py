@@ -267,25 +267,24 @@ def compute_kl_baseline(hs, V, l0_tl, l1_tl, nsamples=200):
     return pd.DataFrame(kls).describe().loc["mean", :]
 
 
-def compute_run_eval(model_name, concept, run_name, run_path, nsamples=200):
+def compute_run_eval(model_name, concept, run, run_path, nsamples=200):
     #assert model_name in GPT2_LIST, "Doesn't work for masked anymore"
-    run = load_run_output(run_path)
     P, I_P = load_run_Ps(run_path)
 
     # test set version of the eval
     V, l0_tl, l1_tl = load_model_eval(model_name, concept)
-    l0_hs_wff = filter_hs_w_ys(
-        run["X_test"], run["facts_test"], run["foils_test"], run["y_test"], 0
-    )
-    l1_hs_wff = filter_hs_w_ys(
-        run["X_test"], run["facts_test"], run["foils_test"], run["y_test"], 1
-    )
-    if nsamples is not None:
-        l0_hs_wff, l1_hs_wff = sample_filtered_hs(l0_hs_wff, l1_hs_wff, nsamples)
+    #l0_hs_wff = filter_hs_w_ys(
+    #    run["X_test"], run["facts_test"], run["foils_test"], run["y_test"], 0
+    #)
+    #l1_hs_wff = filter_hs_w_ys(
+    #    run["X_test"], run["facts_test"], run["foils_test"], run["y_test"], 1
+    #)
+    #if nsamples is not None:
+    #    l0_hs_wff, l1_hs_wff = sample_filtered_hs(l0_hs_wff, l1_hs_wff, nsamples)
 
-    test_eval_samples, test_eval = compute_eval_filtered_hs(
-        model_name, concept, P, I_P, l0_hs_wff, l1_hs_wff
-    )
+    #test_eval_samples, test_eval = compute_eval_filtered_hs(
+    #    model_name, concept, P, I_P, l0_hs_wff, l1_hs_wff
+    #)
     #test_kl_baseline = compute_kl_baseline(
     #    run["X_test"], V, l0_tl, l1_tl, nsamples=nsamples
     #)
@@ -293,7 +292,6 @@ def compute_run_eval(model_name, concept, run_name, run_path, nsamples=200):
     # generated hs version of the eval
     if model_name in GPT2_LIST:
         gen_p_x = load_p_x(model_name, False)
-        gen_p_x = None
         gen_l0_hs_wff, gen_l1_hs_wff = load_filtered_hs_wff(
             model_name, nsamples=nsamples
         )
@@ -310,8 +308,11 @@ def compute_run_eval(model_name, concept, run_name, run_path, nsamples=200):
             model_name, nucleus=True, nsamples=nsamples
         )
         nucgen_eval_samples, nucgen_eval = compute_eval_filtered_hs(
-            model_name, concept, P, I_P, nucgen_l0_hs_wff, nucgen_l1_hs_wff, nuc_p_x
+            model_name, concept, P, I_P, nucgen_l0_hs_wff, 
+            nucgen_l1_hs_wff, nuc_p_x
         )
+        #nucgen_eval = None
+        #nucgen_eval_samples = None
         #nucgen_Xs = np.vstack([x[0] for x in nucgen_l0_hs_wff + nucgen_l1_hs_wff])
         #nucgen_kl_baseline = compute_kl_baseline(
         #    nucgen_Xs, V, l0_tl, l1_tl, nsamples=nsamples
@@ -339,8 +340,8 @@ def compute_run_eval(model_name, concept, run_name, run_path, nsamples=200):
         concept=concept,
         k=run["config"]["k"],
         maj_acc_test=run["maj_acc_test"],
-        test_eval=test_eval,
-        test_eval_samples=test_eval_samples,
+        #test_eval=test_eval,
+        #test_eval_samples=test_eval_samples,
         gen_eval=gen_eval,
         gen_eval_samples=gen_eval_samples,
         nucgen_eval=nucgen_eval,
@@ -354,24 +355,28 @@ def compute_run_eval(model_name, concept, run_name, run_path, nsamples=200):
     return output
 
 #%% LOADERS AND PARAMS    
-def compute_eval_pair(model_name, concept, run_output_folder, nsamples):
+def compute_eval_corr(model_name, concept, k, run_output_folder, nsamples):
     rundir = os.path.join(OUT, f"run_output/{concept}/{model_name}/{run_output_folder}")
     if run_output_folder == "230718":
-        outdir = os.path.join(RESULTS, f"new_{concept}/{model_name}")
+        outdir = os.path.join(RESULTS, f"corr_eval/new_{concept}/{model_name}")
     else:
-        outdir = os.path.join(RESULTS, f"{concept}/{model_name}")
+        outdir = os.path.join(RESULTS, f"corr_eval/{concept}/{model_name}")
     #outdir = RESULTS
     if not os.path.exists(outdir):
         os.makedirs(outdir)
 
-    runs = [x for x in os.listdir(rundir) if x.endswith(".pkl")]
+    run_files = [x for x in os.listdir(rundir) if x.endswith(".pkl")]
+    random.shuffle(run_files)
 
-    for run in runs:
-        run_path = os.path.join(rundir, run)
-        outpath = os.path.join(outdir, f"eval_{run}")
+    for run_file in run_files:
+        run_path = os.path.join(rundir, run_file)
+        outpath = os.path.join(outdir, f"eval_{run_file}")
 
-        if os.path.exists(outpath):
-            logging.info(f"Run already evaluated: {run}")
+        run = load_run_output(run_path)
+        if run["config"]["k"] != k:
+            continue
+        elif os.path.exists(outpath):
+            logging.info(f"Run already evaluated: {run_path}")
             continue
         else:
             run_eval_output = compute_run_eval(
@@ -379,14 +384,10 @@ def compute_eval_pair(model_name, concept, run_output_folder, nsamples):
             )
             with open(outpath, "wb") as f:
                 pickle.dump(run_eval_output, f, protocol=pickle.HIGHEST_PROTOCOL)
-            logging.info(f"Run eval exported: {run}")
+            logging.info(f"Run eval exported: {outpath}")
 
     logging.info(f"Finished computing evals for pair {model_name}, {concept}, folder {run_output_folder}")
 
-def compute_evals(pairs, nsamples):
-    for model_name, concept, run_output_folder in pairs:
-        compute_eval_pair(model_name, concept, run_output_folder, nsamples)
-    logging.info("Finished computing all pairs of evals")
 
 #%%#################
 # Main             #
@@ -406,26 +407,29 @@ def get_args():
         help="Models to create embedding files for"
     )
     argparser.add_argument(
-        "-folder",
-        type=str,
-        choices=["230627", "230627_fix", "230628", "230718"],
-        help="Run export folder to load"
+        "-k",
+        type=int,
+        help="K value for the runs"
     )
     return argparser.parse_args()
 
 if __name__=="__main__":
     args = get_args()
     logging.info(args)
-
-    pairs = [(args.model, args.concept, args.folder)]
-    #pairs = [("gpt2-large", "number", "230628")]
+ 
+    model_name = args.model
+    concept = args.concept
+    k = args.k
     nsamples = 200
-    #nsamples = 10
+    #model_name = "gpt2-large"
+    #concept = "number"
+    #k=1
+    #nsamples=3
+    #output_folder = "finaleval_bigsamples_nuc"
+    
 
-    logging.info(
-        f"Computing run eval from raw run output for"
-        f"{args.model} from {args.folder}"
-    )
-
-    compute_evals(pairs, nsamples)
+    for folder in ["230718", "230628", "230627", "230627_fix"]:
+        compute_eval_corr(
+            model_name, concept, k, folder, nsamples
+        )
     logging.info("Finished exporting all results.")

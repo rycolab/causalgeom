@@ -177,22 +177,22 @@ def compute_int_eval_run(model_name, concept, run, run_path,
         l0_tl, l1_tl, I_P, nsamples_dev, nucleus=nucleus
     )
 
-    scores = scores_l0 + scores_l1
-    meanscores = pd.DataFrame(scores).mean()
-    meanscores["model"] = model_name
-    meanscores["concept"] = concept
-    meanscores["run"] = run_path
-    meanscores["dev_total_samples"] = len(train_l0_hs) + len(train_l1_hs)
-    meanscores["dev_nsamples"] = nsamples_dev
-    meanscores["test_total_samples"] = len(test_l0_hs) + len(test_l1_hs)
-    meanscores["test_nsamples"] = nsamples_test
-    return meanscores
-
+    scores = pd.DataFrame(scores_l0 + scores_l1)
+    scores["model"] = model_name
+    scores["concept"] = concept
+    scores["nucleus"] = nucleus
+    scores["run"] = run_path
+    scores["dev_total_samples"] = len(train_l0_hs) + len(train_l1_hs)
+    scores["dev_nsamples"] = nsamples_dev
+    scores["test_total_samples"] = len(test_l0_hs) + len(test_l1_hs)
+    scores["test_nsamples"] = nsamples_test
+    return scores
+    
 #%%
 def compute_int_eval_folder(model_name, concept, run_output_folder, 
     nsamples_dev=20, nsamples_test=None, nucleus=False):
     rundir = os.path.join(OUT, f"run_output/{concept}/{model_name}/{run_output_folder}")
-    outdir = os.path.join(RESULTS, "int")
+    outdir = os.path.join(RESULTS, "int_samples")
     #outdir = RESULTS
     if not os.path.exists(outdir):
         os.makedirs(outdir)
@@ -218,7 +218,7 @@ def compute_int_eval_folder(model_name, concept, run_output_folder,
             int_accs_df.to_csv(outpath)
             #with open(outpath, "wb") as f:
             #    pickle.dump(run_eval_output, f, protocol=pickle.HIGHEST_PROTOCOL)
-            logging.info(f"Run eval exported: {run_path}")
+            logging.info(f"Run eval exported: {outpath}")
 
     logging.info(f"Finished computing evals for pair {model_name}, {concept}, folder {run_output_folder}")
 
@@ -239,12 +239,6 @@ def get_args():
         type=str,
         choices=BERT_LIST + GPT2_LIST,
         help="Models to create embedding files for"
-    )
-    argparser.add_argument(
-        "-folder",
-        type=str,
-        choices=["230627", "230627_fix", "230628"],
-        help="Run export folder to load"
     )
     argparser.add_argument(
         "-nucleus",

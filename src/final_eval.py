@@ -112,14 +112,15 @@ def compute_ent_of_avg(pxs, case, l0_tl, l1_tl):
     return entropy(p_x_c)
 
 #%%
-def prep_data(model_name, nsamples):
-    l0_hs_wff, l1_hs_wff, other_hs = load_filtered_hs_wff(model_name, load_other=True)
+def prep_data(model_name, nucleus):
+    l0_hs_wff, l1_hs_wff, other_hs = load_filtered_hs_wff(
+        model_name, load_other=True, nucleus=nucleus
+    )
     all_concept_hs = [x for x,_,_ in l0_hs_wff + l1_hs_wff]
     other_hs_no_x = [x for x,_ in other_hs]
     all_hs = np.vstack(all_concept_hs + other_hs_no_x)
 
     p_c = compute_p_c_bin(l0_hs_wff, l1_hs_wff)
-    #l0_hs_wff, l1_hs_wff = sample_filtered_hs(l0_hs_wff, l1_hs_wff, nsamples)
     return p_c, l0_hs_wff, l1_hs_wff, all_hs
 
 
@@ -240,7 +241,7 @@ def compute_qchs(c_hs, all_hs, inner_mode, I_P, P, V, l0_tl, l1_tl,
     return np.vstack(qchs)
 
 def compute_concept_mis(l0_hs_wff, l1_hs_wff, all_hs, I_P, P, 
-    V, l0_tl, l1_tl, nsamples, msamples, nucleus, p_c):
+    V, l0_tl, l1_tl, nsamples, msamples, p_c, nucleus):
     # H(C)
     ent_pc = entropy(p_c)
 
@@ -293,9 +294,9 @@ def compute_res_run(model_name, concept, run, run_path, nsamples, msamples, nucl
     # test set version of the eval
     V, l0_tl, l1_tl = load_model_eval(model_name, concept)
 
-    p_c, l0_hs_wff, l1_hs_wff, all_hs = prep_data(model_name, nsamples)
+    p_c, l0_hs_wff, l1_hs_wff, all_hs = prep_data(model_name, nucleus)
     l0_qxhs_par, l1_qxhs_par, l0_qxhs_bot, l1_qxhs_bot, l0_pxhs, l1_pxhs = compute_all_pxs(
-        l0_hs_wff, l1_hs_wff, all_hs, I_P, P, V, nsamples, msamples, nucleus
+        l0_hs_wff, l1_hs_wff, all_hs, I_P, P, V, nsamples, msamples, nucleus=False
     )
     containment_res = compute_containment(
         l0_qxhs_par, l1_qxhs_par, l0_pxhs, l1_pxhs, l0_tl, l1_tl, p_c
@@ -304,7 +305,7 @@ def compute_res_run(model_name, concept, run, run_path, nsamples, msamples, nucl
         l0_qxhs_bot, l1_qxhs_bot, l0_pxhs, l1_pxhs, l0_tl, l1_tl, p_c
     )
     concept_mis = compute_concept_mis(l0_hs_wff, l1_hs_wff, all_hs, I_P, P, 
-        V, l0_tl, l1_tl, nsamples, msamples, nucleus, p_c)
+        V, l0_tl, l1_tl, nsamples, msamples, p_c, nucleus=False)
     return containment_res | stability_res | concept_mis
     
 
@@ -319,6 +320,7 @@ def compute_eval(model_name, concept, run_output_folder, k, nsamples, msamples, 
         os.makedirs(outdir)
 
     run_files = [x for x in os.listdir(rundir) if x.endswith(".pkl")]
+    random.shuffle(run_files)
 
     for run_file in run_files:
         run_path = os.path.join(rundir, run_file)
@@ -405,13 +407,14 @@ if __name__=="__main__":
     k = args.k
     nsamples=args.nsamples
     msamples=args.msamples
-    output_folder = "finaleval_bigsamples"
+    output_folder = "clean_finaleval_bigsamples"
     #model_name = "gpt2-large"
     #concept = "number"
-    #nucleus = False
+    #nucleus = True
     #k=1
     #nsamples=3
     #msamples=3
+    #output_folder = "finaleval_bigsamples_nuc"
     
 
     for folder in ["230627", "230627_fix", "230628", "230718"]:

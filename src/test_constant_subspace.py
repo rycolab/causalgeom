@@ -133,7 +133,7 @@ l1_hs_wff = filter_hs_w_ys(
 if nsamples is not None:
     l0_hs_wff, l1_hs_wff = sample_filtered_hs(l0_hs_wff, l1_hs_wff, nsamples)
 
-
+#%%
 l0_hs, l0_P_hs, _, _ = compute_hs_logits(l0_hs_wff, P, V)
 l1_hs, l1_P_hs, _, _ = compute_hs_logits(l1_hs_wff, P, V)
 
@@ -159,18 +159,21 @@ resdict = {
 #%%
 h = l0_hs_wff[0][0]
 #%%
-# projection onto concept subspace k=1
 rank=1
-D,U = np.linalg.eigh(P)
-U = U.T
-W = U[-rank:]
+Ph_vals = []
+baseline_vals = []
+for h,_,_ in l0_hs_wff:
+    D,U = np.linalg.eigh(P)
+    U = U.T
+    W = U[-rank:]
 
-Wh = (W @ h).item()
+    Wh = (W @ h).item()
 
-v = np.random.normal(size=P.shape[0])
-nv = v / np.linalg.norm(v)
+    v = np.random.normal(size=P.shape[0])
+    nv = v / np.linalg.norm(v)
 
-nvh = (nv @ h).item()
+    nvh = (nv @ h).item()
+    baseline_vals.append(nvh)
 
 #%%
 print("Singular hs:")

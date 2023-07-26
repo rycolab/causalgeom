@@ -12,24 +12,14 @@ import numpy as np
 from tqdm import tqdm
 import pandas as pd
 import pickle
-import torch
+#import torch
 import random 
 
 #sys.path.append('..')
 #sys.path.append('./src/')
 
 from paths import DATASETS, OUT, RESULTS, MODELS
-from utils.lm_loaders import get_model, get_tokenizer, get_V, GPT2_LIST, BERT_LIST
-from utils.cuda_loaders import get_device
-from evals.kl_eval import load_run_output
-from data.embed_wordlists.embedder import load_concept_token_lists
-from utils.dataset_loaders import load_processed_data
-#from evals.usage_eval import diag_eval, usage_eval
 
-from utils.dataset_loaders import load_processed_data
-from paths import OUT
-from evals.kl_eval import compute_kl, renormalize, get_distribs, load_model_eval
-from tqdm import trange
 import matplotlib.pyplot as plt 
 import seaborn as sns
 
@@ -42,19 +32,17 @@ sns.set_style("darkgrid", {"grid.color": ".6", "grid.linestyle": ":"})
 #%%#####################
 # Creating Nice Graphs #
 ########################
-base_res = pd.read_csv(os.path.join(RESULTS,"res.csv"))
-base_res.drop("maj_acc_test", axis=1, inplace=True)
-p_x_res = pd.read_csv(os.path.join(RESULTS,"old_p_x_res.csv"))
-p_x_res.columns = ['metric', 'value', 'model', 'concept', 'k']
-res = pd.concat((base_res, p_x_res),axis=0)
-res.to_csv(os.path.join(RESULTS, "full_res.csv"))
+oldres = pd.read_csv(os.path.join(RESULTS,"finaleval_bigsamples_res.csv"), index_col=0)
+oldres = oldres.drop(oldres[oldres["nucleus"] == True].index, axis=0, inplace=False)
 
-#%%
-res["model_concept"] = res["concept"] + "_" + res["model"]
-res.drop(["model", "concept"], axis=1, inplace=True)
-#mi = pd.read_csv("/cluster/work/cotterell/cguerner/usagebasedprobing/results/er.csv")
-#fth = pd.read_csv("/cluster/work/cotterell/cguerner/usagebasedprobing/results/fth.csv")
+nucres = pd.read_csv(
+    os.path.join(RESULTS,"finaleval_bigsamples_nucfix_res.csv"), index_col=0)
 
+res = pd.concat([oldres, nucres], axis=0)
+
+res["model_concept"] = res["concept"] + "_" + res["model_name"]
+res.drop(["model_name", "concept"], axis=1, inplace=True)
+res.to_csv(os.path.join(RESULTS, "finaleval_plotdf.csv"))
 #%%
 #badpoints = res[(res["model_concept"] == "number_gpt2-large") & (res["k"] > 1100)]
 #badpoints.drop(
@@ -65,122 +53,321 @@ res.drop(["model", "concept"], axis=1, inplace=True)
 #    acc["model"].isin(["gpt2-large", "gpt2-base-french"]),
 #    acc["gen_accuracy"], acc["test_accuracy"])
 #accgen = acc[acc["concept"] == "gender"]
-accplot = res[res["metric"].isin([
-    "test_P_acc_correct", "test_I_P_acc_correct", "test_I_P_acc_correct_l0", "test_I_P_acc_correct_l1",
-    "gen_P_acc_correct", "gen_I_P_acc_correct", "gen_I_P_acc_correct_l0", "gen_I_P_acc_correct_l1",
-    "nucgen_P_acc_correct", "nucgen_I_P_acc_correct", "nucgen_I_P_acc_correct_l0", "nucgen_I_P_acc_correct_l1",
-])]
+#accplot = res[res["metric"].isin([
+#    "test_P_acc_correct", "test_I_P_acc_correct", "test_I_P_acc_correct_l0", "test_I_P_acc_correct_l1",
+#    "gen_P_acc_correct", "gen_I_P_acc_correct", "gen_I_P_acc_correct_l0", "gen_I_P_acc_correct_l1",
+#    "nucgen_P_acc_correct", "nucgen_I_P_acc_correct", "nucgen_I_P_acc_correct_l0", "nucgen_I_P_acc_correct_l1",
+#])]
 
-acc_renames = {
-    "test_P_acc_correct": "I-P Accuracy",
-    "test_I_P_acc_correct": "P Accuracy",
-    "test_P_acc_correct_l0": "I-P Accuracy (L0)",
-    "test_I_P_acc_correct_l0": "P Accuracy (L0)",
-    "test_P_acc_correct_l1": "I-P Accuracy (L1)",
-    "test_I_P_acc_correct_l1": "P Accuracy (L1)",
-    "gen_P_acc_correct": "I-P Accuracy",
-    "gen_I_P_acc_correct": "P Accuracy",
-    "gen_P_acc_correct_l0": "I-P Accuracy (L0)",
-    "gen_I_P_acc_correct_l0": "P Accuracy (L0)",
-    "gen_P_acc_correct_l1": "I-P Accuracy (L1)",
-    "gen_I_P_acc_correct_l1": "P Accuracy (L1)",
-    "nucgen_P_acc_correct": "I-P Accuracy",
-    "nucgen_I_P_acc_correct": "P Accuracy",
-    "nucgen_P_acc_correct_l0": "I-P Accuracy (L0)",
-    "nucgen_I_P_acc_correct_l0": "P Accuracy (L0)",
-    "nucgen_P_acc_correct_l1": "I-P Accuracy (L1)",
-    "nucgen_I_P_acc_correct_l1": "P Accuracy (L1)",
-}
-accplot["clean_metric"] = [acc_renames[x] for x in accplot["metric"]]
+#acc_renames = {
+#    "test_P_acc_correct": "I-P Accuracy",
+#    "test_I_P_acc_correct": "P Accuracy",
+#    "test_P_acc_correct_l0": "I-P Accuracy (L0)",
+#    "test_I_P_acc_correct_l0": "P Accuracy (L0)",
+#    "test_P_acc_correct_l1": "I-P Accuracy (L1)",
+#    "test_I_P_acc_correct_l1": "P Accuracy (L1)",
+#    "gen_P_acc_correct": "I-P Accuracy",
+#    "gen_I_P_acc_correct": "P Accuracy",
+#    "gen_P_acc_correct_l0": "I-P Accuracy (L0)",
+#    "gen_I_P_acc_correct_l0": "P Accuracy (L0)",
+#    "gen_P_acc_correct_l1": "I-P Accuracy (L1)",
+#    "gen_I_P_acc_correct_l1": "P Accuracy (L1)",
+#    "nucgen_P_acc_correct": "I-P Accuracy",
+#    "nucgen_I_P_acc_correct": "P Accuracy",
+#    "nucgen_P_acc_correct_l0": "I-P Accuracy (L0)",
+#    "nucgen_I_P_acc_correct_l0": "P Accuracy (L0)",
+#    "nucgen_P_acc_correct_l1": "I-P Accuracy (L1)",
+#    "nucgen_I_P_acc_correct_l1": "P Accuracy (L1)",
+#}
+#accplot["clean_metric"] = [acc_renames[x] for x in accplot["metric"]]
 
 #%%
-miplot_basemi_prep = res[res["metric"].isin(['test_base_mi', 'gen_base_mi', 'nucgen_base_mi'])]
-miplot_basemi = miplot_basemi_prep.groupby(["model_concept", "metric"])["value"].mean().reset_index()
+miplot_totalmi = res.groupby(["model_concept", "nucleus"])["mi_c_h"].mean().reset_index()
+
+#miplot_basemi = miplot_basemi_prep.groupby(["model_concept", "metric"])["value"].mean().reset_index()
 #miplot_basemi.groupby(["model_concept", "metric"])["value"].std()
-miplot_basemi = pd.pivot(miplot_basemi, index="model_concept", columns="metric", values="value")
+#miplot_basemi = pd.pivot(miplot_basemi, index="model_concept", columns="metric", values="value")
 #%%
-miplot = res[res["metric"].isin(
-    [#'test_P_fth_mi_l0', 'test_P_fth_mi_l1', 
-    'test_I_P_fth_mi_l0', 'test_I_P_fth_mi_l1',    
-    'test_I_P_mi', 'test_reconstructed', 'test_encapsulation', 
-    "test_perc_I_P_mi", 'test_perc_reconstructed', "test_perc_encapsulation",
-    #'gen_P_fth_mi_l0', 'gen_P_fth_mi_l1', 
-    'gen_mi_x_Ph_l0', 'gen_mi_x_Ph_l1', 
-    #'gen_mi_x_I_Ph_l0', 'gen_mi_x_I_Ph_l1',
-    'gen_I_P_fth_mi_l0', 'gen_I_P_fth_mi_l1', 
-    'gen_I_P_mi', 'gen_reconstructed', 'gen_encapsulation', 
-    "gen_perc_I_P_mi", 'gen_perc_reconstructed', "gen_perc_encapsulation",
-    #'gen_P_fth_mi_l0', 'gen_P_fth_mi_l1', 
-    'nucgen_I_P_fth_mi_l0', 'nucgen_I_P_fth_mi_l1', 
-    'nucgen_mi_x_Ph_l0', 'nucgen_mi_x_Ph_l1', 
-    #'nucgen_mi_x_I_Ph_l0', 'nucgen_mi_x_I_Ph_l1',
-    'nucgen_I_P_mi', 'nucgen_reconstructed', 'nucgen_encapsulation', 
-    "nucgen_perc_I_P_mi", 'nucgen_perc_reconstructed', "nucgen_perc_encapsulation",
-    ])]
+keeplist = ['model_concept', 'nucleus', 'k', 
+    'cont_mi', 'stab_mi', 
+    'mi_c_hbot', 'mi_c_hpar', 'mi_c_h', 
+    'reconstructed', 'encapsulation', 
+    'perc_mi_c_hbot', 'perc_mi_c_hpar',
+    'perc_encapsulation', 'perc_reconstructed'
+]
+longresprep = res[keeplist]
 
-#gen_metrics = [
-    #'gen_I_P_fth_mi_l0', 'gen_I_P_fth_mi_l1', 
-#    'gen_I_P_mi',
-#    'gen_reconstructed', 'gen_encapsulation', 'gen_perc_reconstructed']
-#test_metrics = [
-    #'test_I_P_fth_mi_l0', 'test_I_P_fth_mi_l1',    
-#    'test_I_P_mi', 
-#    'test_reconstructed', 'test_encapsulation', 'test_perc_reconstructed']
+longres = pd.melt(
+    longresprep, id_vars = ["model_concept", "nucleus", "k"], var_name="metric"
+)
 
 mi_renames = {
-    #"test_P_fth_mi_l0": "Stability C=0",
-    "test_I_P_fth_mi_l0": "Stability C=0",
-    #"test_P_fth_mi_l1": "Stability C=1",
-    "test_I_P_fth_mi_l1": "Stability C=1",
-    "test_base_mi": "Total MI",
-    "test_encapsulation": "Encapsulation",
-    "test_reconstructed": "Reconstructed MI",
-    "test_I_P_mi": "Erasure",
-    "test_perc_reconstructed": "Reconstructed %",
-    "test_perc_I_P_mi":  "Erased %",
-    "test_perc_encapsulation": "Encapsulated %", 
-    #"gen_P_fth_mi_l0": "Stability C=0",
-    "gen_I_P_fth_mi_l0": "Stability C=0",
-    #"gen_P_fth_mi_l1": "Stability C=1",
-    "gen_I_P_fth_mi_l1": "Stability C=1",
-    "gen_base_mi": "Total MI",
-    "gen_encapsulation": "Encapsulation",
-    "gen_I_P_mi": "Erasure",
-    "gen_reconstructed": "Reconstructed MI",
-    "gen_perc_reconstructed": "Reconstructed %",
-    "gen_perc_I_P_mi": "Erased %",
-    "gen_perc_encapsulation": "Encapsulated %", 
-    'gen_mi_x_Ph_l0': "Containment C=0",
-    'gen_mi_x_Ph_l1': "Containment C=1",
-    #"nucgen_P_fth_mi_l0": "Stability C=0",
-    "nucgen_I_P_fth_mi_l0": "Stability C=0",
-    #"nucgen_P_fth_mi_l1": "Stability C=1",
-    "nucgen_I_P_fth_mi_l1": "Stability C=1",
-    "nucgen_base_mi": "Total MI",
-    "nucgen_encapsulation": "Encapsulation",
-    "nucgen_I_P_mi": "Erasure",
-    "nucgen_reconstructed": "Reconstructed MI",
-    "nucgen_perc_reconstructed": "Reconstructed %",
-    "nucgen_perc_I_P_mi": "Erased %",
-    "nucgen_perc_encapsulation": "Encapsulated %", 
-    'nucgen_mi_x_Ph_l0': "Containment C=0",
-    'nucgen_mi_x_Ph_l1': "Containment C=1",
+    'cont_mi': "Contaiment",
+    'stab_mi': "Stability",
+    'mi_c_hbot': "Erasure",
+    'mi_c_hpar': "Subspace Info",
+    'mi_c_h': "Total Info",
+    'reconstructed': "Reconstructed MI",
+    'encapsulation': "Encapsulation",
+    'perc_mi_c_hbot': "Erased %",
+    'perc_mi_c_hpar': "Subspace Info %",
+    'perc_encapsulation': "Encapsulated %",
+    'perc_reconstructed': "Reconstructed %"
 }
-miplot["clean_metric"] = [mi_renames[x] for x in miplot["metric"]]
+    
+longres["clean_metric"] = [mi_renames[x] for x in longres["metric"]]
 
 #%%
-acc_renames_values = list(set(acc_renames.values()))
 mi_renames_values = list(set(mi_renames.values()))
-all_keys = acc_renames_values + mi_renames_values
-cols = sns.color_palette("bright", len(all_keys))
+cols = sns.color_palette("bright", len(mi_renames_values))
 palette = {}
-for k, v in zip(all_keys, cols):
+for k, v in zip(mi_renames_values, cols):
     palette[k] = v
 
+
 #%%
+from matplotlib import ticker
+
+# Vilem: matplotlib is a mess
+import matplotlib.pyplot as plt
+plt.rcParams["font.family"] = "serif"
+plt.rcParams["mathtext.fontset"] = "dejavuserif"
+
+try:
+    fig.clf()
+except NameError:
+    logging.info("First figure creation")
+
+
+fig, axes = plt.subplots(3,4,
+    gridspec_kw=dict(left=0.08, right=0.80,
+                    bottom=0.12, top=0.9),
+    sharey="row",
+    sharex="col",
+    dpi=300,
+    figsize=(8,4)
+)
+#fig.tight_layout()
+#fig.subplots_adjust(hspace=0.3)
+fig.subplots_adjust(wspace=0.05, hspace=0.05)
+
+
+pairs = [
+    (axes[0,0], "number_gpt2-large", "er", "anc"),
+    (axes[0,1], "number_gpt2-large", "er", "nuc"),
+    (axes[0,2], "gender_gpt2-base-french", "er", "anc"),
+    (axes[0,3], "gender_gpt2-base-french", "er", "nuc"),
+    (axes[1,0], "number_gpt2-large", "er_perc", "anc"),
+    (axes[1,1], "number_gpt2-large", "er_perc", "nuc"),
+    (axes[1,2], "gender_gpt2-base-french", "er_perc", "anc"),
+    (axes[1,3], "gender_gpt2-base-french", "er_perc", "nuc"),
+    #(axes[2,0], "number_gpt2-large", "er_gen"),
+    #(axes[2,1], "number_bert-base-uncased", "er_gen"),
+    #(axes[2,2], "gender_gpt2-base-french", "er_gen"),
+    #(axes[2,3], "gender_camembert-base", "er_gen"),
+    (axes[2,0], "number_gpt2-large", "fth", "anc"),
+    (axes[2,1], "number_gpt2-large", "fth", "nuc"),
+    (axes[2,2], "gender_gpt2-base-french", "fth", "anc"),
+    (axes[2,3], "gender_gpt2-base-french", "fth", "nuc"),
+]
+for i, (ax, name, case, putype) in enumerate(pairs):
+    ax.tick_params(labelsize="medium")
+
+    # Nucleus handling
+    if putype == "nuc":
+        nucleus=True
+    elif putype == "anc":
+        nucleus=False
+    else:
+        raise ValueError("Incorrect putype")
+
+    # X axis labels
+    if "bert" in name:
+        ax.set_xlim(-10,769)
+        #ax.set_xlim(0,4)
+    elif "gpt2-base-french" in name:
+        ax.set_xlim(-10,768)
+        #ax.set_xlim(0,4)
+    else:
+        ax.set_xlim(-10,1280)
+        #ax.set_xlim(0,4)
+
+    if case == "er":
+        # Base MI line
+        miplot_totalmi_sub = miplot_totalmi[
+            (miplot_totalmi["model_concept"] == name) &
+            (miplot_totalmi["nucleus"] == nucleus)
+        ]
+        assert miplot_totalmi_sub.shape[0] == 1, "PROBLEM"
+        ax.axhline(
+            y=miplot_totalmi_sub["mi_c_h"].unique()[0],
+            color=palette[mi_renames["mi_c_h"]],
+            linestyle="-",
+            label= mi_renames["mi_c_h"],
+        )
+
+        y1df = longres[
+            (longres["k"] != 0) &
+            (longres["model_concept"] == name) &
+            (longres["nucleus"] == nucleus) &
+            (longres["metric"].isin([
+                'mi_c_hbot', 'reconstructed', 'encapsulation',
+                'mi_c_hpar'
+            ]))
+        ]
+        sns.lineplot(
+            data=y1df, x="k", y="value", hue="clean_metric", ci="sd",
+            palette=palette, ax=ax
+        )
+
+        # Title
+        # Vilem: I changed some bits here
+        namesplit = name.split("_")
+        concept, model = namesplit[0], namesplit[1]
+        if putype == "anc":
+            distname = "Ancestral"
+        elif putype == "nuc":
+            distname = "Nucleus"
+        else:
+            distname = ""
+        model = model.replace("gpt", "GPT")
+        ax.set_title(f"{distname}, {concept[0].upper() + concept[1:]}", fontsize="medium")
+
+        # Y axis
+        ax.set_ylabel("Info (Bits)", fontsize="small")#, **ssfont)
+
+        # X axis
+        #ax.set_xticklabels([])
+        #ax.set_xlabel("")
+        #ax.set_xlabel("$k$", fontsize=20)#, **ssfont)
+
+        #box = ax.get_position()
+        #ax.set_position([box.x0, box.y0, box.width * 0.9, box.height])
+        #if i!=0:
+            #ax.set_ylabel("")
+            #ax.set_yticklabels([])
+            #ax.set_yticks([])
+        if i!=3:
+            legend = ax.legend().set_visible(False)
+        else:
+            axhandles, axlabels = ax.get_legend_handles_labels()
+            ax.legend(
+                axhandles, axlabels, loc='center left',
+                bbox_to_anchor=(1, 0.5), fontsize="small"
+            )
+    ## SECOND ROW
+    elif case == "er_perc":
+        y2df = longres[
+            (longres["k"] != 0) &
+            (longres["model_concept"] == name) &
+            (longres["nucleus"] == nucleus) &
+            (longres["metric"].isin([
+                'perc_mi_c_hbot', 'perc_encapsulation', 'perc_reconstructed',
+                'perc_mi_c_hpar'
+            ]))
+        ]
+        sns.lineplot(
+            data=y2df, x="k", y="value", hue="clean_metric",
+            ci="sd", palette=palette, ax=ax
+        )
+
+        # Base MI line
+        #ax.axhline(
+        #    y=miplot_basemi.loc[name, f"{putype}_base_mi"],
+        #    color=palette[mi_renames[f"{putype}_base_mi"]],
+        #    linestyle="-",
+        #    label= mi_renames[f"{putype}_base_mi"],
+        #)
+
+        # Title
+        #namesplit = name.split("_")
+        #concept, model = namesplit[0], namesplit[1]
+        #ax.set_title(f"{concept[0].upper() + concept[1:]},\n {model}", fontsize="medium")
+
+        # X axis
+        #ax.set_xticklabels([])
+        #ax.set_xlabel("")
+
+        # Y axis
+        ax.set_ylabel("% Total Info", fontsize="small")#, **ssfont)
+        ax.yaxis.set_major_formatter(ticker.PercentFormatter(xmax=1, decimals=None, symbol=None))
+        #ax.yaxis.set_tick_params()
+        #box = ax.get_position()
+        #ax.set_position([box.x0, box.y0, box.width * 0.9, box.height])
+        #if i!=4:
+        #    ax.set_ylabel("")
+        #    ax.set_yticklabels([])
+        #    ax.set_yticks([])
+        if i!=7:
+            legend = ax.legend().set_visible(False)
+        else:
+            axhandles, axlabels = ax.get_legend_handles_labels()
+            ax.legend(
+                axhandles, axlabels, loc='center left',
+                bbox_to_anchor=(1, 0.5), fontsize="small"
+            )
+    ### THIRD ROW
+    elif case == "fth":
+        fthdfplot = longres[
+            (longres["k"] != 0) &
+            (longres["model_concept"] == name) &
+            (longres["nucleus"] == nucleus) &
+            (longres["metric"].isin([
+                'cont_mi', 'stab_mi'
+            ]))
+        ]
+
+        sns.lineplot(
+            data=fthdfplot, x="k", y="value", hue="clean_metric",
+            ci="sd", palette=palette, ax=ax
+        )
+
+        ax.set_ylabel("Info (Bits)", fontsize="small")#, **ssfont)
+
+        # Vilem: this is necessary since we are mixing Seaborn and matplotlib
+        ax.set_xlabel("$k$")
+        ax.xaxis.set_major_formatter('${x:.0f}$')
+
+        #if i!=8:
+        #    ax.set_ylabel("")
+        #    ax.set_yticklabels([])
+        if i!=11:
+            legend = ax.legend().set_visible(False)
+        else:
+            axhandles, axlabels = ax.get_legend_handles_labels()
+            ax.legend(
+                axhandles, axlabels, loc='center left',
+                bbox_to_anchor=(1, 0.5), fontsize="small",
+            )
+
+    else:
+        raise ValueError(f"Incorrect case specification {case}")
+
+# Vilem: I apologize for this
+plt.suptitle(
+    " " * 5 + "GPT2-large" + " " * 35 + "GPT2-base-french" + " " * 20,
+    fontsize=11
+)
+
+# Vilem: matplotlib's way of dealing with alignment
+fig.align_ylabels()
+
+# Vilem: this reduces whitespace and looks nicer in the paper
+plt.tight_layout(pad=0)
+plt.show()
+
+figpath = os.path.join(RESULTS, f"final_eval_plot.png")
+fig.savefig(figpath)
+
+from matplotlib.backends.backend_pdf import PdfPages
+with PdfPages(figpath[:-4]+".pdf") as pp:
+    pp.savefig(fig)
+
+#%%
+"""
 #plt.rcParams["font.family"] = "serif"
 #plt.rcParams["font.serif"] = ["Times New Roman"]
-putype = "test"
+#putype = "test"
 from matplotlib import ticker
 
 try:
@@ -370,200 +557,6 @@ from matplotlib.backends.backend_pdf import PdfPages
 with PdfPages(figpath[:-4]+".pdf") as pp:
     pp.savefig(fig)
 
-#%%
-from matplotlib import ticker
-
-try:
-    fig.clf()
-except NameError:
-    logging.info("First figure creation")
-
-
-fig, axes = plt.subplots(3,4,
-    gridspec_kw=dict(left=0.08, right=0.80,
-                    bottom=0.12, top=0.9),
-    sharey="row",
-    sharex="col",
-    dpi=300,
-    figsize=(8,4)
-)
-#fig.tight_layout()
-#fig.subplots_adjust(hspace=0.3)
-fig.subplots_adjust(wspace=0.05, hspace=0.05)
-
-
-pairs = [
-    #(axes[0,0], "number_gpt2-large", "acc"),
-    #(axes[0,1], "number_bert-base-uncased", "acc"),
-    #(axes[0,2], "gender_gpt2-base-french", "acc"),
-    #(axes[0,3], "gender_camembert-base", "acc"),
-    (axes[0,0], "number_gpt2-large", "er", "gen"),
-    (axes[0,1], "number_gpt2-large", "er", "nucgen"),
-    (axes[0,2], "gender_gpt2-base-french", "er", "gen"),
-    (axes[0,3], "gender_gpt2-base-french", "er", "nucgen"),
-    (axes[1,0], "number_gpt2-large", "er_perc", "gen"),
-    (axes[1,1], "number_gpt2-large", "er_perc", "nucgen"),
-    (axes[1,2], "gender_gpt2-base-french", "er_perc", "gen"),
-    (axes[1,3], "gender_gpt2-base-french", "er_perc", "nucgen"),
-    #(axes[2,0], "number_gpt2-large", "er_gen"),
-    #(axes[2,1], "number_bert-base-uncased", "er_gen"),
-    #(axes[2,2], "gender_gpt2-base-french", "er_gen"),
-    #(axes[2,3], "gender_camembert-base", "er_gen"),
-    (axes[2,0], "number_gpt2-large", "fth", "gen"),
-    (axes[2,1], "number_gpt2-large", "fth", "nucgen"),
-    (axes[2,2], "gender_gpt2-base-french", "fth", "gen"),
-    (axes[2,3], "gender_gpt2-base-french", "fth", "nucgen"),
-]
-for i, (ax, name, case, putype) in enumerate(pairs):
-    ax.tick_params(labelsize="medium")
-    if "bert" in name:
-        ax.set_xlim(-10,769)
-        #ax.set_xlim(0,4)
-    elif "gpt2-base-french" in name:
-        ax.set_xlim(-10,768)
-        #ax.set_xlim(0,4)
-    else:
-        ax.set_xlim(-10,1280)
-        #ax.set_xlim(0,4)
-    if case == "er":
-        # Base MI line
-        ax.axhline(
-            y=miplot_basemi.loc[name, f"{putype}_base_mi"], 
-            color=palette[mi_renames[f"{putype}_base_mi"]], 
-            linestyle="-",
-            label= mi_renames[f"{putype}_base_mi"],
-        )
-        
-        y1df = miplot[
-            (miplot["k"] != 0) & 
-            (miplot["model_concept"] == name) & 
-            (miplot["metric"].isin([
-                f'{putype}_I_P_mi', f'{putype}_reconstructed', f'{putype}_encapsulation'
-            ]))
-        ]
-        sns.lineplot(
-            data=y1df, x="k", y="value", hue="clean_metric", ci="sd",palette=palette, ax=ax
-        )
-        
-        
-        # Title
-        namesplit = name.split("_")
-        concept, model = namesplit[0], namesplit[1]
-        if putype == "gen":
-            distname = "Ancestral"
-        else:
-            distname = "Nucleus"
-        ax.set_title(f"{distname}, {concept[0].upper() + concept[1:]},\n {model}", fontsize="medium")
-        
-        # Y axis
-        ax.set_ylabel("Information (Bits)", fontsize="small")#, **ssfont)
-        
-        # X axis
-        #ax.set_xticklabels([])
-        #ax.set_xlabel("")
-        #ax.set_xlabel("$k$", fontsize=20)#, **ssfont)
-        
-        #box = ax.get_position()
-        #ax.set_position([box.x0, box.y0, box.width * 0.9, box.height])
-        #if i!=0:
-            #ax.set_ylabel("")
-            #ax.set_yticklabels([])
-            #ax.set_yticks([])
-        if i!=3:
-            legend = ax.legend().set_visible(False)
-        else:
-            axhandles, axlabels = ax.get_legend_handles_labels()
-            ax.legend(
-                axhandles, axlabels, loc='center left', 
-                bbox_to_anchor=(1, 0.5), fontsize="small"
-            )       
-    ## SECOND ROW
-    elif case == "er_perc":
-        y2df = miplot[
-            (miplot["k"] != 0) & 
-            (miplot["model_concept"] == name) & 
-            (miplot["metric"].isin([
-                f'{putype}_perc_I_P_mi', f'{putype}_perc_reconstructed', f'{putype}_perc_encapsulation'
-            ]))
-        ]
-        sns.lineplot(
-            data=y2df, x="k", y="value", hue="clean_metric", ci="sd",palette=palette, ax=ax
-        )
-        
-        # Base MI line
-        #ax.axhline(
-        #    y=miplot_basemi.loc[name, f"{putype}_base_mi"], 
-        #    color=palette[mi_renames[f"{putype}_base_mi"]], 
-        #    linestyle="-",
-        #    label= mi_renames[f"{putype}_base_mi"],
-        #)
-        
-        # Title
-        #namesplit = name.split("_")
-        #concept, model = namesplit[0], namesplit[1]
-        #ax.set_title(f"{concept[0].upper() + concept[1:]},\n {model}", fontsize="medium")
-        
-        # X axis
-        #ax.set_xticklabels([])
-        #ax.set_xlabel("")
-
-        # Y axis
-        ax.set_ylabel("% Total MI", fontsize="small")#, **ssfont)
-        ax.yaxis.set_major_formatter(ticker.PercentFormatter(xmax=1, decimals=None, symbol=None))
-        #ax.yaxis.set_tick_params()
-        #box = ax.get_position()
-        #ax.set_position([box.x0, box.y0, box.width * 0.9, box.height])
-        #if i!=4:
-        #    ax.set_ylabel("")
-        #    ax.set_yticklabels([])
-        #    ax.set_yticks([])
-        if i!=7:
-            legend = ax.legend().set_visible(False)
-        else:
-            axhandles, axlabels = ax.get_legend_handles_labels()
-            ax.legend(
-                axhandles, axlabels, loc='center left', 
-                bbox_to_anchor=(1, 0.5), fontsize="small"
-            )
-    ### THIRD ROW          
-    elif case == "fth":
-        
-        fthdfplot = miplot[
-            (miplot["model_concept"] == name) & 
-            (miplot["metric"].isin(
-                [f"{putype}_mi_x_Ph_l0", f"{putype}_mi_x_Ph_l1", 
-                 f"{putype}_I_P_fth_mi_l0", f"{putype}_I_P_fth_mi_l1"]))
-        ]
-        sns.lineplot(
-            data=fthdfplot, x="k", y="value", hue="clean_metric", 
-            ci="sd", palette=palette, ax=ax
-        )
-        
-        ax.set_ylabel("Information (Bits)", fontsize="small")#, **ssfont)
-        
-        #if i!=8:
-        #    ax.set_ylabel("")
-        #    ax.set_yticklabels([])
-        if i!=11:
-            legend = ax.legend().set_visible(False)
-        else:
-            axhandles, axlabels = ax.get_legend_handles_labels()
-            ax.legend(
-                axhandles, axlabels, loc='center left', 
-                bbox_to_anchor=(1, 0.5), fontsize="small"
-            )        
-            
-    else:
-        raise ValueError(f"Incorrect case specification {case}")
-        
-    
-
-figpath = os.path.join(RESULTS, f"accfthmiplot_ar.png")
-fig.savefig(figpath)
-
-from matplotlib.backends.backend_pdf import PdfPages
-with PdfPages(figpath[:-4]+".pdf") as pp:
-    pp.savefig(fig)
 
 #%%
 accplottest = res[
@@ -783,7 +776,7 @@ figpath = os.path.join(RESULTS, "accfthmiplot.png")
 fig.savefig(figpath)
 
 #%%
-"""
+
 #import seaborn as sns
 #import matplotlib.pyplot as plt
 
