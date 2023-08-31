@@ -46,26 +46,26 @@ def diag_eval(P, P_type, X_train, y_train, X_val, y_val, X_test, y_test, X_pca=N
     )
     return results
 
-def full_diag_eval(output, X_train, y_train, X_val, y_val, X_test, y_test, X_pca=None):
-    #P = output["P"]
-    #I_P = output["I_P"]
-    #P_acc = output["P_acc"]
-    #I_P_acc = output["I_P_acc"]
-    P_burn = output["P_burn"]
-    I_P_burn = output["I_P_burn"]
-    I = np.eye(P_burn.shape[1], P_burn.shape[1])
+def full_diag_eval(P, I_P, X_train, y_train, X_val, y_val, X_test, y_test, X_pca=None):
+    I = np.eye(P.shape[1], P.shape[1])
 
-    diag_orig = diag_eval(I, "original", X_train, y_train, X_val, y_val, X_test, y_test)
+    diag_orig = diag_eval(
+        I, "original", X_train, y_train, X_val, y_val, X_test, y_test
+    )
     #diag_P = diag_eval(P, "P", X_train, y_train, X_val, y_val, X_test, y_test, X_pca=X_pca)
     #diag_I_P = diag_eval(I_P, "I_P", X_train, y_train, X_val, y_val, X_test, y_test, X_pca=X_pca)
 
     #diag_P_acc = diag_eval(P_acc, "P_acc", X_train, y_train, X_val, y_val, X_test, y_test, X_pca=X_pca)
     #diag_I_P_acc = diag_eval(I_P_acc, "I_P_acc", X_train, y_train, X_val, y_val, X_test, y_test, X_pca=X_pca)
 
-    diag_P_burn = diag_eval(P_burn, "P_burn", X_train, y_train, X_val, y_val, X_test, y_test, X_pca=X_pca)
-    diag_I_P_burn = diag_eval(I_P_burn, "I_P_burn", X_train, y_train, X_val, y_val, X_test, y_test, X_pca=X_pca)
+    diag_P = diag_eval(
+        P, "P", X_train, y_train, X_val, y_val, X_test, y_test
+    )
+    diag_I_P = diag_eval(
+        I_P, "I_P", X_train, y_train, X_val, y_val, X_test, y_test
+    )
     
-    return diag_orig | diag_P_burn | diag_I_P_burn #| diag_P | diag_I_P | diag_P_acc | diag_I_P_acc | 
+    return diag_orig | diag_P | diag_I_P #| diag_P | diag_I_P | diag_P_acc | diag_I_P_acc | 
 
 def usage_eval(P, P_type, X_train, U_train, y_train, 
     X_test, U_test, y_test, X_pca=None):
@@ -89,22 +89,23 @@ def usage_eval(P, P_type, X_train, U_train, y_train,
 
     return results
 
-def full_usage_eval(output, X_train, U_train, y_train, X_test, U_test, y_test, X_pca=None):
-    #P = output["P"]
-    #I_P = output["I_P"]
-    #P_acc = output["P_acc"]
-    #I_P_acc = output["I_P_acc"]
-    P_burn = output["P_burn"]
-    I_P_burn = output["I_P_burn"]
-    
-    usage_orig = usage_eval(np.eye(P_burn.shape[0], P_burn.shape[1]), "original", X_train, U_train, y_train, X_test, U_test, y_test)
+def full_usage_eval(P, I_P, X_train, U_train, y_train, X_test, U_test, y_test, X_pca=None):
+
+    usage_orig = usage_eval(
+        np.eye(P.shape[0], P.shape[1]), "original", 
+        X_train, U_train, y_train, X_test, U_test, y_test
+    )
     #usage_P = usage_eval(P, "P", X_train, U_train, y_train, X_test, U_test, y_test, X_pca)
     #usage_I_P = usage_eval(I_P, "I_P", X_train, U_train, y_train, X_test, U_test, y_test, X_pca)
 
     #usage_P_acc = usage_eval(P_acc, "P_acc", X_train, U_train, y_train, X_test, U_test, y_test, X_pca)
     #usage_I_P_acc = usage_eval(I_P_acc, "I_P_acc", X_train, U_train, y_train, X_test, U_test, y_test, X_pca)
 
-    usage_P_burn = usage_eval(P_burn, "P_burn", X_train, U_train, y_train, X_test, U_test, y_test, X_pca)
-    usage_I_P_burn = usage_eval(I_P_burn, "I_P_burn", X_train, U_train, y_train, X_test, U_test, y_test, X_pca)
+    usage_P = usage_eval(
+        P, "P", X_train, U_train, y_train, X_test, U_test, y_test
+    )
+    usage_I_P = usage_eval(
+        I_P, "I_P", X_train, U_train, y_train, X_test, U_test, y_test
+    )
 
-    return usage_orig | usage_P_burn | usage_I_P_burn #| usage_P | usage_I_P | usage_P_acc | usage_I_P_acc 
+    return usage_orig | usage_P | usage_I_P #| usage_P | usage_I_P | usage_P_acc | usage_I_P_acc 

@@ -37,7 +37,7 @@ def get_train_probes_args():
     argparser.add_argument(
         "-rlace_type",
         type=str,
-        choices=["theta","lm"],
+        choices=["theta","lm","leace"],
         default="theta",
         help="Which type of RLACE to use"
     )
@@ -212,13 +212,13 @@ def set_train_probes_defaults(config):
     )
 
     # Train, val and test size
-    config["train_obs"] = 200000
-    config["val_obs"] = 10000
-    config["test_obs"] = 20000
+    config["train_obs"] = 70000
+    config["val_obs"] = 0
+    config["test_obs"] = 30000
 
-    config["train_share"] = .8
-    config["val_share"] = .1
-    config["test_share"] = .1
+    config["train_share"] = .7
+    config["val_share"] = 0
+    config["test_share"] = .3
 
     # Constructing RLACE arg dicts (DON'T SET DEFAULTS HERE)
     config["rlace_optimizer_params_P"] = {

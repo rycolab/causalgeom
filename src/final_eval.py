@@ -309,12 +309,15 @@ def compute_res_run(model_name, concept, run, run_path, nsamples, msamples, nucl
     return containment_res | stability_res | concept_mis
     
 
-def compute_eval(model_name, concept, run_output_folder, k, nsamples, msamples, nucleus, output_folder):
-    rundir = os.path.join(OUT, f"run_output/{concept}/{model_name}/{run_output_folder}")
-    if run_output_folder == "230718":
-        outdir = os.path.join(RESULTS, f"{output_folder}/new_{concept}/{model_name}")
-    else:
-        outdir = os.path.join(RESULTS, f"{output_folder}/{concept}/{model_name}")
+def compute_eval(model_name, concept, run_output_folder, k,
+    nsamples, msamples, nucleus, output_folder, iteration):
+    rundir = os.path.join(
+        OUT, f"run_output/{concept}/{model_name}/{run_output_folder}"
+    )
+    #if run_output_folder == "230718":
+    #    outdir = os.path.join(RESULTS, f"{output_folder}/new_{concept}/{model_name}")
+    #else:
+    outdir = os.path.join(RESULTS, f"{output_folder}/{concept}/{model_name}")
     #outdir = RESULTS
     if not os.path.exists(outdir):
         os.makedirs(outdir)
@@ -324,7 +327,10 @@ def compute_eval(model_name, concept, run_output_folder, k, nsamples, msamples, 
 
     for run_file in run_files:
         run_path = os.path.join(rundir, run_file)
-        outpath = os.path.join(outdir, f"{concept}_{model_name}_nuc_{nucleus}_{run_file[:-4]}.pkl")
+        outpath = os.path.join(
+            outdir, 
+            f"{concept}_{model_name}_nuc_{nucleus}_{iteration}_{run_file[:-4]}.pkl"
+        )
 
         run = load_run_output(run_path)
         if run["config"]["k"] != k:
@@ -343,7 +349,8 @@ def compute_eval(model_name, concept, run_output_folder, k, nsamples, msamples, 
                 "nucleus": nucleus,
                 "nsamples": nsamples,
                 "msamples": msamples,
-                "run_path": run_path
+                "run_path": run_path,
+                "iteration": iteration
             }
             full_run_output = run_metadata | run_eval_output
             with open(outpath, "wb") as f:
@@ -407,7 +414,8 @@ if __name__=="__main__":
     k = args.k
     nsamples=args.nsamples
     msamples=args.msamples
-    output_folder = "clean_finaleval_bigsamples"
+    output_folder = "leace_eval_bigiters"
+    nruns = 3
     #model_name = "gpt2-large"
     #concept = "number"
     #nucleus = True
@@ -417,9 +425,10 @@ if __name__=="__main__":
     #output_folder = "finaleval_bigsamples_nuc"
     
 
-    for folder in ["230627", "230627_fix", "230628", "230718"]:
-        compute_eval(
-            model_name, concept, folder, k, nsamples, msamples, nucleus,
-            output_folder
-        )
+    for folder in ["leace230829"]:
+        for i in range(nruns):
+            compute_eval(
+                model_name, concept, folder, k, nsamples, msamples, nucleus,
+                output_folder, i
+            )
     logging.info("Finished exporting all results.")

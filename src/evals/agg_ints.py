@@ -88,7 +88,7 @@ def process_int_df(sample_df, nucleus):
 
 
 # %%
-int_path = os.path.join(RESULTS, "int_samples")
+int_path = os.path.join(RESULTS, "int_leace")
 csvs = os.listdir(int_path)
 
 # %%

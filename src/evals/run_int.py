@@ -30,6 +30,7 @@ from utils.lm_loaders import get_V, GPT2_LIST, BERT_LIST, get_concept_name
 #from data.embed_wordlists.embedder import load_concept_token_lists
 from evals.kl_eval import load_run_Ps, load_run_output, load_model_eval,\
     correct_flag, highest_rank, highest_concept
+from final_eval import prep_data, compute_inner_loop_qxhs
 
 from data.filter_generations import load_filtered_hs_wff
 from evals.run_eval import filter_hs_w_ys, sample_filtered_hs
@@ -76,7 +77,7 @@ def compute_avg_int(h_erase, hs_proj, nsamples, V, processor=None):
         all_probs.append(probs)
     return np.mean(np.vstack(all_probs), axis=0)
  
-def score_post_int(base_distrib, I_P_distrib, l0_avgh_probs, l1_avgh_probs, 
+def score_post_int(base_distrib, I_P_distrib, #l0_avgh_probs, l1_avgh_probs, 
         l0_avgp_probs, l1_avgp_probs, faid, foid, case, l0_tl, l1_tl):
     if case == 0:
         l0id, l1id = faid, foid
@@ -92,16 +93,16 @@ def score_post_int(base_distrib, I_P_distrib, l0_avgh_probs, l1_avgh_probs,
         I_P_l1_highest = highest_rank(I_P_distrib, l1id),
         I_P_l0_highest_concept = highest_concept(I_P_distrib, l0id, l0_tl, l1_tl),
         I_P_l1_highest_concept = highest_concept(I_P_distrib, l1id, l0_tl, l1_tl),
-        avgh_inj0_correct = correct_flag(l0_avgh_probs[l0id], l0_avgh_probs[l1id]),
-        avgh_inj0_l0_highest = highest_rank(l0_avgh_probs, l0id),
+        #avgh_inj0_correct = correct_flag(l0_avgh_probs[l0id], l0_avgh_probs[l1id]),
+        #avgh_inj0_l0_highest = highest_rank(l0_avgh_probs, l0id),
         #inj0_l1_highest = highest_rank(l0_avgh_probs, l1id),
-        avgh_inj0_l0_highest_concept = highest_concept(l0_avgh_probs, l0id, l0_tl, l1_tl),
+        #avgh_inj0_l0_highest_concept = highest_concept(l0_avgh_probs, l0id, l0_tl, l1_tl),
         #inj0_l1_highest_concept = highest_concept(l0_avgh_probs, l1id, l0_tl, l1_tl),
-        avgh_inj1_correct = correct_flag(l1_avgh_probs[l1id], l1_avgh_probs[l0id]),
+        #avgh_inj1_correct = correct_flag(l1_avgh_probs[l1id], l1_avgh_probs[l0id]),
         #inj1_l0_highest = highest_rank(l1_avgh_probs, l0id),
-        avgh_inj1_l1_highest = highest_rank(l1_avgh_probs, l1id),
+        #avgh_inj1_l1_highest = highest_rank(l1_avgh_probs, l1id),
         #inj1_l0_highest_concept = highest_concept(l1_avgh_probs, l0id, l0_tl, l1_tl),
-        avgh_inj1_l1_highest_concept = highest_concept(l1_avgh_probs, l1id, l0_tl, l1_tl),
+        #avgh_inj1_l1_highest_concept = highest_concept(l1_avgh_probs, l1id, l0_tl, l1_tl),
         avgp_inj0_correct = correct_flag(l0_avgp_probs[l0id], l0_avgp_probs[l1id]),
         avgp_inj0_l0_highest = highest_rank(l0_avgp_probs, l0id),
         #inj0_l1_highest = highest_rank(l0_avgp_probs, l1id),
@@ -122,43 +123,47 @@ def compute_pxh(h, V, processor=None):
         logits = processor(tokens, logits).squeeze(0).numpy()
     return softmax(logits)
 
-
-def intervene_test_set(test_hs, case, l0_dev_hs, l1_dev_hs, V, l0_tl, l1_tl, 
-    I_P, nsamples, nucleus=False):
-    l0_dev_hs_mean = np.mean(l0_dev_hs, axis=0)    
-    l1_dev_hs_mean = np.mean(l1_dev_hs, axis=0)
-    if nucleus:
-        processor = LogitsProcessorList()
-        processor.append(TopPLogitsWarper(0.9))
-    else:
-        processor=None
+def intervene_test_set(test_hs, case, l0_dev_hs, l1_dev_hs, all_hs, 
+    V, l0_tl, l1_tl, P, I_P, nsamples, msamples, nucleus=False):
+    #l0_dev_hs_mean = np.mean(l0_dev_hs, axis=0)    
+    #l1_dev_hs_mean = np.mean(l1_dev_hs, axis=0)
+    #if nucleus:
+    #    processor = LogitsProcessorList()
+    #    processor.append(TopPLogitsWarper(0.9))
+    #else:
+    processor=None
     scores = []
     for h, faid, foid in tqdm(test_hs):
         #h, faid, foid = test_hs[0]
         base_distrib = compute_pxh(h, V, processor)
         h_erase = h.T @ I_P
-        I_P_distrib = compute_pxh(h_erase, V, processor)
-        l0_avgh_probs = compute_pxh((h_erase + l0_dev_hs_mean), V, processor)
-        l1_avgh_probs = compute_pxh((h_erase + l1_dev_hs_mean), V, processor)
+        #I_P_distrib = compute_pxh(h_erase, V, processor)
+        inner_qxhs = compute_inner_loop_qxhs(
+            "hpar", h, all_hs, P, I_P, V, msamples, processor=processor
+        )
+        I_P_distrib = inner_qxhs.mean(axis=0)
+        #l0_avgh_probs = compute_pxh((h_erase + l0_dev_hs_mean), V, processor)
+        #l1_avgh_probs = compute_pxh((h_erase + l1_dev_hs_mean), V, processor)
         l0_avgp_probs = compute_avg_int(h_erase, l0_dev_hs, nsamples, V, processor)
         l1_avgp_probs = compute_avg_int(h_erase, l1_dev_hs, nsamples, V, processor)
         score = score_post_int(
-            base_distrib, I_P_distrib, l0_avgh_probs, l1_avgh_probs, 
-            l0_avgp_probs, l1_avgp_probs, faid, foid, case, l0_tl, l1_tl
+            base_distrib, I_P_distrib, l0_avgp_probs, l1_avgp_probs, 
+            faid, foid, case, l0_tl, l1_tl
         )
         scores.append(score)
     return scores
 
 #%%
 def compute_int_eval_run(model_name, concept, run, run_path, 
-    nsamples_dev=20, nsamples_test=None, nucleus=False):
+    nsamples_dev=20, nsamples_test=None, msamples=30, 
+    nucleus=False, iteration=0):
     P, I_P = load_run_Ps(run_path)
     V, l0_tl, l1_tl = load_model_eval(model_name, concept)
 
-    #TODO: implement dev set version
     train_l0_hs, test_l0_hs, train_l1_hs, test_l1_hs = prep_data_from_test_only(
         run["X_test"], run["facts_test"], run["foils_test"], run["y_test"]
     )
+    _, _, _, all_hs = prep_data(model_name, nucleus)
 
     if nsamples_test is not None:
         test_l0_hs, test_l1_hs = sample_filtered_hs(
@@ -169,12 +174,12 @@ def compute_int_eval_run(model_name, concept, run, run_path,
     l1_train_Phs = get_hs_proj(train_l1_hs, P)
 
     scores_l0 = intervene_test_set(
-        test_l0_hs, 0, l0_train_Phs, l1_train_Phs, V, 
-        l0_tl, l1_tl, I_P, nsamples_dev, nucleus=nucleus
+        test_l0_hs, 0, l0_train_Phs, l1_train_Phs, all_hs, 
+        V, l0_tl, l1_tl, P, I_P, nsamples_dev, msamples, nucleus=False
     )
     scores_l1 = intervene_test_set(
-        test_l1_hs, 1, l0_train_Phs, l1_train_Phs, V, 
-        l0_tl, l1_tl, I_P, nsamples_dev, nucleus=nucleus
+        test_l1_hs, 1, l0_train_Phs, l1_train_Phs, all_hs, 
+        V, l0_tl, l1_tl, P, I_P, nsamples_dev, msamples, nucleus=False
     )
 
     scores = pd.DataFrame(scores_l0 + scores_l1)
@@ -182,6 +187,7 @@ def compute_int_eval_run(model_name, concept, run, run_path,
     scores["concept"] = concept
     scores["nucleus"] = nucleus
     scores["run"] = run_path
+    scores["iteration"] = iteration
     scores["dev_total_samples"] = len(train_l0_hs) + len(train_l1_hs)
     scores["dev_nsamples"] = nsamples_dev
     scores["test_total_samples"] = len(test_l0_hs) + len(test_l1_hs)
@@ -190,18 +196,21 @@ def compute_int_eval_run(model_name, concept, run, run_path,
     
 #%%
 def compute_int_eval_folder(model_name, concept, run_output_folder, 
-    nsamples_dev=20, nsamples_test=None, nucleus=False):
+    nsamples_dev, nsamples_test, msamples, nucleus, output_folder, iteration):
     rundir = os.path.join(OUT, f"run_output/{concept}/{model_name}/{run_output_folder}")
-    outdir = os.path.join(RESULTS, "int_samples")
+    #outdir = os.path.join(RESULTS, "int_leace")
     #outdir = RESULTS
-    if not os.path.exists(outdir):
-        os.makedirs(outdir)
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
 
     run_files = [x for x in os.listdir(rundir) if x.endswith(".pkl")]
 
     for run_file in run_files:
         run_path = os.path.join(rundir, run_file)
-        outpath = os.path.join(outdir, f"{concept}_{model_name}_{nucleus}_intacc_{run_file[:-4]}.csv")
+        outpath = os.path.join(
+            output_folder, 
+            f"{concept}_{model_name}_{nucleus}_{iteration}_intacc_{run_file[:-4]}.csv"
+        )
 
         run = load_run_output(run_path)
         if run["config"]["k"] != 1:
@@ -213,7 +222,7 @@ def compute_int_eval_folder(model_name, concept, run_output_folder,
             int_accs_df = compute_int_eval_run(
                 model_name, concept, run, run_path, 
                 nsamples_dev=nsamples_dev, nsamples_test=nsamples_test, 
-                nucleus=nucleus
+                msamples=msamples, nucleus=nucleus, iteration=iteration
             )
             int_accs_df.to_csv(outpath)
             #with open(outpath, "wb") as f:
@@ -257,7 +266,10 @@ if __name__=="__main__":
     concept = args.concept
     nucleus = args.nucleus
     nsamples_dev = 20
-    nsamples_test = 50
+    nsamples_test = 100
+    msamples = 30
+    output_folder = "int_leace_bigiters"
+    nruns = 3
     #model_name = "gpt2-large"
     #concept = "number"
     #nucleus = True
@@ -269,8 +281,11 @@ if __name__=="__main__":
         f"{args.model} with nucleus {nucleus}"
     )    
 
-    for folder in ["230718", "230627", "230627_fix", "230628"]:
-        compute_int_eval_folder(
-            model_name, concept, folder, nsamples_dev, nsamples_test, nucleus
-        )
+    for folder in ["leace230829"]:
+        for i in range(nruns):
+            compute_int_eval_folder(
+                model_name, concept, folder, 
+                nsamples_dev, nsamples_test, msamples, nucleus,
+                output_folder, i
+            )
     logging.info("Finished exporting all results.")
