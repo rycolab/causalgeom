@@ -402,6 +402,12 @@ def get_args():
         default=False,
         help="Whether to use nucleus sampling",
     )
+    argparser.add_argument(
+        "-out_folder",
+        type=str,
+        default="test",
+        help="Directory for exporting run eval"
+    )
     return argparser.parse_args()
 
 if __name__=="__main__":
@@ -414,7 +420,7 @@ if __name__=="__main__":
     k = args.k
     nsamples=args.nsamples
     msamples=args.msamples
-    output_folder = "leace_eval_bigiters"
+    output_folder = args.out_folder
     nruns = 3
     #model_name = "gpt2-large"
     #concept = "number"
@@ -425,7 +431,7 @@ if __name__=="__main__":
     #output_folder = "finaleval_bigsamples_nuc"
     
 
-    for folder in ["leace230829"]:
+    for folder in ["leacefinal"]:
         for i in range(nruns):
             compute_eval(
                 model_name, concept, folder, k, nsamples, msamples, nucleus,

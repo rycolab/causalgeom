@@ -198,17 +198,17 @@ def compute_int_eval_run(model_name, concept, run, run_path,
 def compute_int_eval_folder(model_name, concept, run_output_folder, 
     nsamples_dev, nsamples_test, msamples, nucleus, output_folder, iteration):
     rundir = os.path.join(OUT, f"run_output/{concept}/{model_name}/{run_output_folder}")
-    #outdir = os.path.join(RESULTS, "int_leace")
+    outdir = os.path.join(RESULTS, output_folder)
     #outdir = RESULTS
-    if not os.path.exists(output_folder):
-        os.makedirs(output_folder)
+    if not os.path.exists(outdir):
+        os.makedirs(outdir)
 
     run_files = [x for x in os.listdir(rundir) if x.endswith(".pkl")]
 
     for run_file in run_files:
         run_path = os.path.join(rundir, run_file)
         outpath = os.path.join(
-            output_folder, 
+            outdir, 
             f"{concept}_{model_name}_{nucleus}_{iteration}_intacc_{run_file[:-4]}.csv"
         )
 
@@ -255,6 +255,12 @@ def get_args():
         default=False,
         help="Whether to use nucleus sampling",
     )
+    argparser.add_argument(
+        "-out_folder",
+        type=str,
+        default="test",
+        help="Directory for exporting run eval"
+    )
     return argparser.parse_args()
 
 if __name__=="__main__":
@@ -265,10 +271,10 @@ if __name__=="__main__":
     model_name = args.model
     concept = args.concept
     nucleus = args.nucleus
+    output_folder = args.out_folder
     nsamples_dev = 20
     nsamples_test = 100
     msamples = 30
-    output_folder = "int_leace_bigiters"
     nruns = 3
     #model_name = "gpt2-large"
     #concept = "number"
@@ -281,7 +287,7 @@ if __name__=="__main__":
         f"{args.model} with nucleus {nucleus}"
     )    
 
-    for folder in ["leace230829"]:
+    for folder in ["leacefinal"]:
         for i in range(nruns):
             compute_int_eval_folder(
                 model_name, concept, folder, 
