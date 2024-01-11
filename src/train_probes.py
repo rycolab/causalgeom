@@ -28,12 +28,12 @@ from concept_erasure import LeaceEraser
 from algorithms.rlace.rlace import solve_adv_game, init_classifier, get_majority_acc, solve_adv_game_param_free
 
 import algorithms.inlp.debias
-from classifiers.classifiers import BinaryParamFreeClf
+#from classifiers.classifiers import BinaryParamFreeClf
 #from classifiers.compute_marginals import compute_concept_marginal, compute_pair_marginals
 from utils.cuda_loaders import get_device
 from utils.config_args import get_train_probes_config
-from evals.kl_eval import load_model_eval, compute_eval_filtered_hs
-from evals.usage_eval import full_usage_eval, full_diag_eval
+#from evals.kl_eval import load_model_eval, compute_eval_filtered_hs
+#from evals.usage_eval import full_usage_eval, full_diag_eval
 from utils.dataset_loaders import load_processed_data
 from data.embed_wordlists.embedder import load_concept_token_lists
 
@@ -70,10 +70,9 @@ def compute_leace_affine(X_train, y_train):
     bias = eraser.bias.numpy()
     return P.T, I_P.T, bias.T
 
-
 def train_probes(X, U, y, facts, foils, 
-    cfg, wb, wb_run, diag_rlace_u_outdir, 
-    l0_tl, l1_tl, device="cpu"):
+    cfg, wb, wb_run, l0_tl, l1_tl, 
+    device="cpu", diag_rlace_u_outdir=None):
 
     idx_train, idx_val, idx_test = get_data_indices(
         X.shape[0], cfg["concept"], 
@@ -86,40 +85,17 @@ def train_probes(X, U, y, facts, foils,
     y_train, y_val, y_test = y[idx_train], y[idx_val], y[idx_test]
     facts_train, facts_val, facts_test = facts[idx_train], facts[idx_val], facts[idx_test]
     foils_train, foils_val, foils_test = foils[idx_train], foils[idx_val], foils[idx_test]
-    #%%
-    #if cfg['pca_dim'] > 0:
-    #    logging.info(f"Applying PCA with dimension {cfg['pca_dim']}")
-    #    X_pca = PCA(n_components=cfg['pca_dim']) 
-    #    X_train_pca = X_pca.fit_transform(X_train)
-        #U_pca = PCA(n_components=cfg['pca_dim'])
-        #U_train = U_pca.fit_transform(U_train)
 
-    #    X_val_pca = X_pca.transform(X_val)
-    #    X_test_pca = X_pca.transform(X_test)
-        #U_val = U_pca.transform(U_val)
-        #U_test = U_pca.transform(U_test)
-    #else:
-    #    X_pca = None
-    #    X_train_pca = X_train
-    #    X_val_pca = X_val
-    #    X_test_pca = X_test
-    X_pca = None
-
+    logging.info(f"y_train shape: {y_train.shape}")
+    logging.info(f"y_val shape: {y_val.shape}")
+    logging.info(f"y_test shape: {y_test.shape}")
     #%%
     start = time.time()
-    
-    diag_rlace_u_outfile = os.path.join(diag_rlace_u_outdir, f"{cfg['run_name']}.pt")
-    
-    #dim = X_train.shape[1]
 
-    # ESTIMATE MARGINALS VIA COUNTS
-    #concept_marginal = compute_concept_marginal(y_train)
-    #pair_marginals = compute_pair_marginals(y_train, fact_train, foil_train)
-
-    # ESTIMATE P
-    rlace_optimizer_class = torch.optim.SGD
+    # RLACE
+    #rlace_optimizer_class = torch.optim.SGD
     #rlace_scheduler_class = torch.optim.lr_scheduler.ReduceLROnPlateau
-    rlace_scheduler_class = torch.optim.lr_scheduler.MultiStepLR
+    #rlace_scheduler_class = torch.optim.lr_scheduler.MultiStepLR
 
     #if cfg["k"] > 0 and cfg["rlace_type"] == "theta":
     #    rlace_output = solve_adv_game(
@@ -151,10 +127,13 @@ def train_probes(X, U, y, facts, foils,
     #        "I_P_burn": I
     #    }
     #elif cfg["rlace_type"] == "leace":
+    
+    # LEACE 
     P, I_P, bias = compute_leace_affine(X_train, y_train)
-    rlace_output = {
-        "P_burn": P,
-        "I_P_burn": I_P
+    output = {
+        "bias": bias,
+        "P": P,
+        "I_P": I_P
     }
     #else: 
     #    raise ValueError("Incorrect RLACE type")
@@ -177,18 +156,18 @@ def train_probes(X, U, y, facts, foils,
         run=i,
         config=cfg,
         rlace_type=cfg["rlace_type"],
-        output=rlace_output,
+        output=output,
         #diag_eval=diag_eval,
         #usage_eval=usage_eval,
         #new_eval=new_eval,
         maj_acc_test=get_majority_acc(y_test),
-        #maj_acc_val=get_majority_acc(y_val),
+        maj_acc_val=get_majority_acc(y_val),
         maj_acc_train=get_majority_acc(y_train),
-        #X_val=X_val,
-        #U_val=U_val,
-        #y_val=y_val,
-        #foils_val=foils_val,
-        #facts_val=facts_val,
+        X_val=X_val,
+        U_val=U_val,
+        y_val=y_val,
+        foils_val=foils_val,
+        facts_val=facts_val,
         nobs_train = X_train.shape[0],
         nobs_test = X_test.shape[0],
         X_test=X_test,
@@ -202,7 +181,7 @@ def train_probes(X, U, y, facts, foils,
 
 
 #%%#################
-# MAIN     #
+# MAIN             #
 ####################
 if __name__ == '__main__':
     device = get_device()
@@ -214,18 +193,15 @@ if __name__ == '__main__':
     OUTPUT_DIR = os.path.join(OUT, 
         f"run_output/{cfg['concept']}/{cfg['model_name']}/"
         f"{cfg['out_folder']}/")
-    if not os.path.exists(OUTPUT_DIR):
-        os.makedirs(OUTPUT_DIR)
-        logging.info(f"Created output dir: {OUTPUT_DIR}")
-    else: 
-        logging.info(f"Output dir exists: {OUTPUT_DIR}")
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    #if not os.path.exists(OUTPUT_DIR):
+    #    logging.info(f"Created output dir: {OUTPUT_DIR}")
+    #else: 
+    #    logging.info(f"Output dir exists: {OUTPUT_DIR}")
 
-    DIAG_RLACE_U_OUTDIR = os.path.join(OUTPUT_DIR, "diag_rlace_u")
-    if not os.path.exists(DIAG_RLACE_U_OUTDIR):
-        os.mkdir(DIAG_RLACE_U_OUTDIR)
-
-    # Loading word lists for KL eval
-    #other_emb, l0_emb, l1_emb, pair_probs, concept_marginals = load_model_eval(cfg['concept'], cfg['model_name'])
+    #DIAG_RLACE_U_OUTDIR = os.path.join(OUTPUT_DIR, "diag_rlace_u")
+    #if not os.path.exists(DIAG_RLACE_U_OUTDIR):
+    #    os.mkdir(DIAG_RLACE_U_OUTDIR)
 
     # Load dataset
     l0_tl, l1_tl = load_concept_token_lists(cfg['concept'], cfg['model_name'])
@@ -254,7 +230,7 @@ if __name__ == '__main__':
     for i in trange(cfg['nruns']):
         #X, U, y, cfg, wb, wb_run, diag_rlace_u_outdir, device="cpu"
         run_output = train_probes(X, U, y, facts, foils, cfg, WB, i, 
-            DIAG_RLACE_U_OUTDIR, l0_tl, l1_tl, device=device)        
+            l0_tl, l1_tl, device=device)        
 
         outfile_path = os.path.join(OUTPUT_DIR, 
             f"run_{cfg['run_name']}_{datetimestr}_{i}_{cfg['nruns']}.pkl")

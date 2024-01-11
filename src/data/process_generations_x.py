@@ -81,6 +81,11 @@ def get_args():
         default=False,
         help="Whether to use nucleus sampling",
     )
+    argparser.add_argument(
+        "-nsamples",
+        type=int,
+        help="Number of files to read"
+    )
     return argparser.parse_args()
 
 
@@ -90,7 +95,7 @@ if __name__ == '__main__':
     
     model_name = args.model
     nucleus = args.nucleus
-    nsamples = None
+    nsamples = args.nsamples
     #model_name = "gpt2-large"
     #nucleus = True
     #nsamples = 20

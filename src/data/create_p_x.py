@@ -23,7 +23,7 @@ sys.path.append('..')
 
 from paths import DATASETS, OUT, RESULTS, MODELS
 
-from utils.lm_loaders import get_V, GPT2_LIST, BERT_LIST
+from utils.lm_loaders import get_V, GPT2_LIST, BERT_LIST, get_concept_name
 from evals.kl_eval import load_model_eval
 #from data.filter_generations import load_filtered_hs_wff
 #from evals.run_eval import filter_hs_w_ys, sample_filtered_hs
@@ -72,33 +72,46 @@ def get_p_x(counts_df, vocab_size):
     return p_x#, h_x
 
 #%%
+def get_args():
+    argparser = argparse.ArgumentParser(description='Generate from model')
+    argparser.add_argument(
+        "-model",
+        type=str,
+        choices=GPT2_LIST,
+        help="Model for computing hidden states"
+    )
+    argparser.add_argument(
+        "-nucleus",
+        action="store_true",
+        default=False,
+        help="Whether to use nucleus sampling",
+    )
+    return argparser.parse_args()
+
 if __name__=="__main__": 
     ####PARAMS
+    args = get_args()
+    logging.info(args)
+    
+    model_name = args.model
+    nucleus = args.nucleus
+    concept = get_concept_name(model_name)
     #model_name = "gpt2-base-french"
-    model_name = "gpt2-large"
+    #model_name = "gpt2-large"
     #concept = "gender"
-    concept = "number"
-    nucleus = True
+    #concept = "number"
+    #nucleus = True
 
-    #### RUNNER
-    #TODO: GET RID OF THIS DISTINCTION 
     if nucleus:
         counts_path = os.path.join(OUT, f"p_x/{model_name}/x_counts_{model_name}_nucleus.pkl")
-    elif model_name == "gpt2-large" and not nucleus:
-        counts_path = os.path.join(OUT, f"p_x/{model_name}/x_counts_{model_name}.pkl")
-    elif model_name == "gpt2-base-french" and not nucleus:
-        counts_path = os.path.join(OUT, f"p_x/{model_name}/x_counts_{model_name}_no_I_P.pkl")
+        outpath = os.path.join(outdir, f"{model_name}_nucleus_p_x.pkl")
     else:
-        raise ValueError("Wrong model nucleus combo")
+        counts_path = os.path.join(OUT, f"p_x/{model_name}/x_counts_{model_name}.pkl")
+        outpath = os.path.join(outdir, f"{model_name}_p_x.pkl")
 
     outdir = os.path.join(DATASETS, f"p_x")
     if not os.path.exists(outdir):
         os.makedirs(outdir)
-
-    if nucleus:
-        outpath = os.path.join(outdir, f"{model_name}_nucleus_p_x.pkl")
-    else:
-        outpath = os.path.join(outdir, f"{model_name}_p_x.pkl")
 
     V, _, _ = load_model_eval(model_name, concept)
     counts_df = load_format_counts(counts_path)

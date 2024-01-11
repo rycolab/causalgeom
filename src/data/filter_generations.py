@@ -21,8 +21,9 @@ sys.path.append('./src/')
 from paths import DATASETS, OUT
 
 from utils.lm_loaders import GPT2_LIST, get_concept_name
-#from utils.lm_loaders import GPT2_LIST
-from data.embed_wordlists.embedder import get_token_list_outfile_paths, load_concept_token_lists
+from data.embed_wordlists.embedder import get_token_list_outfile_paths, \
+    load_concept_token_lists
+from data.data_utils import sample_filtered_hs
 
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
@@ -76,19 +77,6 @@ def get_concept_hs_w_factfoil(generations_folder, l0_tl, l1_tl, nsamples=None):
     return l0_hs, l1_hs, other_hs
 
 #%% Loader functions
-def sample_filtered_hs(l0_hs, l1_hs, nsamples):
-    random.shuffle(l0_hs)
-    random.shuffle(l1_hs)
-    ratio = len(l1_hs)/len(l0_hs)
-    if ratio > 1:
-        l0_hs = l0_hs[:nsamples]
-        l1_hs = l1_hs[:int((nsamples*ratio))]
-    else:
-        ratio = len(l0_hs) / len(l1_hs)
-        l0_hs = l0_hs[:int((nsamples*ratio))]
-        l1_hs = l1_hs[:nsamples]
-    return l0_hs, l1_hs 
-
 """ 
 def load_filtered_hs(model_name, I_P="no_I_P", nsamples=None):
     filtered_hs_dir = os.path.join(OUT, 
@@ -101,8 +89,7 @@ def load_filtered_hs(model_name, I_P="no_I_P", nsamples=None):
         l0_hs, l1_hs = sample_filtered_hs(l0_hs, l1_hs, nsamples)
     return l0_hs, l1_hs
 """
-
-def load_filtered_hs_wff(model_name, load_other=False, nucleus=False, nsamples=None, I_P="no_I_P"):
+def load_generated_hs_wff(model_name, load_other=False, nucleus=False, nsamples=None, I_P="no_I_P"):
     if nucleus:
         filtered_hs_dir = os.path.join(OUT, 
             f"filtered_generations_nucleus/{model_name}/{I_P}")

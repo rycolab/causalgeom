@@ -7,6 +7,7 @@ DATASETS = os.path.join(MAIN, "data")
 RESULTS = os.path.join(MAIN, "results")
 MODELS = os.path.join(MAIN, "models")
 HF_CACHE = "../hf_cache"
+AUTH_TOKEN_PATH = os.path.join(MAIN, "auth_token.txt")
 
 
 BERT_SYNTAX_LINZEN_GOLDBERG = "../bert-syntax/lgd_dataset.tsv"

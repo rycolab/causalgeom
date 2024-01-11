@@ -212,13 +212,13 @@ def set_train_probes_defaults(config):
     )
 
     # Train, val and test size
-    config["train_obs"] = 70000
-    config["val_obs"] = 0
-    config["test_obs"] = 30000
+    config["train_obs"] = 60000
+    config["val_obs"] = 20000
+    config["test_obs"] = 20000
 
-    config["train_share"] = .7
-    config["val_share"] = 0
-    config["test_share"] = .3
+    config["train_share"] = .6
+    config["val_share"] = .2
+    config["test_share"] = .2
 
     # Constructing RLACE arg dicts (DON'T SET DEFAULTS HERE)
     config["rlace_optimizer_params_P"] = {
