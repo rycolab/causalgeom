@@ -85,7 +85,6 @@ def get_model(model_name):
 
 
 def get_V(model_name, model=None):
-    #TODO: add camembert
     if model is None:
         model = get_model(model_name)
 

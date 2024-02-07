@@ -1,0 +1,16 @@
+coloredlogs==15.0.1
+concept_erasure==0.2.1
+conllu==4.5.2
+datasets==2.10.1
+inflecteur==0.1.4
+ipdb==0.13.11
+matplotlib==3.7.1
+numpy==1.24.1
+pandas==1.5.2
+scikit_learn==1.4.0
+scipy==1.12.0
+seaborn==0.11.2
+spacy==3.5.0
+torch==2.1.2
+tqdm==4.64.1
+transformers==4.25.1
