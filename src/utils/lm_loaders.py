@@ -21,6 +21,7 @@ warnings.filterwarnings("ignore")
 
 GPT2_LIST = ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl", "gpt2-base-french", "gpt2-french-small"]
 BERT_LIST = ["bert-base-uncased", "camembert-base"]
+SUPPORTED_MODELS = GPT2_LIST + ["llama2"]
 
 def get_tokenizer(model_name):
     if model_name in ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl"]:
