@@ -259,12 +259,12 @@ if __name__=="__main__":
     args = get_args()
     logging.info(args)
 
-    dataset_name = args.dataset
-    model_name = args.model
-    split = args.split
-    #dataset_name = "ud_fr_gsd"
-    #model_name = "gpt2-base-french"
-    #split = "dev"
+    #dataset_name = args.dataset
+    #model_name = args.model
+    #split = args.split
+    dataset_name = "CEBaB"
+    model_name = "gpt2-large"
+    split = "train"
     batch_size = 64
 
     # Load model, tokenizer
@@ -294,7 +294,8 @@ if __name__=="__main__":
     os.makedirs(output_dir)
 
     # Collect HS
-    if model_name in GPT2_LIST:
+    #TODO: fix this list stuff once and for all
+    if model_name in GPT2_LIST + "llama2":
         logging.info(f"Collecting hs for model {model_name} in AR mode.")
         collect_hs_ar(dl, model, tokenizer, V, output_dir)
     elif model_name in BERT_LIST:
