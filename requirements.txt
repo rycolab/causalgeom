@@ -1,7 +1,7 @@
 coloredlogs==15.0.1
 concept_erasure==0.2.1
 conllu==4.5.2
-datasets==2.10.1
+datasets==2.16.1
 inflecteur==0.1.4
 ipdb==0.13.11
 matplotlib==3.7.1
