@@ -19,7 +19,7 @@ from scipy.special import softmax, kl_div
 sys.path.append('./src/')
 
 from paths import DATASETS, OUT, FR_DATASETS
-from utils.lm_loaders import get_tokenizer, get_V, GPT2_LIST, BERT_LIST
+from utils.lm_loaders import get_tokenizer, get_V, GPT2_LIST, BERT_LIST, SUPPORTED_MODELS
 
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
@@ -44,7 +44,7 @@ def get_args():
     argparser.add_argument(
         "-model",
         type=str,
-        choices=BERT_LIST + GPT2_LIST,
+        choices=SUPPORTED_MODELS,
         help="Models to create embedding files for"
     )
     return argparser.parse_args()

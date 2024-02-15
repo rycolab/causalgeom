@@ -28,19 +28,21 @@ def get_train_probes_args():
     argparser.add_argument(
         "-model",
         type=str,
-        choices=BERT_LIST + GPT2_LIST,
+        choices=BERT_LIST + GPT2_LIST + ["llama2"],
         #required=True,
         dest="model_name",
         default="bert-base-uncased",
         help="Model used to extract hidden states & embeddings"
     )
-    argparser.add_argument(
-        "-rlace_type",
-        type=str,
-        choices=["theta","lm","leace"],
-        default="theta",
-        help="Which type of RLACE to use"
-    )
+
+    # RLACE ARGS
+    #argparser.add_argument(
+    #    "-rlace_type",
+    #    type=str,
+    #    choices=["theta","lm","leace"],
+    #    default="theta",
+    #    help="Which type of RLACE to use"
+    #)
     argparser.add_argument(
         "-k",
         type=int,
@@ -143,6 +145,8 @@ def get_train_probes_args():
         type=int,
         help="Patience parameter of ReduceLROnPlateau for clf" 
     )
+
+    # TRAINING ARGS
     argparser.add_argument(
         "-nruns",
         type=int,

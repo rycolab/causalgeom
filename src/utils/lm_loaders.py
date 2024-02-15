@@ -9,6 +9,7 @@ import numpy as np
 from transformers import GPT2TokenizerFast, GPT2LMHeadModel
 from transformers import BertTokenizerFast, BertForMaskedLM
 from transformers import CamembertForMaskedLM, CamembertTokenizer
+from transformers import AutoTokenizer, AutoModelForCausalLM
 
 sys.path.append('./src/')
 
@@ -48,6 +49,10 @@ def get_tokenizer(model_name):
         return CamembertTokenizer.from_pretrained(
             model_name, model_max_length=512
         )
+    elif model_name == "llama2":
+        return AutoTokenizer.from_pretrained(
+            "meta-llama/Llama-2-7b-hf"
+        )
     else:
         raise ValueError(f"Model name {model_name} not supported")
 
@@ -80,6 +85,11 @@ def get_model(model_name):
             cache_dir=HF_CACHE, 
             #is_decoder=False
         )
+    elif model_name == "llama2":
+        return AutoModelForCausalLM.from_pretrained(
+            "meta-llama/Llama-2-7b-hf",
+            cache_dir=HF_CACHE
+        )
     else:
         raise ValueError(f"Model name {model_name} not supported")
 
@@ -103,6 +113,8 @@ def get_V(model_name, model=None):
         bias = model.lm_head.decoder.bias
         return torch.cat(
             (word_embeddings, bias.view(-1, 1)), dim=1).detach().numpy()
+    elif model_name == "llama2":
+        raise NotImplementedError(f"Llama2 not yet implemented")
     else:
         raise ValueError(f"Model name {model_name} not supported")
 
