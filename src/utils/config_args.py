@@ -5,7 +5,7 @@ import sys
 import argparse
 import coloredlogs
 
-from utils.lm_loaders import GPT2_LIST, BERT_LIST
+from utils.lm_loaders import GPT2_LIST, BERT_LIST, SUPPORTED_MODELS
 from paths import FR_DATASETS
 
 #%%#################
@@ -29,7 +29,7 @@ def get_train_probes_args():
     argparser.add_argument(
         "-model",
         type=str,
-        choices=BERT_LIST + GPT2_LIST + ["llama2"],
+        choices=SUPPORTED_MODELS,
         #required=True,
         dest="model_name",
         default="gpt2-large",

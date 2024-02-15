@@ -23,7 +23,7 @@ GPT2_LIST = ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl", "gpt2-base-french",
 BERT_LIST = ["bert-base-uncased", "camembert-base"]
 SUPPORTED_MODELS = GPT2_LIST + ["llama2"]
 
-def get_tokenizer(model_name):
+def get_tokenizer(model_name, token=None):
     if model_name in ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl"]:
         tokenizer = GPT2TokenizerFast.from_pretrained(
             model_name, model_max_length=512
@@ -52,13 +52,14 @@ def get_tokenizer(model_name):
         )
     elif model_name == "llama2":
         return AutoTokenizer.from_pretrained(
-            "meta-llama/Llama-2-7b-hf"
+            "meta-llama/Llama-2-7b-hf", 
+            token=token
         )
     else:
         raise ValueError(f"Model name {model_name} not supported")
 
 
-def get_model(model_name):
+def get_model(model_name, token=None):
     if model_name in ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl"]:
         return GPT2LMHeadModel.from_pretrained(
             model_name, 
@@ -89,7 +90,8 @@ def get_model(model_name):
     elif model_name == "llama2":
         return AutoModelForCausalLM.from_pretrained(
             "meta-llama/Llama-2-7b-hf",
-            cache_dir=HF_CACHE
+            cache_dir=HF_CACHE,
+            token=token
         )
     else:
         raise ValueError(f"Model name {model_name} not supported")
@@ -115,7 +117,7 @@ def get_V(model_name, model=None):
         return torch.cat(
             (word_embeddings, bias.view(-1, 1)), dim=1).detach().numpy()
     elif model_name == "llama2":
-        raise NotImplementedError(f"Llama2 not yet implemented")
+        return model.lm_head.weight.detach().numpy()
     else:
         raise ValueError(f"Model name {model_name} not supported")
 

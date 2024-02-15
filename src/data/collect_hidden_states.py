@@ -25,7 +25,8 @@ sys.path.append('./src/')
 
 from paths import OUT, HF_CACHE, FR_DATASETS
 from utils.cuda_loaders import get_device
-from utils.lm_loaders import get_model, get_tokenizer, get_V, GPT2_LIST, BERT_LIST
+from utils.lm_loaders import get_model, get_tokenizer, get_V, \
+    GPT2_LIST, BERT_LIST, SUPPORTED_MODELS
 from utils.dataset_loaders import load_preprocessed_dataset
 import ipdb
 
@@ -242,7 +243,7 @@ def get_args():
     argparser.add_argument(
         "-model",
         type=str,
-        choices=BERT_LIST + GPT2_LIST,
+        choices=SUPPORTED_MODELS,
         help="Model for computing hidden states"
     )
     argparser.add_argument(
@@ -259,11 +260,11 @@ if __name__=="__main__":
     args = get_args()
     logging.info(args)
 
-    dataset_name = args.dataset
-    model_name = args.model
-    split = args.split
-    #dataset_name = "ud_fr_gsd"
-    #model_name = "gpt2-base-french"
+    #dataset_name = args.dataset
+    #model_name = args.model
+    #split = args.split
+    dataset_name = "linzen"
+    model_name = "llama2"
     #split = "dev"
     batch_size = 64
 
@@ -294,7 +295,7 @@ if __name__=="__main__":
     os.makedirs(output_dir)
 
     # Collect HS
-    if model_name in GPT2_LIST:
+    if model_name in GPT2_LIST + ["llama2"]:
         logging.info(f"Collecting hs for model {model_name} in AR mode.")
         collect_hs_ar(dl, model, tokenizer, V, output_dir)
     elif model_name in BERT_LIST:
