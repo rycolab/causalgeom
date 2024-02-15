@@ -43,6 +43,7 @@ from paths import DATASETS, OUT
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
 
+
 def get_data_indices(nobs, concept, train_obs, val_obs, test_obs,
         train_share, val_share):
     idx = np.arange(0, nobs)
@@ -65,20 +66,24 @@ def compute_leace_affine(X_train, y_train):
     y_torch = torch.from_numpy(y_train)
 
     eraser = LeaceEraser.fit(X_torch, y_torch)
-    P = (eraser.proj_left @ eraser.proj_right).numpy()
+    #P = (eraser.proj_left @ eraser.proj_right).numpy().T
+    #I_P = np.eye(X_train.shape[1]) - P
+    #bias = eraser.bias.numpy()
+
+    P = (eraser.proj_right.mH @ eraser.proj_left.mH).numpy()
     I_P = np.eye(X_train.shape[1]) - P
     bias = eraser.bias.numpy()
-    return P.T, I_P.T, bias.T
+    return P, I_P, bias
 
 def train_probes(X, U, y, facts, foils, 
     cfg, wb, wb_run, l0_tl, l1_tl, 
     device="cpu", diag_rlace_u_outdir=None):
 
     idx_train, idx_val, idx_test = get_data_indices(
-        X.shape[0], cfg["concept"], 
-        cfg['train_obs'], cfg['val_obs'], cfg['test_obs'],
-        cfg["train_share"], cfg["val_share"]
-    )
+            X.shape[0], cfg["concept"], 
+            cfg['train_obs'], cfg['val_obs'], cfg['test_obs'],
+            cfg["train_share"], cfg["val_share"]
+        )
     
     X_train, X_val, X_test = X[idx_train], X[idx_val], X[idx_test]
     U_train, U_val, U_test = U[idx_train], U[idx_val], U[idx_test]
@@ -155,7 +160,7 @@ def train_probes(X, U, y, facts, foils,
     full_results = dict(
         run=i,
         config=cfg,
-        rlace_type=cfg["rlace_type"],
+        #rlace_type=cfg["rlace_type"],
         output=output,
         #diag_eval=diag_eval,
         #usage_eval=usage_eval,
@@ -194,15 +199,7 @@ if __name__ == '__main__':
         f"run_output/{cfg['concept']}/{cfg['model_name']}/"
         f"{cfg['out_folder']}/")
     os.makedirs(OUTPUT_DIR, exist_ok=True)
-    #if not os.path.exists(OUTPUT_DIR):
-    #    logging.info(f"Created output dir: {OUTPUT_DIR}")
-    #else: 
-    #    logging.info(f"Output dir exists: {OUTPUT_DIR}")
-
-    #DIAG_RLACE_U_OUTDIR = os.path.join(OUTPUT_DIR, "diag_rlace_u")
-    #if not os.path.exists(DIAG_RLACE_U_OUTDIR):
-    #    os.mkdir(DIAG_RLACE_U_OUTDIR)
-
+    
     # Load dataset
     l0_tl, l1_tl = load_concept_token_lists(cfg['concept'], cfg['model_name'])
     X, U, y, facts, foils = load_processed_data(cfg['concept'], cfg['model_name'])
@@ -228,7 +225,6 @@ if __name__ == '__main__':
         WB = False
 
     for i in trange(cfg['nruns']):
-        #X, U, y, cfg, wb, wb_run, diag_rlace_u_outdir, device="cpu"
         run_output = train_probes(X, U, y, facts, foils, cfg, WB, i, 
             l0_tl, l1_tl, device=device)        
 

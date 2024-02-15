@@ -23,6 +23,7 @@ def get_train_probes_args():
         "-concept",
         type=str,
         choices=["gender", "number"],
+        default="number",
         help="Concept to erase"
     )
     argparser.add_argument(
@@ -31,16 +32,16 @@ def get_train_probes_args():
         choices=BERT_LIST + GPT2_LIST,
         #required=True,
         dest="model_name",
-        default="bert-base-uncased",
+        default="gpt2-large",
         help="Model used to extract hidden states & embeddings"
     )
-    argparser.add_argument(
-        "-rlace_type",
-        type=str,
-        choices=["theta","lm","leace"],
-        default="theta",
-        help="Which type of RLACE to use"
-    )
+    #argparser.add_argument(
+    #    "-rlace_type",
+    #    type=str,
+    #    choices=["theta","lm","leace"],
+    #    default="theta",
+    #    help="Which type of RLACE to use"
+    #)
     argparser.add_argument(
         "-k",
         type=int,
@@ -262,7 +263,7 @@ def set_train_probes_defaults(config):
         "verbose": True
     }
     #rlace_epsilon = 0.001 # stop 0.1% from majority acc (I TURNED THIS OFF)
-    config["run_name"] = f"{config['model_name']}_{config['rlace_type']}_k{config['k']}_Plr{config['P_lr']}_Pms{config['P_milestones']}_clflr{config['clf_lr']}_clfms{config['clf_milestones']}"
+    config["run_name"] = f"{config['model_name']}_k{config['k']}_Plr{config['P_lr']}_Pms{config['P_milestones']}_clflr{config['clf_lr']}_clfms{config['clf_milestones']}"
     return config
 
 def get_train_probes_config():
