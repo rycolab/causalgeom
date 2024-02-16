@@ -22,7 +22,7 @@ def get_train_probes_args():
     argparser.add_argument(
         "-concept",
         type=str,
-        choices=["gender", "number"],
+        choices=["gender", "number", "sentiment"],
         default="number",
         help="Concept to erase"
     )

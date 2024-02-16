@@ -235,7 +235,7 @@ def get_args():
     argparser.add_argument(
         "-dataset", 
         type=str,
-        choices=["linzen"] + FR_DATASETS,
+        choices=["linzen", "CEBaB"] + FR_DATASETS,
         default="linzen",
         help="Dataset to collect hidden states for"
     )
@@ -259,12 +259,12 @@ if __name__=="__main__":
     args = get_args()
     logging.info(args)
 
-    #dataset_name = args.dataset
-    #model_name = args.model
-    #split = args.split
-    dataset_name = "CEBaB"
-    model_name = "gpt2-large"
-    split = "train"
+    dataset_name = args.dataset
+    model_name = args.model
+    split = args.split
+    #dataset_name = "CEBaB"
+    #model_name = "gpt2-large"
+    #split = "train"
     batch_size = 64
 
     # Load model, tokenizer
@@ -288,14 +288,11 @@ if __name__=="__main__":
     else:
         output_dir = os.path.join(OUT, f"hidden_states/{dataset_name}/{model_name}/{split}")
 
-    assert not os.path.exists(output_dir), \
-        f"Hidden state export dir exists: {output_dir}"
-
-    os.makedirs(output_dir)
+    os.makedirs(output_dir, exist_ok=False)
 
     # Collect HS
     #TODO: fix this list stuff once and for all
-    if model_name in GPT2_LIST + "llama2":
+    if model_name in GPT2_LIST:
         logging.info(f"Collecting hs for model {model_name} in AR mode.")
         collect_hs_ar(dl, model, tokenizer, V, output_dir)
     elif model_name in BERT_LIST:

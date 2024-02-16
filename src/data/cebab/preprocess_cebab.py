@@ -100,15 +100,3 @@ for data, split in splits:
     with open(fpath, "wb") as f:
         pickle.dump(data, f)
 
-
-
-# %%
-#from utils.dataset_loaders import load_preprocessed_dataset
-
-#linzen_data = load_preprocessed_dataset("linzen", "gpt2-large")
-
-
-
-    
-
-# %%
