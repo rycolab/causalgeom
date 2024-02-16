@@ -21,7 +21,7 @@ warnings.filterwarnings("ignore")
 
 GPT2_LIST = ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl", "gpt2-base-french", "gpt2-french-small"]
 BERT_LIST = ["bert-base-uncased", "camembert-base"]
-SUPPORTED_MODELS = GPT2_LIST + ["llama2"]
+SUPPORTED_AR_MODELS = GPT2_LIST + ["llama2"]
 
 def get_tokenizer(model_name, token=None):
     if model_name in ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl"]:
@@ -51,10 +51,12 @@ def get_tokenizer(model_name, token=None):
             model_name, model_max_length=512
         )
     elif model_name == "llama2":
-        return AutoTokenizer.from_pretrained(
+        tokenizer = AutoTokenizer.from_pretrained(
             "meta-llama/Llama-2-7b-hf", 
-            token=token
+            token=token, model_max_length=4096
         )
+        tokenizer.pad_token = tokenizer.eos_token
+        return tokenizer
     else:
         raise ValueError(f"Model name {model_name} not supported")
 
@@ -91,7 +93,8 @@ def get_model(model_name, token=None):
         return AutoModelForCausalLM.from_pretrained(
             "meta-llama/Llama-2-7b-hf",
             cache_dir=HF_CACHE,
-            token=token
+            token=token,
+            #context_length=4096
         )
     else:
         raise ValueError(f"Model name {model_name} not supported")
