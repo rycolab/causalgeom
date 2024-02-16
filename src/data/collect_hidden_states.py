@@ -114,6 +114,7 @@ def get_batch_hs_ar(model_name, batch, model, tokenizer, V):
     tok_foils = batch_tokenize_tgts(model_name, batch["foil"], tokenizer)
     tok_text = batch_tokenize_text(batch["pre_tgt_text"], tokenizer)
 
+    #TODO: this sample by sample business is not really necessary now, should batch it
     for ti, am, tfa, tfo, fact, foil, tgt_label in zip(
         tok_text["input_ids"], 
         tok_text["attention_mask"], 

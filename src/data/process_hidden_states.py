@@ -10,12 +10,13 @@ import numpy as np
 import pickle
 from tqdm import tqdm
 import shutil
+import torch
 
 #sys.path.append('..')
 sys.path.append('./src/')
 
 from paths import OUT, DATASETS, FR_DATASETS
-from utils.lm_loaders import GPT2_LIST, BERT_LIST
+from utils.lm_loaders import GPT2_LIST, BERT_LIST, SUPPORTED_AR_MODELS
 
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
@@ -35,6 +36,9 @@ def define_target(tgt_label):
         return 0
     elif (tgt_label == "VBP" or tgt_label == "Fem"):
         return 1
+    if ((tgt_label == torch.tensor(1)).all().item() or 
+        (tgt_label == torch.tensor(0)).all().item()):
+        return tgt_label.item()
     else:
         raise ValueError(f"Incorrect tgt label {tgt_label}")
 
@@ -60,7 +64,7 @@ def format_sample_masked(sample):
     
 ## AR
 def format_sample_ar(sample):
-    hs = sample["fact_hs"][0,:]
+    hs = sample["fact_hs"][0,:] #take the hidden state before the fact (equals foil)
     fact_emb = sample["fact_embedding"]
     foil_emb = sample["foil_embedding"]
     fact = sample["input_ids_fact"]
@@ -195,14 +199,14 @@ def get_args():
     argparser.add_argument(
         "-dataset", 
         type=str,
-        choices=["linzen"] + FR_DATASETS,
+        choices=["linzen", "CEBaB"] + FR_DATASETS,
         default="linzen",
         help="Dataset to process hidden states for"
     )
     argparser.add_argument(
         "-model",
         type=str,
-        choices=BERT_LIST + GPT2_LIST,
+        choices=BERT_LIST + SUPPORTED_AR_MODELS,
         help="Model to process hidden states for"
     )
     argparser.add_argument(
@@ -237,13 +241,13 @@ if __name__=="__main__":
     OUT_TYPE = args.outtype
     NBATCHES = args.nbatches
     SPLIT = args.split
-    #DATASET_NAME = "linzen"
-    #MODEL_NAME = "gpt2-medium"
+    #DATASET_NAME = "CEBaB"
+    #MODEL_NAME = "gpt2-large"
     #OUT_TYPE = "full"
     #NBATCHES = 10
     #SPLIT = "train"
 
-    if MODEL_NAME in GPT2_LIST and OUT_TYPE == "full":
+    if MODEL_NAME in SUPPORTED_AR_MODELS and OUT_TYPE == "full":
         OUT_TYPE = "ar"
     elif MODEL_NAME in BERT_LIST and OUT_TYPE == "full":
         OUT_TYPE = "masked"
@@ -273,8 +277,6 @@ if __name__=="__main__":
     #assert not os.path.isfile(OUTFILE), \
     #    f"Output file {OUTFILE} already exists"
 
-    
-    assert not os.path.exists(TEMPDIR), f"Temp dir {TEMPDIR} already exists"
-    os.makedirs(TEMPDIR)
+    os.makedirs(TEMPDIR, exist_ok=False)
 
     process_hidden_states(FILEDIR, OUTFILE, TEMPDIR, OUT_TYPE, nbatches=NBATCHES)

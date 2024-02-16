@@ -147,12 +147,8 @@ def load_preprocessed_dataset(dataset_name, model_name, split=None):
     """
     model_type = get_model_type(model_name)
     if dataset_name == "linzen":
-<<<<<<< HEAD
-        return load_linzen(model_type)
-=======
         return load_linzen(model_type, model_name)
     #TODO: complete this second if 
->>>>>>> main
     elif dataset_name in FR_DATASETS:
         assert split in ["train", "dev", "test"], "Must specify split"
         dataset_folder = get_udfr_dataset_folder(dataset_name)
