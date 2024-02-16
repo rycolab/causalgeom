@@ -25,7 +25,8 @@ sys.path.append('./src/')
 
 from paths import OUT, HF_CACHE, FR_DATASETS
 from utils.cuda_loaders import get_device
-from utils.lm_loaders import get_model, get_tokenizer, get_V, GPT2_LIST, BERT_LIST
+from utils.lm_loaders import get_model, get_tokenizer, get_V, \
+    GPT2_LIST, BERT_LIST, SUPPORTED_AR_MODELS
 from utils.dataset_loaders import load_preprocessed_dataset
 import ipdb
 
@@ -56,8 +57,21 @@ def export_batch(output_dir, batch_num, batch_data):
 #%%#################
 # AR Helpers       #
 ####################
-def batch_tokenize_tgts(tgts, tokenizer):
-    return tokenizer(tgts)["input_ids"]
+def remove_bos(input_ids):
+    first_token = [x[0] for x in input_ids]
+    unique_tokens = np.unique(first_token)
+    if (unique_tokens == np.array([1])).all():
+        return [x[1:] for x in input_ids]
+    else:
+        return input_ids
+
+def batch_tokenize_tgts(model_name, tgts, tokenizer):
+    if model_name in GPT2_LIST:
+        return tokenizer(tgts)["input_ids"]
+    elif model_name == "llama2": 
+        return remove_bos(tokenizer(tgts)["input_ids"])
+    else:
+        raise NotImplementedError(f"Model {model_name} not supported")
 
 def batch_tokenize_text(text, tokenizer):
     return tokenizer(
@@ -65,18 +79,26 @@ def batch_tokenize_text(text, tokenizer):
         padding="max_length", truncation=True
     )
 
-def get_raw_sample_hs(pre_tgt_ids, attention_mask, tgt_ids, model):
+def get_raw_sample_hs(model_name, pre_tgt_ids, attention_mask, tgt_ids, model):
     nopad_ti = pre_tgt_ids[attention_mask == 1]
     tgt_ti = torch.cat((nopad_ti, torch.LongTensor(tgt_ids)), 0)
+    if model_name == "llama2":
+        tgt_ti = tgt_ti.unsqueeze(0)
     tgt_ti_dev = tgt_ti.to(device)
     with torch.no_grad():
+        #TODO: check that the logits are the same
         output = model(
             input_ids=tgt_ti_dev, 
             #attention_mask=attention_mask, 
             labels=tgt_ti_dev,
             output_hidden_states=True
         )
-    return tgt_ti.numpy(), output.hidden_states[-1].cpu().numpy()
+    if model_name == "llama2":
+        return tgt_ti.numpy(), output.hidden_states[-1][0].cpu().numpy()
+    elif model_name in GPT2_LIST:
+        return tgt_ti.numpy(), output.hidden_states[-1].cpu().numpy()
+    else:
+        raise NotImplementedError(f"Model {model_name} not yet implemented")
 
 
 def get_tgt_hs(raw_hs, tgt_tokens):
@@ -86,10 +108,10 @@ def get_tgt_hs(raw_hs, tgt_tokens):
     tgt_hs = raw_hs[-(len(tgt_tokens)+1):]
     return tgt_hs
 
-def get_batch_hs_ar(batch, model, tokenizer, V):
+def get_batch_hs_ar(model_name, batch, model, tokenizer, V):
     batch_hs = []
-    tok_facts = batch_tokenize_tgts(batch["fact"], tokenizer)
-    tok_foils = batch_tokenize_tgts(batch["foil"], tokenizer)
+    tok_facts = batch_tokenize_tgts(model_name, batch["fact"], tokenizer)
+    tok_foils = batch_tokenize_tgts(model_name, batch["foil"], tokenizer)
     tok_text = batch_tokenize_text(batch["pre_tgt_text"], tokenizer)
 
     for ti, am, tfa, tfo, fact, foil, tgt_label in zip(
@@ -106,10 +128,10 @@ def get_batch_hs_ar(batch, model, tokenizer, V):
         ######################
         # NOTE: for dynamic program will need to separately
         # loop through all tokenizations of verb and iverb
-        fact_ti, fact_raw_hs = get_raw_sample_hs(ti, am, tfa, model)
+        fact_ti, fact_raw_hs = get_raw_sample_hs(model_name, ti, am, tfa, model)
         fact_hs = get_tgt_hs(fact_raw_hs, tfa)
 
-        foil_ti, foil_raw_hs = get_raw_sample_hs(ti, am, tfo, model)
+        foil_ti, foil_raw_hs = get_raw_sample_hs(model_name, ti, am, tfo, model)
         foil_hs = get_tgt_hs(foil_raw_hs, tfo)
 
         ######################
@@ -134,11 +156,11 @@ def get_batch_hs_ar(batch, model, tokenizer, V):
         ))
     return batch_hs
 
-def collect_hs_ar(dl, model, tokenizer, V, output_dir):
+def collect_hs_ar(model_name, dl, model, tokenizer, V, output_dir):
     for i, batch in enumerate(pbar:=tqdm(dl)):
         pbar.set_description(f"Generating hidden states")
 
-        batch_data = get_batch_hs_ar(batch, model, tokenizer, V)
+        batch_data = get_batch_hs_ar(model_name, batch, model, tokenizer, V)
         export_batch(output_dir, i, batch_data)
 
         torch.cuda.empty_cache()
@@ -242,7 +264,7 @@ def get_args():
     argparser.add_argument(
         "-model",
         type=str,
-        choices=BERT_LIST + GPT2_LIST,
+        choices=SUPPORTED_AR_MODELS,
         help="Model for computing hidden states"
     )
     argparser.add_argument(
@@ -291,10 +313,9 @@ if __name__=="__main__":
     os.makedirs(output_dir, exist_ok=False)
 
     # Collect HS
-    #TODO: fix this list stuff once and for all
-    if model_name in GPT2_LIST:
+    if model_name in SUPPORTED_AR_MODELS:
         logging.info(f"Collecting hs for model {model_name} in AR mode.")
-        collect_hs_ar(dl, model, tokenizer, V, output_dir)
+        collect_hs_ar(model_name, dl, model, tokenizer, V, output_dir)
     elif model_name in BERT_LIST:
         logging.info(f"Collecting hs for model {model_name} in MASKED mode.")
         collect_hs_masked(dl, model_name, model, tokenizer, 

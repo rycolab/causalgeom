@@ -46,8 +46,7 @@ def load_run_Ps(run_path):
 def load_model_eval(model_name, concept):
     V = get_V(model_name)
     l0_tl, l1_tl = load_concept_token_lists(concept, model_name)
-    #p_c = get_p_c(concept, model_name, source)
-    return V, l0_tl, l1_tl#, p_c
+    return V, l0_tl, l1_tl
 
 
 #%%#################

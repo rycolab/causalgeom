@@ -19,7 +19,7 @@ from scipy.special import softmax, kl_div
 sys.path.append('./src/')
 
 from paths import DATASETS, OUT, FR_DATASETS
-from utils.lm_loaders import get_tokenizer, get_V, GPT2_LIST, BERT_LIST
+from utils.lm_loaders import get_tokenizer, get_V, GPT2_LIST, BERT_LIST, SUPPORTED_AR_MODELS
 
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
@@ -38,13 +38,13 @@ def get_args():
     argparser.add_argument(
         "-concept",
         type=str,
-        choices=["gender", "number"],
+        choices=["gender", "number", "sentiment"],
         help="Concept to create embedded word lists for"
     )
     argparser.add_argument(
         "-model",
         type=str,
-        choices=BERT_LIST + GPT2_LIST,
+        choices=SUPPORTED_AR_MODELS,
         help="Models to create embedding files for"
     )
     return argparser.parse_args()
@@ -69,6 +69,12 @@ def get_emb_outfile_paths(concept, model_name):
         adj_p_outfile = os.path.join(DATASETS, f"processed/fr/embedded_word_lists/{model_name}_adj_p.npy")
         masc_emb_outfile = os.path.join(DATASETS, f"processed/fr/embedded_word_lists/{model_name}_masc_embeds.npy")
         fem_emb_outfile = os.path.join(DATASETS, f"processed/fr/embedded_word_lists/{model_name}_fem_embeds.npy")
+        return word_emb_outfile, adj_p_outfile, masc_emb_outfile, fem_emb_outfile
+    elif concept == "sentiment":
+        word_emb_outfile = os.path.join(DATASETS, f"processed/en/embedded_word_lists/sentiment/{model_name}_word_embeds.npy")
+        adj_p_outfile = os.path.join(DATASETS, f"processed/en/embedded_word_lists/sentiment/{model_name}_adj_p.npy")
+        masc_emb_outfile = os.path.join(DATASETS, f"processed/en/embedded_word_lists/sentiment/{model_name}_masc_embeds.npy")
+        fem_emb_outfile = os.path.join(DATASETS, f"processed/en/embedded_word_lists/sentiment/{model_name}_fem_embeds.npy")
         return word_emb_outfile, adj_p_outfile, masc_emb_outfile, fem_emb_outfile
     else:
         raise ValueError("Invalid dataset name")

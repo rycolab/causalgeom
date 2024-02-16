@@ -151,12 +151,12 @@ def get_args():
         default=False,
         help="Whether to use nucleus sampling",
     )
-    argparser.add_argument(
-        "-useP",
-        action="store_true",
-        default=False,
-        help="Whether to load and apply a P for this set of generations",
-    )
+    #argparser.add_argument(
+    #    "-useP",
+    #    action="store_true",
+    #    default=False,
+    #    help="Whether to load and apply a P for this set of generations",
+    #)
     argparser.add_argument(
         "-export_index",
         type=int,

@@ -9,6 +9,7 @@ import numpy as np
 from transformers import GPT2TokenizerFast, GPT2LMHeadModel
 from transformers import BertTokenizerFast, BertForMaskedLM
 from transformers import CamembertForMaskedLM, CamembertTokenizer
+from transformers import AutoTokenizer, AutoModelForCausalLM
 
 sys.path.append('./src/')
 
@@ -20,8 +21,9 @@ warnings.filterwarnings("ignore")
 
 GPT2_LIST = ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl", "gpt2-base-french", "gpt2-french-small"]
 BERT_LIST = ["bert-base-uncased", "camembert-base"]
+SUPPORTED_AR_MODELS = GPT2_LIST + ["llama2"]
 
-def get_tokenizer(model_name):
+def get_tokenizer(model_name, token=None):
     if model_name in ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl"]:
         tokenizer = GPT2TokenizerFast.from_pretrained(
             model_name, model_max_length=512
@@ -48,11 +50,18 @@ def get_tokenizer(model_name):
         return CamembertTokenizer.from_pretrained(
             model_name, model_max_length=512
         )
+    elif model_name == "llama2":
+        tokenizer = AutoTokenizer.from_pretrained(
+            "meta-llama/Llama-2-7b-hf", 
+            token=token, model_max_length=4096
+        )
+        tokenizer.pad_token = tokenizer.eos_token
+        return tokenizer
     else:
         raise ValueError(f"Model name {model_name} not supported")
 
 
-def get_model(model_name):
+def get_model(model_name, token=None):
     if model_name in ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl"]:
         return GPT2LMHeadModel.from_pretrained(
             model_name, 
@@ -80,6 +89,13 @@ def get_model(model_name):
             cache_dir=HF_CACHE, 
             #is_decoder=False
         )
+    elif model_name == "llama2":
+        return AutoModelForCausalLM.from_pretrained(
+            "meta-llama/Llama-2-7b-hf",
+            cache_dir=HF_CACHE,
+            token=token,
+            #context_length=4096
+        )
     else:
         raise ValueError(f"Model name {model_name} not supported")
 
@@ -103,6 +119,8 @@ def get_V(model_name, model=None):
         bias = model.lm_head.decoder.bias
         return torch.cat(
             (word_embeddings, bias.view(-1, 1)), dim=1).detach().numpy()
+    elif model_name == "llama2":
+        return model.lm_head.weight.detach().numpy()
     else:
         raise ValueError(f"Model name {model_name} not supported")
 
