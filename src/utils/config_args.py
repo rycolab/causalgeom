@@ -5,7 +5,7 @@ import sys
 import argparse
 import coloredlogs
 
-from utils.lm_loaders import GPT2_LIST, BERT_LIST
+from utils.lm_loaders import GPT2_LIST, BERT_LIST, SUPPORTED_MODELS
 from paths import FR_DATASETS
 
 #%%#################
@@ -29,19 +29,21 @@ def get_train_probes_args():
     argparser.add_argument(
         "-model",
         type=str,
-        choices=BERT_LIST + GPT2_LIST,
+        choices=SUPPORTED_MODELS,
         #required=True,
         dest="model_name",
         default="gpt2-large",
         help="Model used to extract hidden states & embeddings"
     )
-    #argparser.add_argument(
-    #    "-rlace_type",
-    #    type=str,
-    #    choices=["theta","lm","leace"],
-    #    default="theta",
-    #    help="Which type of RLACE to use"
-    #)
+
+    # RLACE ARGS
+    ##argparser.add_argument(
+    ##    "-rlace_type",
+    ##    type=str,
+    ##    choices=["theta","lm","leace"],
+    ##    default="theta",
+    ##    help="Which type of RLACE to use"
+    ##)
     argparser.add_argument(
         "-k",
         type=int,
@@ -144,6 +146,8 @@ def get_train_probes_args():
         type=int,
         help="Patience parameter of ReduceLROnPlateau for clf" 
     )
+
+    # TRAINING ARGS
     argparser.add_argument(
         "-nruns",
         type=int,
@@ -273,110 +277,3 @@ def get_train_probes_config():
     config = set_train_probes_defaults(config)
     return config
     
-
-
-
-
-"""
-MODE = "job" # "debug"
-
-
-if MODE == "job":
-    # rlace args
-    RANK = args.k
-    RLACE_NITER = args.niter
-    BATCH_SIZE = args.bs
-    #P_LR = args.p_lr
-    #CLF_LR = args.clf_lr
-    P_LR, CLF_LR = get_default_lrs(MODEL_NAME)
-
-    # P scheduler
-    P_SCHED_NRED = args.P_n_lr_red
-    P_SCHED_FACTOR = .5
-    P_SCHED_PATIENCE = 4
-
-    # clf scheduler
-    CLF_SCHED_NRED = args.clf_n_lr_red
-    CLF_SCHED_FACTOR = .5
-    CLF_SCHED_PATIENCE = 4
-
-    #data
-    NRUNS = args.nruns
-    TRAIN_OBS = args.train_obs
-    VAL_OBS = 10000
-    TEST_OBS = 20000
-    SEED = args.seed
-
-    OUTPUT_FOLDER = args.outdir
-    WBN = args.wandb_name
-else:
-    logging.warn("RUNNING IN DEBUG MODE.")
-    DATASET_NAME = "linzen"
-    MODEL_NAME = "gpt2" #"bert-base-uncased"
-    
-    # rlace
-    RANK = 1
-    RLACE_NITER = 1000
-    BATCH_SIZE = 256
-    #P_LR=0.003
-    #CLF_LR = 0.003
-    P_LR, CLF_LR = get_default_lrs(MODEL_NAME)
-
-    # P scheduler
-    P_SCHED_NRED = 5
-    P_SCHED_FACTOR = .5
-    P_SCHED_PATIENCE = 4
-
-    # clf scheduler
-    CLF_SCHED_NRED = 5
-    CLF_SCHED_FACTOR = .5
-    CLF_SCHED_PATIENCE = 4
-
-    #data
-    NRUNS = 1
-    TRAIN_OBS = 60000
-    VAL_OBS = 10000
-    TEST_OBS = 20000
-    SEED = 0
-    
-    OUTPUT_FOLDER = "testruns"
-    WBN = "test"
-
-rlace_optimizer_params_P = {"lr": P_LR, 
-                            "weight_decay": 1e-4}
-rlace_scheduler_params_P = {"mode": "max", 
-                            "factor": SCHED_FACTOR, 
-                            "patience": SCHED_PATIENCE, 
-                            "min_lr": SCHED_MIN_LR, 
-                            "verbose": True}
-rlace_optimizer_params_clf = {"lr": CLF_LR,"weight_decay": 1e-4}
-#rlace_scheduler_params_predictor = {"mode": "min", 
-#                            "factor": SCHED_FACTOR, 
-#                            "patience": SCHED_PATIENCE, 
-#                            "min_lr": SCHED_MIN_LR, 
-#                            "verbose": True}
-rlace_epsilon = 0.001 # stop 0.1% from majority acc
-rlace_batch_size = BATCH_SIZE
-
-# Logging run args
-run_args = {
-    "rank": RANK,
-    "rlace_niter": RLACE_NITER,
-    "batch_size": BATCH_SIZE,
-    "p_lr": P_LR,
-    "clf_lr": CLF_LR,
-    "n_lr_red": SCHED_NRED,
-    "nruns": NRUNS,
-    "train_obs": TRAIN_OBS,
-    "seed": SEED,
-    "out_folder": OUTPUT_FOLDER,
-    "model_name": MODEL_NAME,
-    "dataset_name": DATASET_NAME,
-    "train_obs": TRAIN_OBS,
-    "val_obs": VAL_OBS,
-    "test_obs": TEST_OBS
-}
-
-RUN_NAME = 
-
-"""

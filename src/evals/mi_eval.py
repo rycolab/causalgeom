@@ -42,9 +42,10 @@ def compute_inner_loop_qxhs(mode, h, all_hs, P, I_P, V, msamples, processor=None
     np.random.shuffle(idx)
     for other_h in all_hs[idx[:msamples]]:
         if mode == "hbot":
-            newh = other_h.T @ I_P + h.T @ P
+            #TODO: check that this is the same as other_h.T @ I_P...
+            newh = other_h @ I_P + h @ P
         elif mode == "hpar":
-            newh = h.T @ I_P + other_h.T @ P
+            newh = h @ I_P + other_h @ P
         else:
             raise ValueError(f"Incorrect mode {mode}")
         logits = V @ newh

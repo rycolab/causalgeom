@@ -11,7 +11,7 @@ from datasets import load_dataset
 sys.path.append('./src/')
 
 from data.embed_wordlists.embedder import get_emb_outfile_paths, get_token_list_outfile_paths
-from utils.lm_loaders import GPT2_LIST, BERT_LIST
+from utils.lm_loaders import GPT2_LIST, BERT_LIST, SUPPORTED_AR_MODELS
 from paths import DATASETS, FR_DATASETS, HF_CACHE
 
 LINZEN_PREPROCESSED = os.path.join(DATASETS, "preprocessed/linzen_preprocessed.tsv")
@@ -31,7 +31,7 @@ def load_wikipedia(language):
 # Loading Preprocessed Datasets #
 #################################
 #%% LINZEN LOADERS
-def load_linzen_ar():
+def load_linzen_ar(model_name):
     data = []
     with open(LINZEN_PREPROCESSED) as f:
         tsv_file = csv.reader(f, delimiter="\t")
@@ -41,7 +41,7 @@ def load_linzen_ar():
             iverb = line[4]
             verb_pos = line[5]
             vindex = int(line[6])
-            if vindex > 0:
+            if model_name in GPT2_LIST and vindex > 0:
                 verb = " " + verb
                 iverb = " " + iverb
             pre_verb_text = " ".join(unmasked_text.split(" ")[:vindex])
@@ -76,9 +76,9 @@ def load_linzen_masked():
             data.append(sample)
     return data
 
-def load_linzen(model_type):
+def load_linzen(model_type, model_name):
     if model_type == "ar":
-        return load_linzen_ar()
+        return load_linzen_ar(model_name)
     elif model_type == "masked":
         return load_linzen_masked()
     else:
@@ -125,7 +125,7 @@ def get_udfr_dataset_folder(dataset_name):
 # Preprocessed Dataset General Loader #
 #######################################
 def get_model_type(model_name):
-    if model_name in GPT2_LIST:
+    if model_name in SUPPORTED_AR_MODELS:
         return "ar"
     elif model_name in BERT_LIST:
         return "masked"
@@ -139,7 +139,7 @@ def load_preprocessed_dataset(dataset_name, model_name, split=None):
     """
     model_type = get_model_type(model_name)
     if dataset_name == "linzen":
-        return load_linzen(model_type)
+        return load_linzen(model_type, model_name)
     #TODO: complete this second if 
     elif dataset_name in FR_DATASETS:
         assert split in ["train", "dev", "test"], "Must specify split"
