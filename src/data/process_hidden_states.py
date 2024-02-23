@@ -241,11 +241,11 @@ if __name__=="__main__":
     OUT_TYPE = args.outtype
     NBATCHES = args.nbatches
     SPLIT = args.split
-    #DATASET_NAME = "CEBaB"
-    #MODEL_NAME = "gpt2-large"
+    #DATASET_NAME = "linzen"
+    #MODEL_NAME = "llama2"
     #OUT_TYPE = "full"
     #NBATCHES = 10
-    #SPLIT = "train"
+    #SPLIT = None #"train"
 
     if MODEL_NAME in SUPPORTED_AR_MODELS and OUT_TYPE == "full":
         OUT_TYPE = "ar"

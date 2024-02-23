@@ -89,34 +89,23 @@ def load_filtered_hs(model_name, I_P="no_I_P", nsamples=None):
         l0_hs, l1_hs = sample_filtered_hs(l0_hs, l1_hs, nsamples)
     return l0_hs, l1_hs
 """
-def load_generated_hs_wff(model_name, load_other=False, nucleus=False, nsamples=None, I_P="no_I_P"):
+def load_generated_hs_wff(model_name, nucleus=False, nsamples=None, I_P="no_I_P"):
     if nucleus:
-        filtered_hs_dir = os.path.join(OUT, 
-            f"filtered_generations_nucleus/{model_name}/{I_P}")
+        root = os.path.join(OUT, "filtered_generations_nucleus")
     else:
-        filtered_hs_dir = os.path.join(OUT, 
-            f"filtered_generations/{model_name}/{I_P}"
-        )
-    if load_other:
-        filtered_hs_dir = os.path.join(os.path.join(
-            filtered_hs_dir, '..'), "no_I_P_w_other")
-        #filtered_hs_dir = os.path.join(filtered_hs_dir, f"_w_other")
+        root = os.path.join(OUT, "filtered_generations")
+    
+    filtered_hs_dir = os.path.join(OUT, 
+        f"filtered_generations_nucleus/{model_name}/no_I_P_w_other"
+    )
     
     with open(os.path.join(filtered_hs_dir, "l0_hs_w_factfoil.pkl"), "rb") as f:
         l0_hs_wff = pickle.load(f)
     with open(os.path.join(filtered_hs_dir, "l1_hs_w_factfoil.pkl"), "rb") as f:
         l1_hs_wff = pickle.load(f)
-    
-    if load_other:
-        with open(os.path.join(filtered_hs_dir, "other_hs.pkl"), "rb") as f:
-            other_hs = pickle.load(f)
-        return l0_hs_wff, l1_hs_wff, other_hs
-    else:
-        if nsamples is not None:
-            l0_hs_wff, l1_hs_wff = sample_filtered_hs(
-                l0_hs_wff, l1_hs_wff, nsamples
-            )
-        return l0_hs_wff, l1_hs_wff
+    with open(os.path.join(filtered_hs_dir, "other_hs.pkl"), "rb") as f:
+        other_hs = pickle.load(f)
+    return l0_hs_wff, l1_hs_wff, other_hs
 
 # %%
 def get_args():

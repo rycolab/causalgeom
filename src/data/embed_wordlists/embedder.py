@@ -24,8 +24,12 @@ from utils.lm_loaders import get_tokenizer, get_V, GPT2_LIST, BERT_LIST, SUPPORT
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
 
-EN_VERB_LIST_PATH = os.path.join(DATASETS, f"processed/en/word_lists/verb_pair_list.tsv")
-EN_WORD_LIST_PATH = os.path.join(DATASETS, f"processed/en/word_lists/other_list.tsv")
+EN_NUMBER_VERB_LIST_PATH = os.path.join(DATASETS, f"processed/en/word_lists/verb_pair_list.tsv")
+EN_NUMBER_WORD_LIST_PATH = os.path.join(DATASETS, f"processed/en/word_lists/other_list.tsv")
+
+EN_FOOD_ADJ_LIST_PATH = os.path.join(DATASETS, f"processed/en/word_lists/verb_pair_list.tsv")
+EN_NUMBER_WORD_LIST_PATH = os.path.join(DATASETS, f"processed/en/word_lists/other_list.tsv")
+
 
 FR_ADJ_LIST_PATH = os.path.join(DATASETS, f"processed/fr/word_lists/adj_pair_list.tsv")
 FR_WORD_LIST_PATH = os.path.join(DATASETS, f"processed/fr/word_lists/other_list.tsv")
@@ -51,8 +55,10 @@ def get_args():
 
 def get_wordlist_paths(concept):
     if concept == "number":
-        return EN_WORD_LIST_PATH, EN_VERB_LIST_PATH
+        return EN_NUMBER_WORD_LIST_PATH, EN_NUMBER_VERB_LIST_PATH
     elif concept == "gender":
+        return FR_WORD_LIST_PATH, FR_ADJ_LIST_PATH
+    elif concept == "food_sentiment":
         return FR_WORD_LIST_PATH, FR_ADJ_LIST_PATH
     else:
         raise ValueError("Invalid dataset name")
@@ -71,11 +77,12 @@ def get_emb_outfile_paths(concept, model_name):
         fem_emb_outfile = os.path.join(DATASETS, f"processed/fr/embedded_word_lists/{model_name}_fem_embeds.npy")
         return word_emb_outfile, adj_p_outfile, masc_emb_outfile, fem_emb_outfile
     elif concept == "sentiment":
-        word_emb_outfile = os.path.join(DATASETS, f"processed/en/embedded_word_lists/sentiment/{model_name}_word_embeds.npy")
-        adj_p_outfile = os.path.join(DATASETS, f"processed/en/embedded_word_lists/sentiment/{model_name}_adj_p.npy")
-        masc_emb_outfile = os.path.join(DATASETS, f"processed/en/embedded_word_lists/sentiment/{model_name}_masc_embeds.npy")
-        fem_emb_outfile = os.path.join(DATASETS, f"processed/en/embedded_word_lists/sentiment/{model_name}_fem_embeds.npy")
-        return word_emb_outfile, adj_p_outfile, masc_emb_outfile, fem_emb_outfile
+        #word_emb_outfile = os.path.join(DATASETS, f"processed/en/embedded_word_lists/sentiment/{model_name}_word_embeds.npy")
+        #adj_p_outfile = os.path.join(DATASETS, f"processed/en/embedded_word_lists/sentiment/{model_name}_adj_p.npy")
+        #masc_emb_outfile = os.path.join(DATASETS, f"processed/en/embedded_word_lists/sentiment/{model_name}_masc_embeds.npy")
+        #fem_emb_outfile = os.path.join(DATASETS, f"processed/en/embedded_word_lists/sentiment/{model_name}_fem_embeds.npy")
+        #return word_emb_outfile, adj_p_outfile, masc_emb_outfile, fem_emb_outfile
+        raise NotImplementedError(f"Concept {sentiment} not yet implemented.")
     else:
         raise ValueError("Invalid dataset name")
 
@@ -90,6 +97,12 @@ def get_token_list_outfile_paths(concept, model_name):
         masc_outfile = os.path.join(DATASETS, f"processed/fr/tokenized_lists/{model_name}_masc_token_list.npy")
         fem_outfile = os.path.join(DATASETS, f"processed/fr/tokenized_lists/{model_name}_fem_token_list.npy")
         return other_outfile, masc_outfile, fem_outfile
+    elif concept == "sentiment":
+        #other_outfile = os.path.join(DATASETS, f"processed/fr/tokenized_lists/{model_name}_word_token_list.npy")
+        #masc_outfile = os.path.join(DATASETS, f"processed/fr/tokenized_lists/{model_name}_masc_token_list.npy")
+        #fem_outfile = os.path.join(DATASETS, f"processed/fr/tokenized_lists/{model_name}_fem_token_list.npy")
+        #return other_outfile, masc_outfile, fem_outfile
+        raise NotImplementedError(f"Concept {sentiment} not yet implemented.")
     else:
         raise ValueError("Invalid dataset name")
 
@@ -110,7 +123,7 @@ def define_add_space(model_name):
 #%%#################
 # Helpers         #
 ####################
-def tokenize_word(tokenizer, word, masked, add_space):
+def tokenize_word(model_name, tokenizer, word, masked, add_space):
     if type(word) != str:
         return []
     if add_space:
@@ -118,13 +131,20 @@ def tokenize_word(tokenizer, word, masked, add_space):
     if masked:
         return tokenizer(word)["input_ids"][1:-1]
     else:
-        return tokenizer(word)["input_ids"]
+        if model_name in GPT2_LIST:
+            return tokenizer(word)["input_ids"]
+        elif model_name == "llama2":
+            return tokenizer(word)["input_ids"][1:]
+        else:
+            raise NotImplementedError(f"Model {model_name} not supported")
 
 def tokenize_word_handler(model_name, tokenizer, word, add_space=False):
     if model_name in GPT2_LIST:
-        return tokenize_word(tokenizer, word, False, add_space)
+        return tokenize_word(model_name, tokenizer, word, masked=False, add_space=add_space)
     elif model_name in BERT_LIST:
-        return tokenize_word(tokenizer, word, True, False)
+        return tokenize_word(model_name, tokenizer, word, masked=True, add_space=False)
+    elif model_name == "llama2":
+        return tokenize_word(model_name, tokenizer, word, masked=False, add_space=add_space)
     else:
         raise ValueError("Incorrect model name")
 
@@ -178,10 +198,10 @@ if __name__=="__main__":
 
     args = get_args()
     logging.info(args)
-    concept = args.concept
-    model_name = args.model
-    #concept = "number"
-    #model_name = "gpt2-large"
+    #concept = args.concept
+    #model_name = args.model
+    concept = "number"
+    model_name = "llama2"
     
     logging.info(f"Tokenizing and saving embeddings from word and lemma lists for model {model_name}")
     wordlist_path, lemmalist_path = get_wordlist_paths(concept)

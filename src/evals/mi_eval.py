@@ -333,13 +333,9 @@ def compute_eval(model_name, concept, run_output_folder, k,
     rundir = os.path.join(
         OUT, f"run_output/{concept}/{model_name}/{run_output_folder}"
     )
-    #if run_output_folder == "230718":
-    #    outdir = os.path.join(RESULTS, f"{output_folder}/new_{concept}/{model_name}")
-    #else:
+    
     outdir = os.path.join(RESULTS, f"{output_folder}/{concept}/{model_name}")
-    #outdir = RESULTS
-    if not os.path.exists(outdir):
-        os.makedirs(outdir)
+    os.makedirs(outdir, exist_ok=True)
 
     run_files = [x for x in os.listdir(rundir) if x.endswith(".pkl")]
     random.shuffle(run_files)
@@ -441,15 +437,15 @@ if __name__=="__main__":
     #msamples=args.msamples
     #output_folder = args.out_folder
     #nruns = 3
-    model_name = "gpt2-large"
+    model_name = "llama2"
     concept = "number"
     nucleus = True
     k=1
     nsamples=3
     msamples=3
-    output_folder = "finaleval_test"
+    output_folder = "llamaevaltest"
     nruns = 1
-    run_output_folders = ["leace_new"]
+    run_output_folders = ["leace"]
     
 
     for folder in run_output_folders:

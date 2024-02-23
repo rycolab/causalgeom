@@ -122,9 +122,11 @@ def get_udfr_dataset_folder(dataset_name):
         raise ValueError(f"Dataset name not supported: {dataset_name}")
 
 #%% CEBaB
-def load_CEBaB(split):
-    #TODO: this path is gonna change once testing is done
-    fpath = os.path.join(DATASETS, f"preprocessed/CEBaB/test/CEBaB_{split}.pkl")
+def load_CEBaB(concept, split):
+    fpath = os.path.join(
+        DATASETS, 
+        f"preprocessed/CEBaB/{concept}/CEBaB_{concept}_{split}.pkl"
+    )
     with open(fpath, "rb") as f:
         df = pickle.load(f).to_dict("records")
     return df
@@ -140,7 +142,7 @@ def get_model_type(model_name):
     else: 
         raise ValueError(f"Model {model_name} not supported")
 
-def load_preprocessed_dataset(dataset_name, model_name, split=None):
+def load_preprocessed_dataset(dataset_name, model_name, concept=None, split=None):
     """ Dataset name: ["linzen", "ud_fr_gsd"]
     Model name: GPT2 + BERT models + llama2
     Split: ["train", "dev", "test"]
@@ -157,7 +159,9 @@ def load_preprocessed_dataset(dataset_name, model_name, split=None):
         )
     elif dataset_name == "CEBaB":
         assert split in ["train", "dev", "test"], "Must specify split"
-        return load_CEBaB(split)
+        assert concept in ["food", "ambiance", "service", "noise"], \
+            "Must specify CEBaB concept"
+        return load_CEBaB(concept, split)
     else:
         raise ValueError("invalid dataset name")
 
@@ -184,16 +188,16 @@ def load_dataset_pickle(path, dataset_name):
     return X, U, y, fact, foil
 
 def get_processed_dataset_path(dataset_name, model_name, split=None):
-    if model_name in GPT2_LIST and split is None:
+    if model_name in SUPPORTED_AR_MODELS and split is None:
         return os.path.join(DATASETS, f"processed/{dataset_name}/ar/{dataset_name}_{model_name}_ar.pkl")
-    elif model_name in GPT2_LIST and split is not None:
+    elif model_name in SUPPORTED_AR_MODELS and split is not None:
         return os.path.join(DATASETS, f"processed/{dataset_name}/ar/{dataset_name}_{model_name}_ar_{split}.pkl")
     elif model_name in BERT_LIST and split is None:
         return os.path.join(DATASETS, f"processed/{dataset_name}/masked/{dataset_name}_{model_name}_masked.pkl")
     elif model_name in BERT_LIST and split is not None:
         return os.path.join(DATASETS, f"processed/{dataset_name}/masked/{dataset_name}_{model_name}_masked_{split}.pkl")
     else:
-        return None
+        raise NotImplementedError(f"Model name {model_name} and dataset {dataset_name} not implemented")
 
 def load_processed_dataset(dataset_name, model_name, split=None):
     dataset_path = get_processed_dataset_path(dataset_name, model_name, split)

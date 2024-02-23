@@ -5,7 +5,7 @@ import sys
 import argparse
 import coloredlogs
 
-from utils.lm_loaders import GPT2_LIST, BERT_LIST, SUPPORTED_MODELS
+from utils.lm_loaders import GPT2_LIST, BERT_LIST, SUPPORTED_AR_MODELS
 from paths import FR_DATASETS
 
 #%%#################
@@ -29,10 +29,10 @@ def get_train_probes_args():
     argparser.add_argument(
         "-model",
         type=str,
-        choices=SUPPORTED_MODELS,
+        choices=SUPPORTED_AR_MODELS,
         #required=True,
         dest="model_name",
-        default="gpt2-large",
+        default="llama2",
         help="Model used to extract hidden states & embeddings"
     )
 
@@ -176,7 +176,7 @@ def get_train_probes_args():
     return vars(argparser.parse_args())
 
 #%% Helpers
-def get_model_defaults(model_name):
+def get_rlace_model_defaults(model_name):
     if model_name in GPT2_LIST:
         defaults = dict(
             P_lr = 0.001,
@@ -194,27 +194,29 @@ def get_model_defaults(model_name):
             clf_sched_patience=0,
         )
     else:
-        raise ValueError("Incorrect model name")
+        defaults = {}
+        raise NotImplementedError(
+            f"Model {model_name} has no RLACE params")
     return defaults
 
 def set_train_probes_defaults(config):
     # Default LRs
-    model_defaults = get_model_defaults(config["model_name"])
-    for key, val in model_defaults.items():
-        if config[key] is None:
-            config[key] = val
+    #model_defaults = get_rlace_model_defaults(config["model_name"])
+    #for key, val in model_defaults.items():
+    #    if config[key] is None:
+    #        config[key] = val
 
     # P Scheduler
-    config["P_sched_factor"] = .5
-    config["P_sched_min_lr"] = (
-        config["P_lr"] * (config["P_sched_factor"]**config["P_n_lr_red"])
-    )
+    #config["P_sched_factor"] = .5
+    #config["P_sched_min_lr"] = (
+    #    config["P_lr"] * (config["P_sched_factor"]**config["P_n_lr_red"])
+    #)
 
     # clf Scheduler
-    config["clf_sched_factor"] = .5
-    config["clf_sched_min_lr"] = (
-        config["clf_lr"] * (config["clf_sched_factor"]**config["clf_n_lr_red"])
-    )
+    #config["clf_sched_factor"] = .5
+    #config["clf_sched_min_lr"] = (
+    #    config["clf_lr"] * (config["clf_sched_factor"]**config["clf_n_lr_red"])
+    #)
 
     # Train, val and test size
     config["train_obs"] = 60000
@@ -226,11 +228,11 @@ def set_train_probes_defaults(config):
     config["test_share"] = .2
 
     # Constructing RLACE arg dicts (DON'T SET DEFAULTS HERE)
-    config["rlace_optimizer_params_P"] = {
-        "lr": config["P_lr"],
-        "momentum": config["P_momentum"],
-        "weight_decay": 1e-4
-    }
+    #config["rlace_optimizer_params_P"] = {
+    #    "lr": config["P_lr"],
+    #    "momentum": config["P_momentum"],
+    #    "weight_decay": 1e-4
+    #}
     #config["rlace_scheduler_params_P"] = {
     #    "mode": "max", 
     #    "factor": config["P_sched_factor"], 
@@ -238,21 +240,21 @@ def set_train_probes_defaults(config):
     #    "min_lr": config["P_sched_min_lr"], 
     #    "verbose": True
     #}
-    def format_milestones(mstr):
-        return [int(x) for x in mstr.split(",")]
+    #def format_milestones(mstr):
+    #    return [int(x) for x in mstr.split(",")]
 
-    config["rlace_scheduler_params_P"] = {
-        #"step_size": config["P_step_size"], 
-        "milestones": format_milestones(config["P_milestones"]), 
-        "gamma": config["P_gamma"],
-        "verbose": True
-    }
+    #config["rlace_scheduler_params_P"] = {
+    #    #"step_size": config["P_step_size"], 
+    #    "milestones": format_milestones(config["P_milestones"]), 
+    #    "gamma": config["P_gamma"],
+    #    "verbose": True
+    #}
 
-    config["rlace_optimizer_params_clf"] = {
-        "lr": config["clf_lr"],
-        "momentum": config["clf_momentum"],
-        "weight_decay": 1e-4
-    }
+    #config["rlace_optimizer_params_clf"] = {
+    #    "lr": config["clf_lr"],
+    #    "momentum": config["clf_momentum"],
+    #    "weight_decay": 1e-4
+    #}
     #config["rlace_scheduler_params_clf"] = {
     #    "mode": "min", 
     #    "factor": config["clf_sched_factor"], 
@@ -260,14 +262,15 @@ def set_train_probes_defaults(config):
     #    "min_lr": config["clf_sched_min_lr"], 
     #    "verbose": True
     #}
-    config["rlace_scheduler_params_clf"] = {
-        #"step_size": config["clf_step_size"], 
-        "milestones": format_milestones(config["clf_milestones"]), 
-        "gamma": config["clf_gamma"],
-        "verbose": True
-    }
+    #config["rlace_scheduler_params_clf"] = {
+    #    #"step_size": config["clf_step_size"], 
+    #    "milestones": format_milestones(config["clf_milestones"]), 
+    #    "gamma": config["clf_gamma"],
+    #    "verbose": True
+    #}
     #rlace_epsilon = 0.001 # stop 0.1% from majority acc (I TURNED THIS OFF)
-    config["run_name"] = f"{config['model_name']}_k{config['k']}_Plr{config['P_lr']}_Pms{config['P_milestones']}_clflr{config['clf_lr']}_clfms{config['clf_milestones']}"
+    #config["run_name"] = f"{config['model_name']}_k{config['k']}_Plr{config['P_lr']}_Pms{config['P_milestones']}_clflr{config['clf_lr']}_clfms{config['clf_milestones']}"
+    config["run_name"] = f"leace_{config['concept']}_{config['model_name']}"
     return config
 
 def get_train_probes_config():

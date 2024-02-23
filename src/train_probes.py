@@ -75,16 +75,12 @@ def compute_leace_affine(X_train, y_train):
     bias = eraser.bias.numpy()
     return P, I_P, bias
 
-def train_probes(X, U, y, facts, foils, 
-    cfg, wb, wb_run, l0_tl, l1_tl, 
-    device="cpu", diag_rlace_u_outdir=None):
 
-    idx_train, idx_val, idx_test = get_data_indices(
-            X.shape[0], cfg["concept"], 
-            cfg['train_obs'], cfg['val_obs'], cfg['test_obs'],
-            cfg["train_share"], cfg["val_share"]
-        )
-    
+def train_probes(X, U, y, facts, foils,
+    idx_train, idx_val, idx_test):  
+    #wb, wb_run, l0_tl, l1_tl, 
+    #device="cpu"):
+
     X_train, X_val, X_test = X[idx_train], X[idx_val], X[idx_test]
     U_train, U_val, U_test = U[idx_train], U[idx_val], U[idx_test]
     y_train, y_val, y_test = y[idx_train], y[idx_val], y[idx_test]
@@ -159,7 +155,7 @@ def train_probes(X, U, y, facts, foils,
     #%%
     full_results = dict(
         run=i,
-        config=cfg,
+        #config=cfg,
         #rlace_type=cfg["rlace_type"],
         output=output,
         #diag_eval=diag_eval,
@@ -201,7 +197,7 @@ if __name__ == '__main__':
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     
     # Load dataset
-    l0_tl, l1_tl = load_concept_token_lists(cfg['concept'], cfg['model_name'])
+    #l0_tl, l1_tl = load_concept_token_lists(cfg['concept'], cfg['model_name'])
     X, U, y, facts, foils = load_processed_data(cfg['concept'], cfg['model_name'])
 
     # Set seed
@@ -225,8 +221,18 @@ if __name__ == '__main__':
         WB = False
 
     for i in trange(cfg['nruns']):
-        run_output = train_probes(X, U, y, facts, foils, cfg, WB, i, 
-            l0_tl, l1_tl, device=device)        
+
+        idx_train, idx_val, idx_test = get_data_indices(
+            X.shape[0], cfg["concept"], 
+            cfg['train_obs'], cfg['val_obs'], cfg['test_obs'],
+            cfg["train_share"], cfg["val_share"]
+        )
+        run_output = train_probes(
+            X, U, y, facts, foils, 
+            idx_train, idx_val, idx_test) 
+            #WB, i, 
+            #l0_tl, l1_tl, device=device)        
+        run_output["config"] = cfg
 
         outfile_path = os.path.join(OUTPUT_DIR, 
             f"run_{cfg['run_name']}_{datetimestr}_{i}_{cfg['nruns']}.pkl")

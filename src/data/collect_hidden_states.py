@@ -157,11 +157,54 @@ def get_batch_hs_ar(model_name, batch, model, tokenizer, V):
         ))
     return batch_hs
 
+def get_batch_hs_ar_batched(model_name, batch, model, tokenizer, V):
+    batch_hs = []
+    tok_facts = batch_tokenize_tgts(model_name, batch["fact"], tokenizer)
+    tok_foils = batch_tokenize_tgts(model_name, batch["foil"], tokenizer)
+    tok_text = batch_tokenize_text(batch["pre_tgt_text"], tokenizer)
+    input_ids = tok_text["input_ids"].to(device)
+    attention_mask = tok_text["attention_mask"].to(device)
+
+    with torch.no_grad():
+        #TODO: check that the logits are the same
+        output = model(
+            input_ids=input_ids, 
+            attention_mask=attention_mask, 
+            labels=input_ids,
+            output_hidden_states=True
+        )
+    
+    hs = output.hidden_states[-1].cpu().numpy()
+    #if model_name == "llama2":
+    #    return tgt_ti.numpy(), output.hidden_states[-1][0].cpu().numpy()
+    #elif model_name in GPT2_LIST:
+    #    return tgt_ti.numpy(), output.hidden_states[-1].cpu().numpy()
+
+    # TODO: fix this -- needs to be able to handle non-empty list and empty list. 
+    fact_embedding = V[,:]
+    foil_embedding = V[tfo,:]
+
+    batch_hs.append(dict(
+        fact = fact,
+        foil = foil,
+        tgt_label = tgt_label,
+        input_ids_pre_tgt = ti,
+        input_ids_fact = tfa, 
+        fact_hs = fact_hs, 
+        #verb_raw_hs = fact_raw_hs,
+        fact_embedding = fact_embedding,
+        input_ids_foil = tfo, 
+        foil_hs = foil_hs,
+        #iverb_raw_hs=iverb_raw_hs,
+        foil_embedding = foil_embedding,
+    ))
+    return batch_hs
+
 def collect_hs_ar(model_name, dl, model, tokenizer, V, output_dir):
     for i, batch in enumerate(pbar:=tqdm(dl)):
         pbar.set_description(f"Generating hidden states")
 
-        batch_data = get_batch_hs_ar(model_name, batch, model, tokenizer, V)
+        batch_data = get_batch_hs_ar_batched(model_name, batch, model, tokenizer, V)
         export_batch(output_dir, i, batch_data)
 
         torch.cuda.empty_cache()
@@ -269,11 +312,24 @@ def get_args():
         help="Model for computing hidden states"
     )
     argparser.add_argument(
+        "-concept",
+        type=str,
+        choices=["number", "gender", "food", "ambiance", "service", "noise"],
+        default=None,
+        help="Concept (required for CEBaB, not other datasets)",
+    )
+    argparser.add_argument(
         "-split",
         type=str,
         choices=["train", "dev", "test"],
         default=None,
         help="For UD data, specifies which split to collect hs for"
+    )
+    argparser.add_argument(
+        "-batch_size",
+        type=int,
+        default=64,
+        help="Batch size for collecting hidden states"
     )
     return argparser.parse_args()
 
@@ -282,13 +338,16 @@ if __name__=="__main__":
     args = get_args()
     logging.info(args)
 
-    dataset_name = args.dataset
-    model_name = args.model
-    split = args.split
-    #dataset_name = "CEBaB"
-    #model_name = "gpt2-large"
-    #split = "train"
-    batch_size = 64
+    #dataset_name = args.dataset
+    #model_name = args.model
+    #concept = args.concept
+    #split = args.split
+    #batch_size = args.batch_size
+    dataset_name = "CEBaB"
+    model_name = "gpt2-large"
+    concept = "food"
+    split = "train"
+    batch_size = 4
 
     # Load model, tokenizer
     device = get_device()
@@ -301,16 +360,17 @@ if __name__=="__main__":
     model = model.to(device)
 
     # load data
-    data = load_preprocessed_dataset(dataset_name, model_name, split)
+    data = load_preprocessed_dataset(dataset_name, model_name, concept, split)
     ds = CustomDataset(data)
     dl = DataLoader(dataset = ds, batch_size=batch_size)
 
     # Output dir
-    if split is None:
-        output_dir = os.path.join(OUT, f"hidden_states/{dataset_name}/{model_name}")
-    else:
-        output_dir = os.path.join(OUT, f"hidden_states/{dataset_name}/{model_name}/{split}")
-
+    output_dir = os.path.join(OUT, f"hidden_states/{dataset_name}/{model_name}")
+    if concept is not None:
+        output_dir = os.path.join(output_dir, f"{concept}")
+    if split is not None:
+        output_dir = os.path.join(output_dir, f"{split}")
+    
     os.makedirs(output_dir, exist_ok=False)
 
     # Collect HS
