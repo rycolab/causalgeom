@@ -209,7 +209,7 @@ def get_batch_hs_ar(model_name, batch, model, tokenizer, V):
     attention_mask = tok_text["attention_mask"].to(device)
 
     with torch.no_grad():
-        #TODO: check that the logits are the same
+        
         output = model(
             input_ids=input_ids, 
             attention_mask=attention_mask, 
@@ -234,7 +234,7 @@ def collect_hs_ar(model_name, dl, model, tokenizer, V, output_dir):
     for i, batch in enumerate(pbar:=tqdm(dl)):
         pbar.set_description(f"Generating hidden states")
 
-        batch_data = get_batch_hs_ar(model_name, batch, model, tokenizer, V)
+        batch_data = get_batch_hs_ar_detailed(model_name, batch, model, tokenizer, V)
         export_batch(output_dir, i, batch_data)
 
         torch.cuda.empty_cache()
@@ -368,16 +368,16 @@ if __name__=="__main__":
     args = get_args()
     logging.info(args)
 
-    #dataset_name = args.dataset
-    #model_name = args.model
-    #concept = args.concept
-    #split = args.split
-    #batch_size = args.batch_size
-    dataset_name = "linzen"
-    model_name = "llama2"
-    concept = "number"
-    split = None
-    batch_size = 2
+    dataset_name = args.dataset
+    model_name = args.model
+    concept = args.concept
+    split = args.split
+    batch_size = args.batch_size
+    #dataset_name = "linzen"
+    #model_name = "llama2"
+    #concept = "number"
+    #split = None
+    #batch_size = 2
 
     # Load model, tokenizer
     device = get_device()
