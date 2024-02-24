@@ -5,8 +5,8 @@ import os
 import sys
 import coloredlogs
 import argparse
-from datetime import datetime
 import csv
+import time
 
 import numpy as np
 from tqdm import tqdm
@@ -168,7 +168,11 @@ def generate_sequence_until_eos(model_name, model, prompt_ids, batch_size, seed,
         counter+=1
         if counter % 100 == 0:
             logging.info(f"Number of tokens so far: {counter}") 
-    all_tokens = torch.hstack(all_tokens).cpu()
+    try:
+        all_tokens = torch.hstack(all_tokens).cpu()
+    except RuntimeError:
+        gen_tokens = torch.hstack(all_tokens[1:]).cpu()
+        all_tokens = torch.hstack([all_tokens[0], gen_tokens])
     return all_tokens, token_h_pairs
 
 #%%
@@ -236,29 +240,34 @@ if __name__=="__main__":
     batch_size = 3
     #model_name = "llama2"
     #nucleus=True
-    useP  =False
     #export_index = 0
     #test = True
+    useP  =False
+    I_P = None
 
 
     device = get_device()
     #device = "cpu"
-    if model_name != "llama2":
-        model = get_model(model_name).to(device)
-    else:
-        model = get_model(model_name)
-
     tokenizer = get_tokenizer(model_name)
+    if model_name in GPT2_LIST:
+        model = get_model(model_name).to(device)
+        prompt_ids = tokenizer(tokenizer.bos_token, return_tensors="pt").input_ids #.to(device)
+    elif model_name == "llama2":
+        model = get_model(model_name)
+        prompt_ids = torch.tensor([tokenizer.bos_token_id])
+    else: 
+        raise NotImplementedError(f"Model {model_name} not supported")
 
-    prompt_ids = tokenizer(tokenizer.bos_token, return_tensors="pt").input_ids #.to(device)
+    
     
     if nucleus:
         outdir = os.path.join(OUT, f"generated_text_nucleus/{model_name}")
     else:
         outdir = os.path.join(OUT, f"generated_text/{model_name}")
 
-    outdir = os.path.join(outdir, "no_I_P")
-    I_P = None
+    
+    timestr = time.strftime("%Y%m%d-%H%M%S")
+    outdir = os.path.join(outdir, f"no_I_P/{timestr}")
 
     os.makedirs(outdir, exist_ok=False)
 

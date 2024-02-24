@@ -61,34 +61,34 @@ def get_tokenizer(model_name, token=None):
         raise ValueError(f"Model name {model_name} not supported")
 
 
-def get_model(model_name, token=None):
+def get_model(model_name, token=None, device="cpu"):
     if model_name in ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl"]:
         return GPT2LMHeadModel.from_pretrained(
             model_name, 
             cache_dir=HF_CACHE
-        )
+        ).to(device)
     elif model_name == "gpt2-base-french":
         return GPT2LMHeadModel.from_pretrained(
             "ClassCat/gpt2-base-french", 
             cache_dir=HF_CACHE
-        )
+        ).to(device)
     elif model_name == "gpt2-french-small":
         return GPT2LMHeadModel.from_pretrained(
             "dbddv01/gpt2-french-small", 
             cache_dir=HF_CACHE
-        )
+        ).to(device)
     elif model_name == "bert-base-uncased":
         return BertForMaskedLM.from_pretrained(
             model_name, 
             cache_dir=HF_CACHE, 
             is_decoder=False
-        )
+        ).to(device)
     elif model_name == "camembert-base":
         return CamembertForMaskedLM.from_pretrained(
             model_name, 
             cache_dir=HF_CACHE, 
             #is_decoder=False
-        )
+        ).to(device)
     elif model_name == "llama2":
         return AutoModelForCausalLM.from_pretrained(
             "meta-llama/Llama-2-7b-hf",
@@ -121,7 +121,7 @@ def get_V(model_name, model=None):
         return torch.cat(
             (word_embeddings, bias.view(-1, 1)), dim=1).detach().numpy()
     elif model_name == "llama2":
-        return model.lm_head.weight.detach().numpy()
+        return model.lm_head.weight.detach().cpu().numpy()
     else:
         raise ValueError(f"Model name {model_name} not supported")
 

@@ -64,7 +64,9 @@ def format_sample_masked(sample):
     
 ## AR
 def format_sample_ar(sample):
-    hs = sample["fact_hs"][0,:] #take the hidden state before the fact (equals foil)
+    # TODO: fix this
+    #hs = sample["fact_hs"][0,:] #take the hidden state before the fact (equals foil)
+    hs = sample["hs"]
     fact_emb = sample["fact_embedding"]
     foil_emb = sample["foil_embedding"]
     fact = sample["input_ids_fact"]
@@ -236,16 +238,16 @@ if __name__=="__main__":
     args = get_args()
     logging.info(args)
 
-    DATASET_NAME = args.dataset
-    MODEL_NAME = args.model
-    OUT_TYPE = args.outtype
-    NBATCHES = args.nbatches
-    SPLIT = args.split
-    #DATASET_NAME = "linzen"
-    #MODEL_NAME = "llama2"
-    #OUT_TYPE = "full"
-    #NBATCHES = 10
-    #SPLIT = None #"train"
+    #DATASET_NAME = args.dataset
+    #MODEL_NAME = args.model
+    #OUT_TYPE = args.outtype
+    #NBATCHES = args.nbatches
+    #SPLIT = args.split
+    DATASET_NAME = "linzen"
+    MODEL_NAME = "llama2"
+    OUT_TYPE = "full"
+    NBATCHES = 10
+    SPLIT = None #"train"
 
     if MODEL_NAME in SUPPORTED_AR_MODELS and OUT_TYPE == "full":
         OUT_TYPE = "ar"
@@ -259,17 +261,20 @@ if __name__=="__main__":
         f"{DATASET_NAME}, model {MODEL_NAME}."
     )
 
-    if SPLIT is None:
-        FILEDIR = os.path.join(OUT, f"hidden_states/{DATASET_NAME}/{MODEL_NAME}")
-        OUTFILE = os.path.join(DATASETS, f"processed/{DATASET_NAME}/{OUT_TYPE}/{DATASET_NAME}_{MODEL_NAME}_{OUT_TYPE}.pkl")
-        OUTPUT_DIR = os.path.dirname(OUTFILE)
-        TEMPDIR = os.path.join(OUTPUT_DIR, f"temp_{MODEL_NAME}_{OUT_TYPE}")
-    else:
-        FILEDIR = os.path.join(OUT, f"hidden_states/{DATASET_NAME}/{MODEL_NAME}/{SPLIT}")
-        OUTFILE = os.path.join(DATASETS, f"processed/{DATASET_NAME}/{OUT_TYPE}/{DATASET_NAME}_{MODEL_NAME}_{OUT_TYPE}_{SPLIT}.pkl")
-        OUTPUT_DIR = os.path.dirname(OUTFILE)
-        TEMPDIR = os.path.join(OUTPUT_DIR, f"temp_{MODEL_NAME}_{OUT_TYPE}_{SPLIT}")
-    
+    # Output dir
+    FILEDIR = os.path.join(OUT, f"hidden_states/{DATASET_NAME}/{MODEL_NAME}")
+    OUTPUT_DIR = os.path.join(DATASETS, f"processed/{DATASET_NAME}/{OUT_TYPE}")
+    TEMPDIR_NAME = f"temp_{MODEL_NAME}_{OUT_TYPE}"
+    OUTFILE_NAME = f"{DATASET_NAME}_{MODEL_NAME}_{OUT_TYPE}.pkl"
+    if CONCEPT is not None:
+        FILEDIR = os.path.join(FILEDIR, f"{CONCEPT}")
+        TEMPDIR_NAME = TEMPDIR_NAME + f"_{CONCEPT}"
+        OUTFILE_NAME = OUTFILE_NAME[:-len(f".pkl")] + f"{CONCEPT}.pkl"
+    if SPLIT is not None:
+        FILEDIR = os.path.join(FILEDIR, f"{SPLIT}")
+        TEMPDIR_NAME = TEMPDIR_NAME + f"_{SPLIT}"
+        OUTFILE_NAME = OUTFILE_NAME[:-len(f".pkl")] + f"{SPLIT}.pkl"
+    TEMPDIR = os.path.join(OUTPUT_DIR, TEMPDIR_NAME)
         
     assert os.path.exists(FILEDIR), \
         f"Hidden state filedir doesn't exist: {FILEDIR}"
