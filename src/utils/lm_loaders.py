@@ -106,7 +106,7 @@ def get_V(model_name, model=None):
         model = get_model(model_name)
 
     if model_name in GPT2_LIST:
-        return model.lm_head.weight.detach().numpy()
+        return model.lm_head.weight.detach().cpu().numpy()
     elif model_name == "bert-base-uncased":
         word_embeddings = model.bert.embeddings.word_embeddings.weight
         bias = model.cls.predictions.decoder.bias

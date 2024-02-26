@@ -14,16 +14,10 @@ from paths import FR_DATASETS
 def get_train_probes_args():
     argparser = argparse.ArgumentParser(description='Train RLACE and evaluate P')
     argparser.add_argument(
-        "-out_folder",
-        type=str,
-        default="test",
-        help="Directory for exporting run eval"
-    )
-    argparser.add_argument(
         "-concept",
         type=str,
-        choices=["gender", "number", "sentiment"],
-        default="number",
+        choices=["number", "gender", "food", "ambiance", "service", "noise"],
+        default="food",
         help="Concept to erase"
     )
     argparser.add_argument(
@@ -32,8 +26,14 @@ def get_train_probes_args():
         choices=SUPPORTED_AR_MODELS,
         #required=True,
         dest="model_name",
-        default="llama2",
+        default="gpt2-large",
         help="Model used to extract hidden states & embeddings"
+    )
+    argparser.add_argument(
+        "-out_folder",
+        type=str,
+        default="test",
+        help="Directory for exporting run eval"
     )
 
     # RLACE ARGS

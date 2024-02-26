@@ -79,7 +79,7 @@ def batch_tokenize_text(text, tokenizer):
         padding="max_length", truncation=True
     )
 
-def get_raw_sample_hs(model_name, pre_tgt_ids, attention_mask, tgt_ids, model):
+def get_raw_sample_hs_factfoil(model_name, pre_tgt_ids, attention_mask, tgt_ids, model):
     nopad_ti = pre_tgt_ids[attention_mask == 1]
     tgt_ti = torch.cat((nopad_ti, torch.LongTensor(tgt_ids)), 0)
     if model_name == "llama2":
@@ -100,6 +100,32 @@ def get_raw_sample_hs(model_name, pre_tgt_ids, attention_mask, tgt_ids, model):
     else:
         raise NotImplementedError(f"Model {model_name} not yet implemented")
 
+def get_raw_sample_hs(model_name, input_ids, attention_mask, model):
+    nopad_ti = input_ids[attention_mask == 1]
+    #tgt_ti = torch.cat((nopad_ti, torch.LongTensor(tgt_ids)), 0)
+    if model_name == "llama2":
+        nopad_ti = nopad_ti.unsqueeze(0)
+    #if model_name in GPT2_LIST:
+    nopad_ti_dev = nopad_ti.to(device)
+    #elif model_name == "llama2":
+    #    nopad_ti_dev = nopad_ti
+    #else:
+    #    raise NotImplementedError(f"Model {model_name} not supported")
+    with torch.no_grad():
+        #TODO: check that the logits are the same
+        output = model(
+            input_ids=nopad_ti_dev, 
+            #attention_mask=attention_mask, 
+            labels=nopad_ti_dev,
+            output_hidden_states=True
+        )
+    if model_name == "llama2":
+        return nopad_ti.squeeze(0).numpy(), output.hidden_states[-1][0].cpu().numpy()
+    elif model_name in GPT2_LIST:
+        return nopad_ti.numpy(), output.hidden_states[-1].cpu().numpy()
+    else:
+        raise NotImplementedError(f"Model {model_name} not yet implemented")
+
 
 def get_tgt_hs(raw_hs, tgt_tokens):
     #pre_verb_hs = raw_hs[:-(len(tgt_tokens) + 1)]
@@ -117,7 +143,6 @@ def get_batch_hs_ar_detailed(model_name, batch, model, tokenizer, V):
     tok_foils = batch_tokenize_tgts(model_name, batch["foil"], tokenizer)
     tok_text = batch_tokenize_text(batch["pre_tgt_text"], tokenizer)
 
-    #TODO: this sample by sample business is not really necessary now, should batch it
     for ti, am, tfa, tfo, fact, foil, tgt_label in zip(
         tok_text["input_ids"], 
         tok_text["attention_mask"], 
@@ -132,11 +157,19 @@ def get_batch_hs_ar_detailed(model_name, batch, model, tokenizer, V):
         ######################
         # NOTE: for dynamic program will need to separately
         # loop through all tokenizations of verb and iverb
-        fact_ti, fact_raw_hs = get_raw_sample_hs(model_name, ti, am, tfa, model)
-        fact_hs = get_tgt_hs(fact_raw_hs, tfa)
+        #TODO: right now I get hidden states for prefix + fact and prefix + foil
+        # but in the end I only use h for prefix -- should get rid of this for speed
+        #fact_ti, fact_raw_hs = get_raw_sample_hs_factfoil(model_name, ti, am, tfa, model)
+        #fact_hs = get_tgt_hs(fact_raw_hs, tfa)
 
-        foil_ti, foil_raw_hs = get_raw_sample_hs(model_name, ti, am, tfo, model)
-        foil_hs = get_tgt_hs(foil_raw_hs, tfo)
+        #foil_ti, foil_raw_hs = get_raw_sample_hs_factfoil(model_name, ti, am, tfo, model)
+        #foil_hs = get_tgt_hs(foil_raw_hs, tfo)
+
+        ######################################
+        # Get hidden states not by fact foil #
+        ######################################
+        nopad_ti, raw_hs = get_raw_sample_hs(model_name, ti, am, model)
+        last_h = raw_hs[-1] 
 
         ######################
         # Get verb embeddings
@@ -150,11 +183,12 @@ def get_batch_hs_ar_detailed(model_name, batch, model, tokenizer, V):
             tgt_label = tgt_label,
             input_ids_pre_tgt = ti,
             input_ids_fact = tfa, 
-            fact_hs = fact_hs, 
+            hs = last_h,
+            #fact_hs = fact_hs, 
             #verb_raw_hs = fact_raw_hs,
             fact_embedding = fact_embedding,
             input_ids_foil = tfo, 
-            foil_hs = foil_hs,
+            #foil_hs = foil_hs,
             #iverb_raw_hs=iverb_raw_hs,
             foil_embedding = foil_embedding,
         ))
@@ -373,10 +407,10 @@ if __name__=="__main__":
     concept = args.concept
     split = args.split
     batch_size = args.batch_size
-    #dataset_name = "linzen"
+    #dataset_name = "CEBaB"
     #model_name = "llama2"
-    #concept = "number"
-    #split = None
+    #concept = "food"
+    #split = "train"
     #batch_size = 2
 
     # Load model, tokenizer
@@ -384,7 +418,7 @@ if __name__=="__main__":
 
     tokenizer = get_tokenizer(model_name)
     #pad_token_id = tokenizer.encode(tokenizer.pad_token)[0]
-    model = get_model(model_name, device)
+    model = get_model(model_name, device=device)
     V = get_V(model_name, model)
 
     # load data

@@ -37,13 +37,12 @@ from utils.config_args import get_train_probes_config
 from utils.dataset_loaders import load_processed_data
 from data.embed_wordlists.embedder import load_concept_token_lists
 
-
 from paths import DATASETS, OUT
 
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
 
-
+#TODO: need to make a Trainer class to simplify this garbage
 def get_data_indices(nobs, concept, train_obs, val_obs, test_obs,
         train_share, val_share):
     idx = np.arange(0, nobs)
@@ -61,6 +60,35 @@ def get_data_indices(nobs, concept, train_obs, val_obs, test_obs,
         raise ValueError("Concept value not supported.")
     return idx[:train_lastind], idx[train_lastind:val_lastind], idx[val_lastind:test_lastind]
 
+def create_run_datasets(X, U, y, facts, foils, idx_train, idx_val, idx_test):
+    X_train, X_val, X_test = X[idx_train], X[idx_val], X[idx_test]
+    U_train, U_val, U_test = U[idx_train], U[idx_val], U[idx_test]
+    y_train, y_val, y_test = y[idx_train], y[idx_val], y[idx_test]
+    facts_train, facts_val, facts_test = facts[idx_train], facts[idx_val], facts[idx_test]
+    foils_train, foils_val, foils_test = foils[idx_train], foils[idx_val], foils[idx_test]
+
+    logging.info(f"y_train shape: {y_train.shape}")
+    logging.info(f"y_val shape: {y_val.shape}")
+    logging.info(f"y_test shape: {y_test.shape}")
+    
+    return {
+        "X_train": X_train, 
+        "U_train": U_train,
+        "y_train": y_train,
+        "facts_train": facts_train,
+        "foils_train": foils_train,
+        "X_dev": X_dev, 
+        "U_dev": U_dev,
+        "y_dev": y_dev,
+        "facts_dev": facts_dev,
+        "foils_dev": foils_dev,
+        "X_test": X_test, 
+        "U_test": U_test,
+        "y_test": y_test,
+        "facts_test": facts_test,
+        "foils_test": foils_test,
+    }
+
 def compute_leace_affine(X_train, y_train):
     X_torch = torch.from_numpy(X_train)
     y_torch = torch.from_numpy(y_train)
@@ -76,20 +104,14 @@ def compute_leace_affine(X_train, y_train):
     return P, I_P, bias
 
 
-def train_probes(X, U, y, facts, foils,
-    idx_train, idx_val, idx_test):  
-    #wb, wb_run, l0_tl, l1_tl, 
-    #device="cpu"):
+def train_probes(run_data):  
 
-    X_train, X_val, X_test = X[idx_train], X[idx_val], X[idx_test]
-    U_train, U_val, U_test = U[idx_train], U[idx_val], U[idx_test]
-    y_train, y_val, y_test = y[idx_train], y[idx_val], y[idx_test]
-    facts_train, facts_val, facts_test = facts[idx_train], facts[idx_val], facts[idx_test]
-    foils_train, foils_val, foils_test = foils[idx_train], foils[idx_val], foils[idx_test]
-
-    logging.info(f"y_train shape: {y_train.shape}")
-    logging.info(f"y_val shape: {y_val.shape}")
-    logging.info(f"y_test shape: {y_test.shape}")
+    X_train, X_dev, X_test = run_data["X_train"], run_data["X_dev"], run_data["X_test"]
+    U_train, U_dev, U_test = run_data["U_train"], run_data["U_dev"], run_data["U_test"]
+    y_train, y_dev, y_test = run_data["y_train"], run_data["y_dev"], run_data["y_test"]
+    facts_train, facts_dev, facts_test = run_data["facts_train"], run_data["facts_dev"], run_data["facts_test"]
+    foils_train, foils_dev, foils_test = run_data["foils_train"], run_data["foils_dev"], run_data["foils_test"]
+    
     #%%
     start = time.time()
 
@@ -162,13 +184,13 @@ def train_probes(X, U, y, facts, foils,
         #usage_eval=usage_eval,
         #new_eval=new_eval,
         maj_acc_test=get_majority_acc(y_test),
-        maj_acc_val=get_majority_acc(y_val),
+        maj_acc_val=get_majority_acc(y_dev),
         maj_acc_train=get_majority_acc(y_train),
-        X_val=X_val,
-        U_val=U_val,
-        y_val=y_val,
-        foils_val=foils_val,
-        facts_val=facts_val,
+        X_val=X_dev,
+        U_val=U_dev,
+        y_val=y_dev,
+        foils_val=foils_dev,
+        facts_val=facts_dev,
         nobs_train = X_train.shape[0],
         nobs_test = X_test.shape[0],
         X_test=X_test,
@@ -197,8 +219,14 @@ if __name__ == '__main__':
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     
     # Load dataset
-    #l0_tl, l1_tl = load_concept_token_lists(cfg['concept'], cfg['model_name'])
-    X, U, y, facts, foils = load_processed_data(cfg['concept'], cfg['model_name'])
+    #TODO: fix this, probably by reshuffling the CEBaB data (though this has implications
+    # for what samples are included esp. in dev, test)
+    if cfg['concept'] in ["number", "gender"]:
+        X, U, y, facts, foils = load_processed_data(cfg['concept'], cfg['model_name'])
+    elif cfg['concept'] in ["food", "ambiance", "service", "noise"]:
+        run_data = load_processed_data(cfg['concept'], cfg['model_name'])
+    else:
+        raise NotImplementedError(f"Concept {cfg['concept']} not supported")
 
     # Set seed
     np.random.seed(cfg['seed'])
@@ -221,17 +249,22 @@ if __name__ == '__main__':
         WB = False
 
     for i in trange(cfg['nruns']):
+        if cfg['concept'] in ["number", "gender"]:    
+            idx_train, idx_val, idx_test = get_data_indices(
+                X.shape[0], cfg["concept"], 
+                cfg['train_obs'], cfg['val_obs'], cfg['test_obs'],
+                cfg["train_share"], cfg["val_share"]
+            )
+            run_data = create_run_datasets(
+                X, U, y, facts, foils, idx_train, idx_val, idx_test
+            )
+        elif cfg['concept'] in ["food", "ambiance", "service", "noise"]:
+            #TODO: probably need to implement some sort of shuffling here 
+            None
+        else:
+            raise NotImplementedError()
 
-        idx_train, idx_val, idx_test = get_data_indices(
-            X.shape[0], cfg["concept"], 
-            cfg['train_obs'], cfg['val_obs'], cfg['test_obs'],
-            cfg["train_share"], cfg["val_share"]
-        )
-        run_output = train_probes(
-            X, U, y, facts, foils, 
-            idx_train, idx_val, idx_test) 
-            #WB, i, 
-            #l0_tl, l1_tl, device=device)        
+        run_output = train_probes(run_data)
         run_output["config"] = cfg
 
         outfile_path = os.path.join(OUTPUT_DIR, 
