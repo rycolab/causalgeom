@@ -27,10 +27,8 @@ from utils.cuda_loaders import get_device
 from evals.eval_utils import load_run_Ps
 #from evals.usage_eval import diag_eval, usage_eval
 
-
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
-
 
 
 #%%#################

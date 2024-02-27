@@ -181,7 +181,7 @@ def get_batch_hs_ar_detailed(model_name, batch, model, tokenizer, V):
             fact = fact,
             foil = foil,
             tgt_label = tgt_label,
-            input_ids_pre_tgt = ti,
+            input_ids_pre_tgt = nopad_ti,
             input_ids_fact = tfa, 
             hs = last_h,
             #fact_hs = fact_hs, 
@@ -194,75 +194,75 @@ def get_batch_hs_ar_detailed(model_name, batch, model, tokenizer, V):
         ))
     return batch_hs
 
-def format_batch_ar(batch, batch_hs, 
-        input_ids, attention_mask, 
-        tokenized_facts, tokenized_foils, V):
-    """ after obtaining hidden states in a batch, formats
-    each individual sample
-    """
-    data = []
-    for ti, am, tfa, tfo, fact, foil, tgt_label, hs in zip(
-        input_ids, 
-        attention_mask, 
-        tokenized_facts,
-        tokenized_foils,
-        batch["fact"], 
-        batch["foil"], 
-        batch["tgt_label"],
-        batch_hs):
+#def format_batch_ar(batch, batch_hs, 
+#        input_ids, attention_mask, 
+#        tokenized_facts, tokenized_foils, V):
+#    """ after obtaining hidden states in a batch, formats
+#    each individual sample
+#    """
+#    data = []
+#    for ti, am, tfa, tfo, fact, foil, tgt_label, hs in zip(
+#        input_ids, 
+#        attention_mask, 
+#        tokenized_facts,
+#        tokenized_foils,
+#        batch["fact"], 
+#        batch["foil"], 
+#        batch["tgt_label"],
+#        batch_hs):
+#
+#        ti_nopad = ti[am==1]
+#        hs_nopad = hs[am==1]
+#        last_h = hs_nopad[-1]
+#        fact_embedding = V[tfa,:]
+#        foil_embedding = V[tfo,:]
+#
+#        data.append(dict(
+#            fact = fact,
+#            foil = foil,
+#            tgt_label = tgt_label,
+#            input_ids_pre_tgt = ti_nopad,
+#            input_ids_fact = tfa, 
+#            hs = last_h, 
+#            fact_hs = None, 
+#            #verb_raw_hs = fact_raw_hs,
+#            fact_embedding = fact_embedding,
+#            input_ids_foil = tfo, 
+#            foil_hs = None,
+#            #iverb_raw_hs=iverb_raw_hs,
+#            foil_embedding = foil_embedding,
+#        ))
+#    return data
 
-        ti_nopad = ti[am==1]
-        hs_nopad = hs[am==1]
-        last_h = hs_nopad[-1]
-        fact_embedding = V[tfa,:]
-        foil_embedding = V[tfo,:]
-
-        data.append(dict(
-            fact = fact,
-            foil = foil,
-            tgt_label = tgt_label,
-            input_ids_pre_tgt = ti_nopad,
-            input_ids_fact = tfa, 
-            hs = last_h, 
-            fact_hs = None, 
-            #verb_raw_hs = fact_raw_hs,
-            fact_embedding = fact_embedding,
-            input_ids_foil = tfo, 
-            foil_hs = None,
-            #iverb_raw_hs=iverb_raw_hs,
-            foil_embedding = foil_embedding,
-        ))
-    return data
-
-def get_batch_hs_ar(model_name, batch, model, tokenizer, V):
-    batch_hs = []
-    tok_facts = batch_tokenize_tgts(model_name, batch["fact"], tokenizer)
-    tok_foils = batch_tokenize_tgts(model_name, batch["foil"], tokenizer)
-    tok_text = batch_tokenize_text(batch["pre_tgt_text"], tokenizer)
-    input_ids = tok_text["input_ids"].to(device)
-    attention_mask = tok_text["attention_mask"].to(device)
-
-    with torch.no_grad():
-        
-        output = model(
-            input_ids=input_ids, 
-            attention_mask=attention_mask, 
-            labels=input_ids,
-            output_hidden_states=True
-        )
-    
-    batch_hs = output.hidden_states[-1].cpu().numpy()
-    #if model_name == "llama2":
-    #    return tgt_ti.numpy(), output.hidden_states[-1][0].cpu().numpy()
-    #elif model_name in GPT2_LIST:
-    #    return tgt_ti.numpy(), output.hidden_states[-1].cpu().numpy()
-
-    formatted_batch = format_batch_ar(
-        batch, batch_hs, 
-        tok_text["input_ids"], tok_text["attention_mask"],
-        tok_facts, tok_foils, V
-    )
-    return formatted_batch
+#def get_batch_hs_ar(model_name, batch, model, tokenizer, V):
+#    batch_hs = []
+#    tok_facts = batch_tokenize_tgts(model_name, batch["fact"], tokenizer)
+#    tok_foils = batch_tokenize_tgts(model_name, batch["foil"], tokenizer)
+#    tok_text = batch_tokenize_text(batch["pre_tgt_text"], tokenizer)
+#    input_ids = tok_text["input_ids"].to(device)
+#    attention_mask = tok_text["attention_mask"].to(device)
+#
+#    with torch.no_grad():
+#        
+#        output = model(
+#            input_ids=input_ids, 
+#            attention_mask=attention_mask, 
+#            labels=input_ids,
+#            output_hidden_states=True
+#        )
+#    
+#    batch_hs = output.hidden_states[-1].cpu().numpy()
+#    #if model_name == "llama2":
+#    #    return tgt_ti.numpy(), output.hidden_states[-1][0].cpu().numpy()
+#    #elif model_name in GPT2_LIST:
+#    #    return tgt_ti.numpy(), output.hidden_states[-1].cpu().numpy()
+#
+#    formatted_batch = format_batch_ar(
+#        batch, batch_hs, 
+#        tok_text["input_ids"], tok_text["attention_mask"],
+#        tok_facts, tok_foils, V
+#    )
+#    return formatted_batch
 
 def collect_hs_ar(model_name, dl, model, tokenizer, V, output_dir):
     for i, batch in enumerate(pbar:=tqdm(dl)):
@@ -408,7 +408,7 @@ if __name__=="__main__":
     split = args.split
     batch_size = args.batch_size
     #dataset_name = "CEBaB"
-    #model_name = "llama2"
+    #model_name = "gpt2-large"
     #concept = "food"
     #split = "train"
     #batch_size = 2

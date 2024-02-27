@@ -117,6 +117,12 @@ def get_args():
         help="Model for computing hidden states"
     )
     argparser.add_argument(
+        "-concept",
+        type=str,
+        choices=["number", "gender", "food", "ambiance", "service", "noise"],
+        help="Concept to create embedded word lists for"
+    )
+    argparser.add_argument(
         "-nucleus",
         action="store_true",
         default=False,
@@ -130,12 +136,14 @@ if __name__ == '__main__':
     logging.info(args)
     
     
-    model_name = args.model
-    nucleus = args.nucleus
-    nfiles=1000
-    #model_name = "gpt2-large"
-    #nucleus = False
-    #nfiles = 10
+    #model_name = args.model
+    #concept = args.concept
+    #nucleus = args.nucleus
+    #nfiles=1000
+    model_name = "llama2"
+    concept = "food"
+    nucleus = False
+    nfiles = 10
 
     if nucleus:
         generations_folder = os.path.join(OUT, f"generated_text_nucleus/{model_name}/no_I_P")
@@ -148,7 +156,6 @@ if __name__ == '__main__':
         os.makedirs(outdir)
         logging.info(f"Created output directory {outdir}")
     
-    concept_name = get_concept_name(model_name)
     l0_tl, l1_tl = load_concept_token_lists(concept_name, model_name)
 
     logging.info(f"Filtering generations for model {model_name} with nucleus: {nucleus}")

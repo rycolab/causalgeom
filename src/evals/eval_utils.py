@@ -43,9 +43,9 @@ def load_run_Ps(run_path):
     bias = run["output"].get("bias", None)
     return P, I_P, bias
 
-def load_model_eval(model_name, concept):
+def load_model_eval(model_name, concept, single_token):
     V = get_V(model_name)
-    l0_tl, l1_tl = load_concept_token_lists(concept, model_name)
+    l0_tl, l1_tl = load_concept_token_lists(concept, model_name, single_token)
     return V, l0_tl, l1_tl
 
 

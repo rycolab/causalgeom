@@ -10,7 +10,7 @@ from datasets import load_dataset
 #sys.path.append('..')
 sys.path.append('./src/')
 
-from data.embed_wordlists.embedder import get_emb_outfile_paths, get_token_list_outfile_paths
+from data.embed_wordlists.embedder_paired import get_emb_outfile_paths, get_token_list_outfile_paths
 from utils.lm_loaders import GPT2_LIST, BERT_LIST, SUPPORTED_AR_MODELS
 from paths import DATASETS, FR_DATASETS, HF_CACHE
 

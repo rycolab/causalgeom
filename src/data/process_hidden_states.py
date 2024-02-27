@@ -71,18 +71,19 @@ def format_sample_ar(sample):
     foil_emb = sample["foil_embedding"]
     fact = sample["input_ids_fact"]
     foil = sample["input_ids_foil"]
+    cxt_tok = sample["input_ids_pre_tgt"]
     tgt_label = define_target(sample["tgt_label"])
     max_tokens = count_tgt_tokens(sample)
     if tgt_label == 0 and max_tokens == 1: # number and gender
         y = 0
         u = foil_emb.flatten() - fact_emb.flatten()
-        return (hs, u, y, fact, foil)
+        return (hs, u, y, fact, foil, cxt_tok)
     elif tgt_label == 1 and max_tokens == 1: # number and gender
         y = 1
         u = fact_emb.flatten() - foil_emb.flatten()
-        return (hs, u, y, fact, foil)
+        return (hs, u, y, fact, foil, cxt_tok)
     elif tgt_label in [0,1] and max_tokens == 0: # CEBaB concepts
-        return (hs, None, tgt_label, fact, foil)
+        return (hs, None, tgt_label, fact, foil, cxt_tok)
     else: # max_tokens > 1
         return None
     
@@ -247,18 +248,18 @@ if __name__=="__main__":
     args = get_args()
     logging.info(args)
 
-    DATASET_NAME = args.dataset
-    MODEL_NAME = args.model
-    CONCEPT = args.concept
-    OUT_TYPE = args.outtype
-    NBATCHES = args.nbatches
-    SPLIT = args.split
-    #DATASET_NAME = "CEBaB"
-    #MODEL_NAME = "llama2"
-    #CONCEPT = "food"
-    #SPLIT = "train"
-    #OUT_TYPE = "full"
-    #NBATCHES = 10
+    #DATASET_NAME = args.dataset
+    #MODEL_NAME = args.model
+    #CONCEPT = args.concept
+    #OUT_TYPE = args.outtype
+    #NBATCHES = args.nbatches
+    #SPLIT = args.split
+    DATASET_NAME = "CEBaB"
+    MODEL_NAME = "gpt2-large"
+    CONCEPT = "food"
+    SPLIT = "train"
+    OUT_TYPE = "full"
+    NBATCHES = None
 
     if MODEL_NAME in SUPPORTED_AR_MODELS and OUT_TYPE == "full":
         OUT_TYPE = "ar"

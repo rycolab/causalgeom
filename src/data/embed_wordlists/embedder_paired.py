@@ -27,8 +27,6 @@ warnings.filterwarnings("ignore")
 EN_NUMBER_VERB_LIST_PATH = os.path.join(DATASETS, f"processed/en/word_lists/verb_pair_list.tsv")
 EN_NUMBER_WORD_LIST_PATH = os.path.join(DATASETS, f"processed/en/word_lists/other_list.tsv")
 
-CEBAB_FOOD_ADJ_LIST_PATH = os.path.join(DATASETS, f"processed/CEBaB/concept_word_lists/food/food_adjs.tsv")
-
 FR_ADJ_LIST_PATH = os.path.join(DATASETS, f"processed/fr/word_lists/adj_pair_list.tsv")
 FR_WORD_LIST_PATH = os.path.join(DATASETS, f"processed/fr/word_lists/other_list.tsv")
 
@@ -40,7 +38,7 @@ def get_args():
     argparser.add_argument(
         "-concept",
         type=str,
-        choices=["gender", "number", "sentiment"],
+        choices=["number", "gender"],
         help="Concept to create embedded word lists for"
     )
     argparser.add_argument(
@@ -49,6 +47,12 @@ def get_args():
         choices=SUPPORTED_AR_MODELS,
         help="Models to create embedding files for"
     )
+    argparser.add_argument(
+        "-single_token",
+        type=bool,
+        default=True,
+        help="Whether to filter word list to single token pairs"
+    )
     return argparser.parse_args()
 
 def get_wordlist_paths(concept):
@@ -56,8 +60,6 @@ def get_wordlist_paths(concept):
         return EN_NUMBER_WORD_LIST_PATH, EN_NUMBER_VERB_LIST_PATH
     elif concept == "gender":
         return FR_WORD_LIST_PATH, FR_ADJ_LIST_PATH
-    elif concept == "food":
-        return None, CEBAB_FOOD_ADJ_LIST_PATH
     else:
         raise NotImplementedError("Invalid dataset name")
 
@@ -74,35 +76,31 @@ def get_emb_outfile_paths(concept, model_name):
         masc_emb_outfile = os.path.join(DATASETS, f"processed/fr/embedded_word_lists/{model_name}_masc_embeds.npy")
         fem_emb_outfile = os.path.join(DATASETS, f"processed/fr/embedded_word_lists/{model_name}_fem_embeds.npy")
         return word_emb_outfile, adj_p_outfile, masc_emb_outfile, fem_emb_outfile
-    elif concept in ["food", "ambiance", "service", "noise"]:
-        neg_emb_outfile = os.path.join(DATASETS, f"processed/CEBaB/embedded_word_lists/{concept}/{model_name}_{concept}_neg_embeds.npy")
-        pos_emb_outfile = os.path.join(DATASETS, f"processed/CEBaB/embedded_word_lists/{concept}/{model_name}_{concept}_pos_embeds.npy")
-        return None, None, neg_emb_outfile, pos_emb_outfile
     else:
         raise ValueError("Invalid dataset name")
 
-def get_token_list_outfile_paths(concept, model_name):
+def get_token_list_outfile_paths(concept, model_name, single_token):
     if concept == "number":
         other_outfile = os.path.join(DATASETS, f"processed/en/tokenized_lists/{model_name}_word_token_list.npy")
-        sg_outfile = os.path.join(DATASETS, f"processed/en/tokenized_lists/{model_name}_sg_token_list.npy")
-        pl_outfile = os.path.join(DATASETS, f"processed/en/tokenized_lists/{model_name}_pl_token_list.npy")
-        return other_outfile, sg_outfile, pl_outfile
+        l0_outfile = os.path.join(DATASETS, f"processed/en/tokenized_lists/{model_name}_sg_token_list.npy")
+        l1_outfile = os.path.join(DATASETS, f"processed/en/tokenized_lists/{model_name}_pl_token_list.npy")
     elif concept == "gender":
         other_outfile = os.path.join(DATASETS, f"processed/fr/tokenized_lists/{model_name}_word_token_list.npy")
-        masc_outfile = os.path.join(DATASETS, f"processed/fr/tokenized_lists/{model_name}_masc_token_list.npy")
-        fem_outfile = os.path.join(DATASETS, f"processed/fr/tokenized_lists/{model_name}_fem_token_list.npy")
-        return other_outfile, masc_outfile, fem_outfile
-    elif concept in ["food", "ambiance", "service", "noise"]:
-        #other_outfile = os.path.join(DATASETS, f"processed/CEBaB/tokenized_lists/{model_name}_word_token_list.npy")
-        neg_outfile = os.path.join(DATASETS, f"processed/CEBaB/tokenized_lists/{concept}/{model_name}_{concept}_neg_token_list.npy")
-        pos_outfile = os.path.join(DATASETS, f"processed/CEBaB/tokenized_lists/{concept}/{model_name}_{concept}_pos_token_list.npy")
-        return None, neg_outfile, pos_outfile
+        l0_outfile = os.path.join(DATASETS, f"processed/fr/tokenized_lists/{model_name}_masc_token_list.npy")
+        l1_outfile = os.path.join(DATASETS, f"processed/fr/tokenized_lists/{model_name}_fem_token_list.npy")
     else:
-        raise ValueError("Invalid dataset name")
+        raise ValueError("Invalid concept")
 
-def load_concept_token_lists(concept, model_name):
+    #TODO: check that indexing works on paths
+    if not single_token:
+        other_outfile = other_outfile[:-4] + "_all_lengths.npy"
+        l0_outfile = l0_outfile[:-4] + "_all_lengths.npy"
+        l1_outfile = l1_outfile[:-4] + "_all_lengths.npy"
+    return other_outfile, l0_outfile, l1_outfile
+
+def load_concept_token_lists(concept, model_name, single_token):
     _, l0_tl_file, l1_tl_file = get_token_list_outfile_paths(
-        concept, model_name)
+        concept, model_name, single_token)
     #other_tl = np.load(other_tl_file)
     l0_tl = np.load(l0_tl_file)
     l1_tl = np.load(l1_tl_file)
@@ -142,20 +140,24 @@ def tokenize_word_handler(model_name, tokenizer, word, add_space=False):
     else:
         raise ValueError("Incorrect model name")
 
-def get_unique_word_list(wordlist_path, model_name, tokenizer, add_space):
+def get_unique_word_list(wordlist_path, model_name, tokenizer, add_space, single_token):
     wl = pd.read_csv(wordlist_path, index_col=0, sep="\t")[["word"]]
     wl.drop_duplicates(inplace=True)
     wl["input_ids_word"] = wl["word"].apply(
         lambda x: tokenize_word_handler(model_name, tokenizer, x, add_space)
     )
     wl["ntokens"] = wl["input_ids_word"].apply(lambda x: len(x))
-    wl_1tok = wl[wl["ntokens"]==1]
-    wl_1tok["first_id_word"] = wl_1tok["input_ids_word"].apply(lambda x: int(x[0]))
-    word_tok = wl_1tok["first_id_word"].to_numpy()
-    word_tok_unq, word_tok_counts = np.unique(word_tok, return_counts=True)
-    return word_tok_unq
+    if single_token:
+        wl_1tok = wl[wl["ntokens"]==1]
+        wl_1tok["first_id_word"] = wl_1tok["input_ids_word"].apply(lambda x: int(x[0]))
+        word_tok = wl_1tok["first_id_word"].to_numpy()
+        word_tok_unq, word_tok_counts = np.unique(word_tok, return_counts=True)
+        return word_tok_unq
+    else:
+        wl_nonempty = wl[wl["ntokens"]!=0]
+        return np.unique(wl_nonempty["input_ids_word"].to_numpy())
 
-def get_unique_lemma_lists(lemma_list_path, model_name, tokenizer, add_space):
+def get_unique_lemma_lists(lemma_list_path, model_name, tokenizer, add_space, single_token):
     #with open(lemma_list_path, 'rb') as f:      
     #    ll = pickle.load(f)
     ll = pd.read_csv(lemma_list_path, index_col=0, sep="\t")
@@ -167,17 +169,26 @@ def get_unique_lemma_lists(lemma_list_path, model_name, tokenizer, add_space):
             lambda x: len(x)
         )
 
-    ll["1tok"] = (ll["lemma_0_ntokens"] == 1) & (ll["lemma_1_ntokens"]==1)
+    if single_token:
+        ll["1tok"] = (ll["lemma_0_ntokens"] == 1) & (ll["lemma_1_ntokens"]==1)
 
-    ll.drop(ll[ll["1tok"] != True].index, inplace=True)
+        ll.drop(ll[ll["1tok"] != True].index, inplace=True)
 
-    ll["lemma_0_tok"] = ll["lemma_0_input_ids"].apply(lambda x: x[0])
-    ll["lemma_1_tok"] = ll["lemma_1_input_ids"].apply(lambda x: x[0])
+        ll["lemma_0_tok"] = ll["lemma_0_input_ids"].apply(lambda x: x[0])
+        ll["lemma_1_tok"] = ll["lemma_1_input_ids"].apply(lambda x: x[0])
 
-    lemma_p = ll[["pair_p_0", "pair_p_1"]].to_numpy()
-    ll_sg_tok = ll["lemma_0_tok"].to_numpy()
-    ll_pl_tok = ll["lemma_1_tok"].to_numpy()
-    return lemma_p, ll_sg_tok, ll_pl_tok
+        lemma_p = ll[["pair_p_0", "pair_p_1"]].to_numpy()
+        ll_l0_tok = ll["lemma_0_tok"].to_numpy()
+        ll_l1_tok = ll["lemma_1_tok"].to_numpy()
+        return lemma_p, ll_l0_tok, ll_l1_tok
+    else:
+        ll["0tok"] = (ll["lemma_0_ntokens"] == 0) & (ll["lemma_1_ntokens"]==0)
+        ll.drop(ll[ll["0tok"] == True].index, inplace=True)
+
+        lemma_p = ll[["pair_p_0", "pair_p_1"]].to_numpy()
+        ll_l0_tok = ll["lemma_0_input_ids"].to_numpy()
+        ll_l1_tok = ll["lemma_1_input_ids"].to_numpy()
+        return lemma_p, ll_l0_tok, ll_l1_tok
 
 def embed_and_export_list(token_list, V, outfile):
     emb = V[token_list]
@@ -191,46 +202,53 @@ if __name__=="__main__":
 
     args = get_args()
     logging.info(args)
-    #concept = args.concept
-    #model_name = args.model
-    concept = "food"
-    model_name = "llama2"
+    concept = args.concept
+    model_name = args.model
+    single_token = args.single_token
+    #concept = "number"
+    #model_name = "gpt2-large"
+    #single_token = False
     
     logging.info(f"Tokenizing and saving embeddings from word and lemma lists for model {model_name}")
     wordlist_path, lemmalist_path = get_wordlist_paths(concept)
-    word_emb_outfile, lemma_p_outfile, l0_emb_outfile, l1_emb_outfile = get_emb_outfile_paths(concept, model_name)
-    other_tl_outfile, l0_tl_outfile, l1_tl_outfile = get_token_list_outfile_paths(concept, model_name)
+    word_emb_outfile, lemma_p_outfile, l0_emb_outfile, l1_emb_outfile = get_emb_outfile_paths(
+        concept, model_name)
+    other_tl_outfile, l0_tl_outfile, l1_tl_outfile = get_token_list_outfile_paths(
+        concept, model_name, single_token)
 
     for filepath in [word_emb_outfile, other_tl_outfile]:
-        if filepath is not None:
-            dirpath = os.path.dirname(filepath)
-            if not os.path.exists(dirpath):
-                os.makedirs(dirpath)
-                logging.info(f"Created directory: {dirpath}")
+        dirpath = os.path.dirname(filepath)
+        if not os.path.exists(dirpath):
+            os.makedirs(dirpath)
+            logging.info(f"Created directory: {dirpath}")
 
     tokenizer = get_tokenizer(model_name)
     V = get_V(model_name)
     add_space = define_add_space(model_name)
-
-    if wordlist_path is not None:
-        wl = get_unique_word_list(wordlist_path, model_name, tokenizer, add_space)
-        logging.info(f"Single token word list of length: {len(wl)}")
-        np.save(other_tl_outfile, wl)
+    
+    wl = get_unique_word_list(
+        wordlist_path, model_name, tokenizer, add_space, single_token
+    )
+    logging.info(f"Tokenized word list of length: {len(wl)}")
+    np.save(other_tl_outfile, wl)
+    if single_token:
         embed_and_export_list(wl, V, word_emb_outfile)
         logging.info(f"Tokenized and exported word embeds to: {word_emb_outfile}")
 
     lemma_p, l0_tok, l1_tok = get_unique_lemma_lists(
-        lemmalist_path, model_name, tokenizer, add_space)
+        lemmalist_path, model_name, tokenizer, add_space, single_token
+    )
     np.save(l0_tl_outfile, l0_tok)
     np.save(l1_tl_outfile, l1_tok)
     np.save(lemma_p_outfile, lemma_p)
-    logging.info(f"Exported single token verb probs to: {lemma_p_outfile}")
+    logging.info(f"Exported token lemma probs to: {lemma_p_outfile}")
 
-    logging.info(f"Single token lemma 0 list of length: {len(l0_tok)}")
-    logging.info(f"Single token lemma 1 list of length: {len(l1_tok)}")
-    embed_and_export_list(l0_tok, V, l0_emb_outfile)
-    logging.info(f"Tokenized and exported lemma 0 embeds to: {l0_emb_outfile}")
-    embed_and_export_list(l1_tok, V, l1_emb_outfile)
-    logging.info(f"Tokenized and exported lemma 1 embeds to: {l1_emb_outfile}")
+    if single_token:
+        logging.info(f"Single token lemma 0 list of length: {len(l0_tok)}")
+        logging.info(f"Single token lemma 1 list of length: {len(l1_tok)}")
+        embed_and_export_list(l0_tok, V, l0_emb_outfile)
+        logging.info(f"Tokenized and exported lemma 0 embeds to: {l0_emb_outfile}")
+        embed_and_export_list(l1_tok, V, l1_emb_outfile)
+        logging.info(f"Tokenized and exported lemma 1 embeds to: {l1_emb_outfile}")
 
     
