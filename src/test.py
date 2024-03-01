@@ -140,7 +140,7 @@ p_word = 1
 while i < len(word_tok):
     logging.info(f"Loop iteration: {i}")
     h = hidden_states[cxt_last_index + i]
-    logging.info(f"Hs index: {cxt_last_index + i} / {hidden_states.shape[0]}")
+    logging.info(f"Hs index: {cxt_last_index + i} / {hidden_states.shape[0]-1}")
     qxh = compute_inner_loop_qxhs(
         "hbot", h, all_hs, P, I_P, V, MSAMPLES, processor=None
     ).mean(axis=0)
@@ -150,6 +150,8 @@ while i < len(word_tok):
     logging.info(f"Word prob: {p_word}")
     i += 1
 
+# Next: do the probability of a space with the final index.
+# Issue: need to figure out how to do the probability of other words without a word list.
 
 #%%
 #p_w = first_qxh[word_tok[0]]
