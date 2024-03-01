@@ -102,8 +102,8 @@ def load_concept_token_lists(concept, model_name, single_token):
     _, l0_tl_file, l1_tl_file = get_token_list_outfile_paths(
         concept, model_name, single_token)
     #other_tl = np.load(other_tl_file)
-    l0_tl = np.load(l0_tl_file)
-    l1_tl = np.load(l1_tl_file)
+    l0_tl = np.load(l0_tl_file, allow_pickle=True)
+    l1_tl = np.load(l1_tl_file, allow_pickle=True)
     return l0_tl, l1_tl
 
 def define_add_space(model_name):

@@ -106,13 +106,12 @@ def get_raw_sample_hs(model_name, input_ids, attention_mask, model):
     if model_name == "llama2":
         nopad_ti = nopad_ti.unsqueeze(0)
     #if model_name in GPT2_LIST:
-    nopad_ti_dev = nopad_ti.to(device)
+    #nopad_ti_dev = nopad_ti.to(device)
     #elif model_name == "llama2":
     #    nopad_ti_dev = nopad_ti
     #else:
     #    raise NotImplementedError(f"Model {model_name} not supported")
     with torch.no_grad():
-        #TODO: check that the logits are the same
         output = model(
             input_ids=nopad_ti_dev, 
             #attention_mask=attention_mask, 

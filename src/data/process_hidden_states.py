@@ -205,7 +205,7 @@ def get_args():
         "-dataset", 
         type=str,
         choices=["linzen", "CEBaB"] + FR_DATASETS,
-        default="linzen",
+        default=None,
         help="Dataset to process hidden states for"
     )
     argparser.add_argument(
@@ -254,10 +254,10 @@ if __name__=="__main__":
     #OUT_TYPE = args.outtype
     #NBATCHES = args.nbatches
     #SPLIT = args.split
-    DATASET_NAME = "CEBaB"
-    MODEL_NAME = "gpt2-large"
-    CONCEPT = "food"
-    SPLIT = "train"
+    DATASET_NAME = "linzen"
+    MODEL_NAME = "llama2"
+    CONCEPT = "number"
+    SPLIT = None
     OUT_TYPE = "full"
     NBATCHES = None
 

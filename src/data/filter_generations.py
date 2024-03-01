@@ -20,8 +20,8 @@ sys.path.append('./src/')
 
 from paths import DATASETS, OUT
 
-from utils.lm_loaders import GPT2_LIST, get_concept_name
-from data.embed_wordlists.embedder import get_token_list_outfile_paths, \
+from utils.lm_loaders import GPT2_LIST, SUPPORTED_AR_MODELS
+from data.embed_wordlists.embedder_paired import get_token_list_outfile_paths, \
     load_concept_token_lists
 from data.data_utils import sample_filtered_hs
 

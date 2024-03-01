@@ -6,7 +6,7 @@ import pandas as pd
 import csv 
 import pickle
 from datasets import load_dataset
-
+from itertools import zip_longest
 #sys.path.append('..')
 sys.path.append('./src/')
 
@@ -172,8 +172,8 @@ def load_preprocessed_dataset(dataset_name, model_name, concept=None, split=None
 def load_dataset_pickle(path, dataset_name):
     with open(path, 'rb') as f:     
         data = pd.DataFrame(pickle.load(f))
-        assert data.shape[1] == 5, "Out of date processed dataset"
-        data.columns = ["h", "u", "y", "fact", "foil"]
+        assert data.shape[1] == 6, "Out of date processed dataset"
+        data.columns = ["h", "u", "y", "fact", "foil", "cxt_tok"]
         #if data.shape[1] == 3:
         #    data.columns = ["h", "u", "y"]
         #elif data.shape[1] == 5:
@@ -185,7 +185,10 @@ def load_dataset_pickle(path, dataset_name):
     y = np.array([yi for yi in data["y"]])
     fact = np.array([fact for fact in data["fact"]]).flatten()
     foil = np.array([foil for foil in data["foil"]]).flatten()
-    return X, U, y, fact, foil
+    #TODO: this sucks, need to save hidden states with padded input and 
+    # attention mask...
+    cxt_tok = np.array(list(zip_longest(*data["cxt_tok"], fillvalue=-1))).T
+    return X, U, y, fact, foil, cxt_tok
 
 def get_processed_dataset_path(dataset_name, model_name, concept=None, split=None):
     if model_name in SUPPORTED_AR_MODELS:
@@ -213,27 +216,31 @@ def load_processed_dataset(dataset_name, model_name, concept=None, split=None):
     return load_dataset_pickle(dataset_path, dataset_name)
 
 def load_gender_split(model_name, split_name):
-    #X_gsd, U_gsd, y_gsd = load_processed_dataset("ud_fr_gsd", model_name, split_name)
-    X_gsd, U_gsd, y_gsd, fact_gsd, foil_gsd = load_processed_dataset("ud_fr_gsd", model_name, split=split_name)
-    #X_partut, U_partut, y_partut = load_processed_dataset("ud_fr_partut", model_name, split_name)
-    X_partut, U_partut, y_partut, fact_partut, foil_partut = load_processed_dataset("ud_fr_partut", model_name, split=split_name)
-    #X_rhapsodie, U_rhapsodie, y_rhapsodie = load_processed_dataset("ud_fr_rhapsodie", model_name, split_name)
-    X_rhapsodie, U_rhapsodie, y_rhapsodie, fact_rhapsodie, foil_rhapsodie = load_processed_dataset("ud_fr_rhapsodie", model_name, split=split_name)
+    #TODO: will need to handle the cxt_tok situation with non-equal lengths here and below
+    X_gsd, U_gsd, y_gsd, fact_gsd, foil_gsd, cxt_tok_gsd = load_processed_dataset(
+        "ud_fr_gsd", model_name, split=split_name
+    )
+    X_partut, U_partut, y_partut, fact_partut, foil_partut, cxt_tok_partut = load_processed_dataset(
+        "ud_fr_partut", model_name, split=split_name
+    )
+    X_rhapsodie, U_rhapsodie, y_rhapsodie, fact_rhapsodie, foil_rhapsodie, cxt_tok_rhapsodie = load_processed_dataset(
+        "ud_fr_rhapsodie", model_name, split=split_name
+    )
 
     X = np.vstack([X_gsd, X_partut, X_rhapsodie])
     U = np.vstack([U_gsd, U_partut, U_rhapsodie])
     y = np.hstack([y_gsd, y_partut, y_rhapsodie])
     fact = np.hstack([fact_gsd, fact_partut, fact_rhapsodie])
     foil = np.hstack([foil_gsd, foil_partut, foil_rhapsodie])
-    return X, U, y, fact, foil
+    cxt_tok = np.hstack([cxt_tok_gsd, cxt_tok_partut, cxt_tok_rhapsodie])
+    return X, U, y, fact, foil, cxt_tok
 
 def load_gender_processed(model_name):
-    #X_train, U_train, y_train = load_gender_split(model_name, "train")
-    X_train, U_train, y_train, fact_train, foil_train = load_gender_split(model_name, "train")
+    X_train, U_train, y_train, fact_train, foil_train, cxt_tok_train = load_gender_split(model_name, "train")
     #X_dev, U_dev, y_dev = load_gender_split(model_name, "dev")
-    X_dev, U_dev, y_dev, fact_dev, foil_dev = load_gender_split(model_name, "dev")
+    X_dev, U_dev, y_dev, fact_dev, foil_dev, cxt_tok_dev = load_gender_split(model_name, "dev")
     #X_test, U_test, y_test = load_gender_split(model_name, "test")
-    X_test, U_test, y_test, fact_test, foil_test = load_gender_split(model_name, "test")
+    X_test, U_test, y_test, fact_test, foil_test, cxt_tok_test = load_gender_split(model_name, "test")
     
     #stacking into one
     X = np.vstack([X_train, X_dev, X_test])
@@ -241,28 +248,38 @@ def load_gender_processed(model_name):
     y = np.hstack([y_train, y_dev, y_test])
     fact = np.hstack([fact_train, fact_dev, fact_test])
     foil = np.hstack([foil_train, foil_dev, foil_test])
-    return X, U, y, fact, foil
+    cxt_tok = np.hstack([cxt_tok_train, cxt_tok_dev, cxt_tok_test])
+    return X, U, y, fact, foil, cxt_tok
 
 def load_CEBaB_processed(concept_name, model_name):
-    X_train, U_train, y_train, facts_train, foils_train = load_processed_dataset("CEBaB", model_name, concept_name, split="train")
-    X_dev, U_dev, y_dev, facts_dev, foils_dev = load_processed_dataset("CEBaB", model_name, concept_name, split="dev")
-    X_test, U_test, y_test, facts_test, foils_test = load_processed_dataset("CEBaB", model_name, concept_name, split="test")
+    X_train, U_train, y_train, facts_train, foils_train, cxt_toks_train = load_processed_dataset(
+        "CEBaB", model_name, concept_name, split="train"
+    )
+    X_dev, U_dev, y_dev, facts_dev, foils_dev, cxt_toks_dev = load_processed_dataset(
+        "CEBaB", model_name, concept_name, split="dev"
+    )
+    X_test, U_test, y_test, facts_test, foils_test, cxt_toks_test = load_processed_dataset(
+        "CEBaB", model_name, concept_name, split="test"
+    )
     return {
         "X_train": X_train, 
         "U_train": U_train,
         "y_train": y_train,
         "facts_train": facts_train,
         "foils_train": foils_train,
+        "cxt_toks_train": cxt_toks_train,
         "X_dev": X_dev, 
         "U_dev": U_dev,
         "y_dev": y_dev,
         "facts_dev": facts_dev,
         "foils_dev": foils_dev,
+        "cxt_toks_dev": cxt_toks_dev,
         "X_test": X_test, 
         "U_test": U_test,
         "y_test": y_test,
         "facts_test": facts_test,
         "foils_test": foils_test,
+        "cxt_toks_test": cxt_toks_test,
     }
 
 

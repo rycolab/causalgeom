@@ -51,65 +51,6 @@ def adjust_past_key_values(past_key_values, max_len):
         new_past_key_values += (new_sub_values,)
     return new_past_key_values
     
-def generate_sequence_until_eos_multi(model_name, model, prompt_ids, batch_size, seed, max_length, eos_token, 
-    device="cpu", P=None, nucleus=False, top_p=0.9):
-    torch.manual_seed(seed)
-    tokens = prompt_ids.repeat(batch_size, 1)
-    token_h_pairs = []
-    sm = torch.nn.Softmax(1)#.to(device)
-    past_key_values = None
-    counter = 0
-    all_tokens = [tokens]
-    processor = LogitsProcessorList()
-    processor.append(TopPLogitsWarper(0.9))
-    while (check_eos(tokens[:,-1], eos_token) or (counter==0)):
-        if past_key_values is not None and past_key_values[0][0].shape[2] == max_length:
-            #copy = past_key_values[0][0].clone().detach()
-            past_key_values = adjust_past_key_values(past_key_values, max_length)
-        #if tokens.shape[1] > 1024:
-        #    tokens = tokens[:,-1024:]
-        #else:
-        #    input_tokens = tokens
-        with torch.no_grad():
-            output = model(
-                input_ids=tokens,
-                output_hidden_states=True,
-                past_key_values=past_key_values
-            )
-        
-        if PartialState().is_last_process:
-            #final_logits = output.logits[-1]#.cpu()
-            past_key_values = output.past_key_values
-            hs = output.hidden_states[-1][:,-1,:]#.squeeze().squeeze()#.cpu()
-            if P is not None:
-                hs = torch.matmul(P, hs.T).T
-            logits = model.lm_head(hs)
-        
-            if nucleus:
-                logits = processor(tokens, logits)
-            #assert (torch.isclose(final_logits[-1,:], logits, atol = 1e-05)).all().item(), "Logits not equal"
-            probs = sm(logits)
-            sampled_tokens = torch.multinomial(probs, 1)
-            save_h_indicator = []
-            for i in range(batch_size):
-                if tokens[i, -1] == eos_token and counter > 0:
-                    sampled_tokens[i] = eos_token
-                    save_h_indicator.append(False)
-                else:
-                    save_h_indicator.append(True)
-                    #torch.cat((zip_tokens, zip_sampled_token.unsqueeze(0)), dim=-1)
-            #tokens = torch.cat((tokens, sampled_tokens), dim=-1)
-            all_tokens.append(sampled_tokens)
-            tokens = sampled_tokens
-            for h, token, save_h in zip(hs.cpu(), sampled_tokens, save_h_indicator):
-                if save_h:
-                    token_h_pairs.append((h, token.item()))
-            counter+=1
-            if counter % 100 == 0:
-                logging.info(f"Number of tokens so far: {counter}") 
-    all_tokens = torch.hstack(all_tokens).cpu()
-    return all_tokens, token_h_pairs
-
 def generate_sequence_until_eos(model_name, model, prompt_ids, batch_size, seed, max_length, eos_token, 
     device="cpu", P=None, nucleus=False, top_p=0.9):
     torch.manual_seed(seed)

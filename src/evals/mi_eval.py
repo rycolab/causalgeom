@@ -115,7 +115,7 @@ def compute_ent_of_avg(pxs, case, l0_tl, l1_tl):
 #%%
 def prep_generated_data(model_name, nucleus):
     l0_hs_wff, l1_hs_wff, other_hs = load_generated_hs_wff(
-        model_name, load_other=True, nucleus=nucleus
+        model_name, nucleus=nucleus
     )
     all_concept_hs = [x for x,_,_ in l0_hs_wff + l1_hs_wff]
     other_hs_no_x = [x for x,_ in other_hs]
