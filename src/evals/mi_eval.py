@@ -227,8 +227,8 @@ def compute_p_c_bin(l0_hs, l1_hs):
 def compute_bin_pch(pxh, l0_tl, l1_tl):
     pch_l0 = pxh[l0_tl].sum()
     pch_l1 = pxh[l1_tl].sum()
-    pch_other = np.delete(pxh, np.hstack((l0_tl, l1_tl))).sum()
-    pch = renormalize(np.array([pch_l0, pch_l1, pch_other]))
+    #pch_other = np.delete(pxh, np.hstack((l0_tl, l1_tl))).sum()
+    #pch = renormalize(np.array([pch_l0, pch_l1, pch_other]))
     pch_bin = renormalize(np.array([pch_l0, pch_l1]))
     return pch_bin
 
@@ -309,7 +309,8 @@ def compute_res_run(model_name, concept, run, run_path, nsamples, msamples, nucl
     P, I_P, _ = load_run_Ps(run_path)
 
     # test set version of the eval
-    V, l0_tl, l1_tl = load_model_eval(model_name, concept)
+    #TODO: hard coded single_token=True here
+    V, l0_tl, l1_tl = load_model_eval(model_name, concept, single_token=True)
 
     #p_x = load_p_x(model_name, nucleus)
     p_c, l0_hs_wff, l1_hs_wff, all_hs = prep_generated_data(model_name, nucleus)
@@ -437,7 +438,7 @@ if __name__=="__main__":
     #msamples=args.msamples
     #output_folder = args.out_folder
     #nruns = 3
-    model_name = "llama2"
+    model_name = "gpt2-large"
     concept = "number"
     nucleus = True
     k=1
@@ -445,7 +446,7 @@ if __name__=="__main__":
     msamples=3
     output_folder = "llamaevaltest"
     nruns = 1
-    run_output_folders = ["leace"]
+    run_output_folders = ["leace29022024"]
     
 
     for folder in run_output_folders:
