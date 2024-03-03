@@ -30,7 +30,7 @@ from paths import DATASETS, OUT, RESULTS, MODELS
 
 
 from evals.mi_eval import prep_generated_data, compute_inner_loop_qxhs
-#from utils.lm_loaders import get_V, GPT2_LIST, BERT_LIST
+from utils.lm_loaders import SUPPORTED_AR_MODELS
 from evals.eval_utils import load_run_Ps, load_run_output, load_model_eval,\
     renormalize
 #from data.filter_generations import load_generated_hs_wff
@@ -481,7 +481,7 @@ def get_args():
     argparser.add_argument(
         "-model",
         type=str,
-        choices=BERT_LIST + GPT2_LIST,
+        choices=SUPPORTED_AR_MODELS,
         help="Models to create embedding files for"
     )
     argparser.add_argument(
@@ -529,7 +529,7 @@ if __name__=="__main__":
     model_name = "gpt2-large"
     concept = "number"
     nucleus = True
-    #k=1
+    k=1
     nsamples=200
     msamples=10
     output_folder = "test_multitokeneval"
