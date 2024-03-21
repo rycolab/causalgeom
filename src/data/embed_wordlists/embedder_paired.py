@@ -49,8 +49,8 @@ def get_args():
     )
     argparser.add_argument(
         "-single_token",
-        type=bool,
-        default=True,
+        action="store_true",
+        default=False,
         help="Whether to filter word list to single token pairs"
     )
     return argparser.parse_args()
@@ -91,7 +91,6 @@ def get_token_list_outfile_paths(concept, model_name, single_token):
     else:
         raise ValueError("Invalid concept")
 
-    #TODO: check that indexing works on paths
     if not single_token:
         other_outfile = other_outfile[:-4] + "_all_lengths.npy"
         l0_outfile = l0_outfile[:-4] + "_all_lengths.npy"
@@ -183,7 +182,8 @@ def get_unique_lemma_lists(lemma_list_path, model_name, tokenizer, add_space, si
         return lemma_p, ll_l0_tok, ll_l1_tok
     else:
         ll["0tok"] = (ll["lemma_0_ntokens"] == 0) & (ll["lemma_1_ntokens"]==0)
-        ll.drop(ll[ll["0tok"] == True].index, inplace=True)
+        assert ll[ll["0tok"] == True].shape[0] == 0, "Tokenization issue"
+        #ll.drop(ll[ll["0tok"] == True].index, inplace=True)
 
         lemma_p = ll[["pair_p_0", "pair_p_1"]].to_numpy()
         ll_l0_tok = ll["lemma_0_input_ids"].to_numpy()

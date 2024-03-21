@@ -8,6 +8,7 @@ import argparse
 from datetime import datetime
 import csv
 
+import re
 import numpy as np
 from tqdm import tqdm
 import pandas as pd
@@ -100,18 +101,23 @@ class MultiTokenEvaluator:
     # Tokenizer specific new word tokens    #
     #########################################
     def get_gpt2_large_new_word_tokens(self):
-        #TODO: need to refine this list cuz other tokens includes punctuation for example
+        pattern = re.compile("^[\W][^a-zA-Z]*")
+
         new_word_tokens = []
         new_word_token_pairs = []
         other_tokens = []
         other_token_pairs = []
-        for token, token_id in self.tokenizer.vocab.items():
+        for token, token_id in tokenizer.vocab.items():
             if token.startswith("Ġ"):
+                new_word_tokens.append(token_id)
+                new_word_token_pairs.append((token, token_id))
+            elif pattern.match(token):
                 new_word_tokens.append(token_id)
                 new_word_token_pairs.append((token, token_id))
             else:
                 other_tokens.append(token_id)
                 other_token_pairs.append((token, token_id))
+
         return new_word_tokens
 
     def get_new_word_tokens(self, model_name):
@@ -229,7 +235,7 @@ class MultiTokenEvaluator:
     def compute_all_word_probs(self, cxt, method):
         cxt_last_index = cxt.shape[0] - 1
         #TODO: get rid of this after debugging
-        if self.nwords:
+        if self.nwords is not None:
             l0_word_probs = self.compute_p_words(self.l0_tl[:self.nwords], cxt, cxt_last_index, method)
             l1_word_probs = self.compute_p_words(self.l1_tl[:self.nwords], cxt, cxt_last_index, method)
         else:
@@ -285,14 +291,14 @@ class MultiTokenEvaluator:
 
 # %%
 def compute_eval(model_name, concept, run_path,
-    nsamples, msamples, nucleus, output_folder, htype, iteration):
+    nsamples, msamples, nwords, nucleus, output_folder, htype, iteration):
     #rundir = os.path.join(
     #    OUT, f"run_output/{concept}/{model_name}/{run_output_folder}"
     #)
     
     outdir = os.path.join(
         RESULTS, 
-        f"{output_folder}/{concept}/{model_name}/nuc_{nucleus}/{iteration}/h_distribs/{htype}"
+        f"{output_folder}/{concept}/{model_name}/nuc_{nucleus}/evaliter_{iteration}/h_distribs/{htype}"
     )
     os.makedirs(outdir, exist_ok=False)
 
@@ -319,7 +325,7 @@ def compute_eval(model_name, concept, run_path,
         nucleus, # nucleus 
         nsamples, #nsamples
         msamples, #msamples
-        None, #nwords
+        nwords, #nwords
         run_path, #run_path
         outdir
     )
@@ -392,6 +398,7 @@ if __name__=="__main__":
     #k = args.k
     #nsamples=args.nsamples
     #msamples=args.msamples
+    #nwords = None
     #output_folder = args.out_folder
     #nruns = 3
     htype=args.htype
@@ -399,10 +406,11 @@ if __name__=="__main__":
     concept = "number"
     nucleus = True
     k=1
-    nsamples= 10
-    msamples= 3
-    output_folder = "test_multitokeneval"
-    nruns = 2
+    nsamples= 100
+    msamples= 15
+    nwords = None
+    output_folder = "multitokeneval"
+    nruns = 1
     htype = "l0_cxt_qxhs_par"
     
     
@@ -413,11 +421,10 @@ if __name__=="__main__":
     run_file = "run_leace_number_gpt2-large_2024-02-29-18:30:00_0_3.pkl"
     run_file_path = os.path.join(run_dir, run_file)
 
-    for folder in run_output_folders:
-        for i in range(nruns):
-            compute_eval(
-                model_name, concept, run_path, nsamples, msamples, nucleus,
-                output_folder, htype, i
-            )
+    for i in range(nruns):
+        compute_eval(
+            model_name, concept, run_file_path, nsamples, msamples, 
+            nwords, nucleus, output_folder, htype, i
+        )
     logging.info("Finished exporting all results.")
 
