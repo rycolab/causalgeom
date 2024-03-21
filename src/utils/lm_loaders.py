@@ -23,6 +23,8 @@ GPT2_LIST = ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl", "gpt2-base-french",
 BERT_LIST = ["bert-base-uncased", "camembert-base"]
 SUPPORTED_AR_MODELS = GPT2_LIST + ["llama2"]
 
+#%%
+
 def get_tokenizer(model_name, token=None):
     if model_name in ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl"]:
         tokenizer = GPT2TokenizerFast.from_pretrained(
@@ -96,6 +98,7 @@ def get_model(model_name, token=None, device="cpu"):
             token=token,
             device_map="auto", 
             #context_length=4096
+            torch_dtype=torch.float16
         )
     else:
         raise ValueError(f"Model name {model_name} not supported")

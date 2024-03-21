@@ -55,11 +55,13 @@ class MultiTokenEvaluator:
                  msamples, # number of dev set samples for each q computation
                  nwords, # number of words to use from token lists -- GET RID OF THIS
                  run_path, # path of LEACE training run output
+                 outdir, # directory for exporting individual distributions
                 ):
 
         self.nsamples = nsamples
         self.msamples = msamples
         self.nwords = nwords
+        self.outdir = outdir
 
         run = load_run_output(run_path)
         self.P, self.I_P, _ = load_run_Ps(run_path)
@@ -238,234 +240,92 @@ class MultiTokenEvaluator:
     def compute_lemma_probs(self, padded_contexts, method, pad_token=-1):
         """ method: ["h", "hbot", "hpar"] """
         l0_probs, l1_probs = [], []
-        for cxt_pad in tqdm(padded_contexts):
+        for i, cxt_pad in enumerate(tqdm(padded_contexts)):
             #TODO: will want to replace this pad token with the tokenizer pad token
             cxt = cxt_pad[cxt_pad != pad_token]
+            
             logging.info(f"------New eval context: {cxt}------")
             l0_word_probs, l1_word_probs = self.compute_all_word_probs(cxt, method)
+
+            export_path = os.path.join(self.outdir, f"word_probs_sample_{i}.pkl")
+    
+            with open(export_path, 'wb') as f:
+                pickle.dump((l0_word_probs, l1_word_probs), f, protocol=pickle.HIGHEST_PROTOCOL)
+            
             l0_probs.append(l0_word_probs)
             l1_probs.append(l1_word_probs)
             #concept_prob_pairs.append((l0_word_probs, l1_word_probs))
         return np.vstack(l0_probs), np.vstack(l1_probs)
 
-    def compute_all_pxs(self):
+    def compute_pxs(self, htype):
         assert self.nsamples is not None
         l0_cxt_toks_n, l1_cxt_toks_n = self.sample_filtered_contexts(
             self.l0_cxt_toks, self.l1_cxt_toks, self.nsamples
         )
-        l0_cxt_qxhs_par = self.compute_lemma_probs(l0_cxt_toks_n, "hbot")
-        l1_cxt_qxhs_par = self.compute_lemma_probs(l1_cxt_toks_n, "hbot")
-
-        l0_cxt_toks_n, l1_cxt_toks_n = self.sample_filtered_contexts(
-            self.l0_cxt_toks, self.l1_cxt_toks, self.nsamples
-        )
-        l0_cxt_qxhs_bot = self.compute_lemma_probs(l0_cxt_toks_n, "hpar")
-        l1_cxt_qxhs_bot = self.compute_lemma_probs(l1_cxt_toks_n, "hpar")
-
-        l0_cxt_toks_n, l1_cxt_toks_n = self.sample_filtered_contexts(
-            self.l0_cxt_toks, self.l1_cxt_toks, self.nsamples
-        )
-        l0_cxt_pxhs = self.compute_lemma_probs(l0_cxt_toks_n, "h")
-        l1_cxt_qxhs = self.compute_lemma_probs(l1_cxt_toks_n, "h")
-        return l0_cxt_qxhs_par, l1_cxt_qxhs_par, l0_cxt_qxhs_bot, \
-            l1_cxt_qxhs_bot, l0_cxt_pxhs, l1_cxt_qxhs
-
-    #########################################
-    # Containment and Stability             #
-    #########################################
-    @staticmethod
-    def compute_avg_of_cond_ents(pxs):
-        ents = []
-        #assert case in [0,1], "Incorrect case"
-        #case_pxs = pxs[case]
-        for p in pxs:
-            p_x_c = renormalize(p)
-            ents.append(entropy(p_x_c))
-        return np.mean(ents)
-
-    @staticmethod
-    def compute_ent_of_avg(pxs):
-        #assert case in [0,1], "Incorrect case"
-        #case_pxs = pxs[case]
-        mean_px = pxs.mean(axis=0)
-        p_x_c = renormalize(mean_px)
-        return entropy(p_x_c)
-
-    def compute_containment(self, l0_qxhs_par, l1_qxhs_par, l0_pxhs, l1_pxhs):
-        # H(X|H_par, C)
-        cont_l0_ent_qxhcs = self.compute_avg_of_cond_ents(l0_qxhs_par[0])
-        cont_l1_ent_qxhcs = self.compute_avg_of_cond_ents(l1_qxhs_par[1])
-        cont_ent_qxcs = (self.p_c * np.array([cont_l0_ent_qxhcs, cont_l1_ent_qxhcs])).sum()
-
-        # H(X|C)
-        l0_ent_pxc = self.compute_ent_of_avg(l0_pxhs[0])
-        l1_ent_pxc = self.compute_ent_of_avg(l1_pxhs[1])
-        ent_pxc = (self.p_c * np.array([l0_ent_pxc, l1_ent_pxc])).sum()
-
-        cont_l0_mi = l0_ent_pxc - cont_l0_ent_qxhcs
-        cont_l1_mi = l1_ent_pxc - cont_l1_ent_qxhcs
-        cont_mi = ent_pxc - cont_ent_qxcs
-
-        logging.info(f"Containment metrics: {cont_l0_mi}, {cont_l1_mi}, {cont_mi}")
-        return dict(
-            cont_l0_ent_qxhcs=cont_l0_ent_qxhcs,
-            cont_l1_ent_qxhcs=cont_l1_ent_qxhcs,
-            cont_ent_qxcs=cont_ent_qxcs,
-            l0_ent_pxc=l0_ent_pxc,
-            l1_ent_pxc=l1_ent_pxc,
-            ent_pxc=ent_pxc,
-            cont_l0_mi=cont_l0_mi,
-            cont_l1_mi=cont_l1_mi,
-            cont_mi=cont_mi
-        )
-
-    def compute_stability(self, l0_qxhs_bot, l1_qxhs_bot, l0_pxhs, l1_pxhs):
-        #H(X | H,C)
-        stab_ent_xhc_l0 = self.compute_avg_of_cond_ents(l0_pxhs[0])
-        stab_ent_xhc_l1 = self.compute_avg_of_cond_ents(l1_pxhs[1])
-        stab_ent_xhc = (self.p_c * np.array([stab_ent_xhc_l0, stab_ent_xhc_l1])).sum()
-
-        #H(X| H_bot,C)
-        stab_l0_ent_qxhcs = self.compute_avg_of_cond_ents(l0_qxhs_bot[0])
-        stab_l1_ent_qxhcs = self.compute_avg_of_cond_ents(l1_qxhs_bot[1])
-        stab_ent_qxcs = (self.p_c * np.array([stab_l0_ent_qxhcs, stab_l1_ent_qxhcs])).sum()
-
-        stab_l0_mi = stab_l0_ent_qxhcs - stab_ent_xhc_l0
-        stab_l1_mi = stab_l1_ent_qxhcs - stab_ent_xhc_l1
-        stab_mi = stab_ent_qxcs - stab_ent_xhc
-
-        logging.info(f"Stability metrics: {stab_l0_mi}, {stab_l1_mi}, {stab_mi}")
-        return dict(
-            stab_l0_ent_qxhcs=stab_l0_ent_qxhcs,
-            stab_l1_ent_qxhcs=stab_l1_ent_qxhcs,
-            stab_ent_qxcs=stab_ent_qxcs,
-            stab_ent_xhc_l0=stab_ent_xhc_l0,
-            stab_ent_xhc_l1=stab_ent_xhc_l1,
-            stab_ent_xhc=stab_ent_xhc,
-            stab_l0_mi=stab_l0_mi,
-            stab_l1_mi=stab_l1_mi,
-            stab_mi=stab_mi
-        )
-
-    #########################################
-    # Erasure and Encapsulation             #
-    #########################################
-    @staticmethod
-    def compute_pchs_from_pxhs(pxhs):
-        """ pxhs: tuple (p(l0_words | h), p(l1_words | h))
-        for n h's, i.e., element 0 is a n x n_l0_words 
-        dimensional np.array
-        """
-        pchs = []
-        for pxh in zip(*pxhs):
-            pch_l0 = pxh[0].sum()
-            pch_l1 = pxh[1].sum()
-            pch_bin = renormalize(np.array([pch_l0, pch_l1]))
-            pchs.append(pch_bin)
-        return np.vstack(pchs)
-
-    def compute_concept_mis(self, l0_qxhs_par, l1_qxhs_par, \
-        l0_qxhs_bot, l1_qxhs_bot, l0_pxhs, l1_pxhs):
-        
-        # H(C)
-        ent_pc = entropy(self.p_c)
-
-        # H(C | H_bot)
-        l0_qchs_bot = self.compute_pchs_from_pxhs(l0_qxhs_bot)
-        l1_qchs_bot = self.compute_pchs_from_pxhs(l1_qxhs_bot)
-        qchs_bot = np.vstack([l0_qchs_bot, l1_qchs_bot])
-        ent_qchs_bot = entropy(qchs_bot, axis=1).mean()
-
-        # H(C | H_par)
-        l0_qchs_par = self.compute_pchs_from_pxhs(l0_qxhs_par)
-        l1_qchs_par = self.compute_pchs_from_pxhs(l1_qxhs_par)
-        qchs_par = np.vstack([l0_qchs_par, l1_qchs_par])
-        ent_qchs_par = entropy(qchs_par, axis=1).mean()
-
-        # H(C | H)
-        l0_pchs = self.compute_pchs_from_pxhs(l0_pxhs)
-        l1_pchs = self.compute_pchs_from_pxhs(l1_pxhs)
-        pchs = np.vstack([l0_pchs, l1_pchs])
-        ent_pchs = entropy(pchs, axis=1).mean()
-
-        res = dict(
-            ent_qchs_bot = ent_qchs_bot,
-            ent_qchs_par = ent_qchs_par,
-            ent_pchs = ent_pchs,
-            ent_pc = ent_pc,
-            mi_c_hbot = ent_pc - ent_qchs_bot,
-            mi_c_hpar = ent_pc - ent_qchs_par,
-            mi_c_h = ent_pc - ent_pchs,
-        )
-        logging.info(f"Concept MI metrics I(C; H): {res['mi_c_h']},"
-            f"I(C; Hbot): {res['mi_c_hbot']}, I(C; Hpar): {res['mi_c_hpar']}")
-        return res
-
-    #########################################
-    # Run complete eval                     #
-    #########################################
-    def compute_run_eval(self):
-        l0_qxhs_par, l1_qxhs_par, l0_qxhs_bot, l1_qxhs_bot, l0_pxhs, l1_pxhs = self.compute_all_pxs()
-        containment_res = self.compute_containment(l0_qxhs_par, l1_qxhs_par, l0_pxhs, l1_pxhs)
-        stability_res = self.compute_stability(l0_qxhs_bot, l1_qxhs_bot, l0_pxhs, l1_pxhs)
-        concept_mis = self.compute_concept_mis( 
-            l0_qxhs_par, l1_qxhs_par, l0_qxhs_bot, l1_qxhs_bot, l0_pxhs, l1_pxhs
-        )
-        return containment_res | stability_res | concept_mis
-
+        if htype == "l0_cxt_qxhs_par": 
+            l0_cxt_qxhs_par = self.compute_lemma_probs(l0_cxt_toks_n, "hbot")
+            return l0_cxt_qxhs_par
+        elif htype == "l1_cxt_qxhs_par":
+            l1_cxt_qxhs_par = self.compute_lemma_probs(l1_cxt_toks_n, "hbot")
+            return l1_cxt_qxhs_par
+        elif htype == "l0_cxt_qxhs_bot":
+            l0_cxt_qxhs_bot = self.compute_lemma_probs(l0_cxt_toks_n, "hpar")
+            return l0_cxt_qxhs_bot
+        elif htype == "l1_cxt_qxhs_bot":
+            l1_cxt_qxhs_bot = self.compute_lemma_probs(l1_cxt_toks_n, "hpar")
+            return l1_cxt_qxhs_bot
+        elif htype == "l0_cxt_pxhs":
+            l0_cxt_pxhs = self.compute_lemma_probs(l0_cxt_toks_n, "h")
+            return l0_cxt_pxhs
+        elif htype == "l1_cxt_pxhs":
+            l1_cxt_pxhs = self.compute_lemma_probs(l1_cxt_toks_n, "h")
+            return l1_cxt_pxhs
+        else:
+            raise ValueError(f"Incorrect htype: {htype}")
 
 # %%
-def compute_eval(model_name, concept, run_output_folder, k,
-    nsamples, msamples, nucleus, output_folder, iteration):
-    rundir = os.path.join(
-        OUT, f"run_output/{concept}/{model_name}/{run_output_folder}"
-    )
+def compute_eval(model_name, concept, run_path,
+    nsamples, msamples, nucleus, output_folder, htype, iteration):
+    #rundir = os.path.join(
+    #    OUT, f"run_output/{concept}/{model_name}/{run_output_folder}"
+    #)
     
-    outdir = os.path.join(RESULTS, f"{output_folder}/{concept}/{model_name}")
-    os.makedirs(outdir, exist_ok=True)
+    outdir = os.path.join(
+        RESULTS, 
+        f"{output_folder}/{concept}/{model_name}/nuc_{nucleus}/{iteration}/h_distribs/{htype}"
+    )
+    os.makedirs(outdir, exist_ok=False)
 
-    run_files = [x for x in os.listdir(rundir) if x.endswith(".pkl")]
-    random.shuffle(run_files)
+    #run_files = [x for x in os.listdir(rundir) if x.endswith(".pkl")]
+    #random.shuffle(run_files)
 
-    for run_file in run_files:
-        run_path = os.path.join(rundir, run_file)
-        outpath = os.path.join(
-            outdir, 
-            f"{concept}_{model_name}_nuc_{nucleus}_{iteration}_{run_file[:-4]}.pkl"
-        )
+    #for run_file in run_files:
+    #    run_path = os.path.join(rundir, run_file)
+    #outpath = os.path.join(
+    #    outdir, 
+    #    f"{concept}_{model_name}_nuc_{nucleus}_{iteration}_{run_file[:-4]}.pkl"
+    #)
 
-        run = load_run_output(run_path)
-        if run["config"]["k"] != k:
-            continue
-        elif os.path.exists(outpath):
-            logging.info(f"Run already evaluated: {run_path}")
-            continue
-        else:
-            evaluator = MultiTokenEvaluator(
-                model_name, 
-                concept, 
-                nucleus, # nucleus 
-                nsamples, #nsamples
-                msamples, #msamples
-                None, #nwords
-                run_path, #run_path
-            )
-            run_eval_output = evaluator.compute_run_eval()
-            run_metadata = {
-                "model_name": model_name,
-                "concept": concept,
-                "k": k,
-                "nucleus": nucleus,
-                "nsamples": nsamples,
-                "msamples": msamples,
-                "run_path": run_path,
-                "iteration": iteration
-            }
-            full_run_output = run_metadata | run_eval_output
-            with open(outpath, "wb") as f:
-                pickle.dump(full_run_output, f, protocol=pickle.HIGHEST_PROTOCOL)
-            logging.info(f"Run eval exported: {run_path}")
-    logging.info(f"Finished computing evals for pair {model_name}, {concept}, folder {run_output_folder}, k:{k}")
+    #run = load_run_output(run_path)
+    #if run["config"]["k"] != k:
+    #    continue
+    #elif os.path.exists(outpath):
+        #logging.info(f"Run already evaluated: {run_path}")
+        #continue
+    #else:
+    evaluator = MultiTokenEvaluator(
+        model_name, 
+        concept, 
+        nucleus, # nucleus 
+        nsamples, #nsamples
+        msamples, #msamples
+        None, #nwords
+        run_path, #run_path
+        outdir
+    )
+    run_eval_output = evaluator.compute_pxs(htype)
+    logging.info(f"Done")
+    #logging.info(f"Finished computing evals for pair {model_name}, {concept}, folder {run_output_folder}, k:{k}")
 
 #%%#################
 # Main             #
@@ -512,6 +372,14 @@ def get_args():
         default="test",
         help="Directory for exporting run eval"
     )
+    argparser.add_argument(
+        "-htype",
+        type=str,
+        choices=["l0_cxt_qxhs_par", "l1_cxt_qxhs_par", 
+                 "l0_cxt_qxhs_bot", "l1_cxt_qxhs_bot", 
+                 "l0_cxt_pxhs", "l1_cxt_pxhs"],
+        help="Type of test set contexts to compute eval distrib for"
+    )
     return argparser.parse_args()
 
 if __name__=="__main__":
@@ -526,35 +394,30 @@ if __name__=="__main__":
     #msamples=args.msamples
     #output_folder = args.out_folder
     #nruns = 3
+    htype=args.htype
     model_name = "gpt2-large"
     concept = "number"
     nucleus = True
     k=1
-    nsamples=200
-    msamples=10
+    nsamples= 10
+    msamples= 3
     output_folder = "test_multitokeneval"
-    nruns = 3
-    run_output_folders = ["leace29022024"]
+    nruns = 2
+    htype = "l0_cxt_qxhs_par"
     
+    
+    run_output_folder = "leace29022024"
+    run_dir = os.path.join(
+        OUT, f"run_output/{concept}/{model_name}/{run_output_folder}"
+    )
+    run_file = "run_leace_number_gpt2-large_2024-02-29-18:30:00_0_3.pkl"
+    run_file_path = os.path.join(run_dir, run_file)
+
     for folder in run_output_folders:
         for i in range(nruns):
             compute_eval(
-                model_name, concept, folder, k, nsamples, msamples, nucleus,
-                output_folder, i
+                model_name, concept, run_path, nsamples, msamples, nucleus,
+                output_folder, htype, i
             )
     logging.info("Finished exporting all results.")
 
-
-#%%
-#evaluator = MultiTokenEvaluator(
-#    "gpt2-large", 
-#    "number", 
-#    True, # nucleus 
-#    2, #nsamples
-#    2, #msamples
-#    3, #nwords
-#    os.path.join(OUT, 
-#        "run_output/number/gpt2-large/leace29022024/run_leace_number_gpt2-large_2024-02-29-18:30:00_0_3.pkl"
-#    ), #run_path
-#)
-#run_eval = evaluator.compute_run_eval()
