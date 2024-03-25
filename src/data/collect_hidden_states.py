@@ -79,38 +79,35 @@ def batch_tokenize_text(text, tokenizer):
         padding="max_length", truncation=True
     )
 
-def get_raw_sample_hs_factfoil(model_name, pre_tgt_ids, attention_mask, tgt_ids, model):
-    nopad_ti = pre_tgt_ids[attention_mask == 1]
-    tgt_ti = torch.cat((nopad_ti, torch.LongTensor(tgt_ids)), 0)
-    if model_name == "llama2":
-        tgt_ti = tgt_ti.unsqueeze(0)
-    tgt_ti_dev = tgt_ti.to(device)
-    with torch.no_grad():
-        #TODO: check that the logits are the same
-        output = model(
-            input_ids=tgt_ti_dev, 
-            #attention_mask=attention_mask, 
-            labels=tgt_ti_dev,
-            output_hidden_states=True
-        )
-    if model_name == "llama2":
-        return tgt_ti.numpy(), output.hidden_states[-1][0].cpu().numpy()
-    elif model_name in GPT2_LIST:
-        return tgt_ti.numpy(), output.hidden_states[-1].cpu().numpy()
-    else:
-        raise NotImplementedError(f"Model {model_name} not yet implemented")
+#def get_raw_sample_hs_factfoil(model_name, pre_tgt_ids, attention_mask, tgt_ids, model):
+#    nopad_ti = pre_tgt_ids[attention_mask == 1]
+#    tgt_ti = torch.cat((nopad_ti, torch.LongTensor(tgt_ids)), 0)
+#    if model_name == "llama2":
+#        tgt_ti = tgt_ti.unsqueeze(0)
+#    tgt_ti_dev = tgt_ti.to(device)
+#    with torch.no_grad():
+#        #TODO: check that the logits are the same
+#        output = model(
+#            input_ids=tgt_ti_dev, 
+#            #attention_mask=attention_mask, 
+#            labels=tgt_ti_dev,
+#            output_hidden_states=True
+#        )
+#    if model_name == "llama2":
+#        return tgt_ti.numpy(), output.hidden_states[-1][0].cpu().numpy()
+#    elif model_name in GPT2_LIST:
+#        return tgt_ti.numpy(), output.hidden_states[-1].cpu().numpy()
+#    else:
+#        raise NotImplementedError(f"Model {model_name} not yet implemented")
 
 def get_raw_sample_hs(model_name, input_ids, attention_mask, model):
     nopad_ti = input_ids[attention_mask == 1]
-    #tgt_ti = torch.cat((nopad_ti, torch.LongTensor(tgt_ids)), 0)
+
     if model_name == "llama2":
         nopad_ti = nopad_ti.unsqueeze(0)
-    #if model_name in GPT2_LIST:
-    #nopad_ti_dev = nopad_ti.to(device)
-    #elif model_name == "llama2":
-    #    nopad_ti_dev = nopad_ti
-    #else:
-    #    raise NotImplementedError(f"Model {model_name} not supported")
+    
+    nopad_ti_dev = nopad_ti.to(device)
+    
     with torch.no_grad():
         output = model(
             input_ids=nopad_ti_dev, 
@@ -134,9 +131,6 @@ def get_tgt_hs(raw_hs, tgt_tokens):
     return tgt_hs
 
 def get_batch_hs_ar_detailed(model_name, batch, model, tokenizer, V):
-    """ This version I used to collect hidden states for fact and foil versions
-    of the text for previous project iterations, no longer necessary.
-    """
     batch_hs = []
     tok_facts = batch_tokenize_tgts(model_name, batch["fact"], tokenizer)
     tok_foils = batch_tokenize_tgts(model_name, batch["foil"], tokenizer)
@@ -180,6 +174,8 @@ def get_batch_hs_ar_detailed(model_name, batch, model, tokenizer, V):
             fact = fact,
             foil = foil,
             tgt_label = tgt_label,
+            input_ids_pre_tgt_padded = ti, 
+            attention_mask = am, 
             input_ids_pre_tgt = nopad_ti,
             input_ids_fact = tfa, 
             hs = last_h,

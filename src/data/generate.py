@@ -51,6 +51,14 @@ def adjust_past_key_values(past_key_values, max_len):
         new_past_key_values += (new_sub_values,)
     return new_past_key_values
     
+def get_model_cxt_length(model_name):
+    if model_name in GPT2_LIST:
+        return 1024
+    elif model_name == "llama2":
+        return 4096
+    else: 
+        raise NotImplementedError(f"Model {model_name} not supported")
+
 def generate_sequence_until_eos(model_name, model, prompt_ids, batch_size, seed, max_length, eos_token, 
     device="cpu", P=None, nucleus=False, top_p=0.9):
     torch.manual_seed(seed)
@@ -62,12 +70,13 @@ def generate_sequence_until_eos(model_name, model, prompt_ids, batch_size, seed,
     all_tokens = [tokens]
     processor = LogitsProcessorList()
     processor.append(TopPLogitsWarper(0.9))
+    model_max_cxt_length = get_model_cxt_length(model_name)
     while (check_eos(tokens[:,-1], eos_token) or (counter==0)):
         if past_key_values is not None and past_key_values[0][0].shape[2] == max_length:
             #copy = past_key_values[0][0].clone().detach()
             past_key_values = adjust_past_key_values(past_key_values, max_length)
-        #if tokens.shape[1] > 1024:
-        #    tokens = tokens[:,-1024:]
+        if tokens.shape[1] > model_max_cxt_length:
+            tokens = tokens[:,-model_max_cxt_length:]
         #else:
         #    input_tokens = tokens
         with torch.no_grad():
@@ -181,8 +190,8 @@ if __name__=="__main__":
     #nucleus=True
     #export_index = 0
     #test = True
-    useP  =False
-    I_P = None
+    useP=False
+    I_P=None
 
 
     device = get_device()

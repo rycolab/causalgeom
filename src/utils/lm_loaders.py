@@ -52,7 +52,7 @@ def get_tokenizer(model_name, token=None):
         return CamembertTokenizer.from_pretrained(
             model_name, model_max_length=512
         )
-    elif model_name == "llama2":
+    elif model_name in ["llama2", "llama2_32bit"]:
         tokenizer = AutoTokenizer.from_pretrained(
             "meta-llama/Llama-2-7b-hf", 
             token=token, model_max_length=4096
@@ -67,8 +67,9 @@ def get_model(model_name, token=None, device="cpu"):
     if model_name in ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl"]:
         return GPT2LMHeadModel.from_pretrained(
             model_name, 
-            cache_dir=HF_CACHE
-        ).to(device)
+            cache_dir=HF_CACHE,
+            device_map="auto"
+        )
     elif model_name == "gpt2-base-french":
         return GPT2LMHeadModel.from_pretrained(
             "ClassCat/gpt2-base-french", 
@@ -99,6 +100,14 @@ def get_model(model_name, token=None, device="cpu"):
             device_map="auto", 
             #context_length=4096
             torch_dtype=torch.float16
+        )
+    elif model_name == "llama2_32bit":
+        return AutoModelForCausalLM.from_pretrained(
+            "meta-llama/Llama-2-7b-hf",
+            cache_dir=HF_CACHE,
+            token=token,
+            device_map="auto", 
+            #context_length=4096
         )
     else:
         raise ValueError(f"Model name {model_name} not supported")

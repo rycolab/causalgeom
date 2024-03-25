@@ -43,6 +43,39 @@ coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
 
 #%%
+FOOD_PROMPTS = [
+    "The cuisine was",
+    "The dishes were",
+    "The meal was",
+    "The food tasted",
+    "The flavors were",
+]
+
+NOISE_PROMPTS = [
+    "The ambient noise level was",
+    "The background noise was",
+    "The surrounding sounds were",
+    "The auditory atmosphere was",
+    "The ambient soundscape was",
+]
+
+SERVICE_PROMPTS = [
+    "The service was", 
+    "The staff was", 
+    "The hospitality extended by the staff was", 
+    "The waiter was", 
+    "The host was", 
+]
+AMBIANCE_PROMPTS = [
+    "The ambiance was",
+    "The atmosphere was",
+    "The restaurant was",
+    "The vibe was ",
+    "The setting was",
+]
+
+
+#%%
 # TODO:
 # - incorporate the two functions imported from mi_eval into the class
 #
@@ -72,28 +105,30 @@ class MultiTokenEvaluator:
             model_name, concept, single_token=False
         )
 
+        # CEBaB prompts
+        self.prompt_set = self.load_suffixes(concept)
+        self.prompt_end_space = model_name == "llama2"
+
         #p_x = load_p_x(MODEL_NAME, NUCLEUS)
         self.p_c, self.l0_hs_wff, self.l1_hs_wff, self.all_hs = prep_generated_data(
             model_name, nucleus
         )
 
-        #TODO: get rid of unnecessary ones
-        self.X_dev, self.y_dev, self.facts_dev, self.foils_dev, self.cxt_toks_dev = \
-            run["X_val"], run["y_val"], run["facts_val"], run["foils_val"], run["cxt_toks_val"]
-        self.X_test, self.y_test, self.facts_test, self.foils_test, self.cxt_toks_test = \
-            run["X_test"], run["y_test"], run["facts_test"], run["foils_test"], run["cxt_toks_test"]
+        #self.X_dev, self.y_dev, self.facts_dev, self.foils_dev, self.cxt_toks_dev = \
+        #    run["X_val"], run["y_val"], run["facts_val"], run["foils_val"], run["cxt_toks_val"]
+        #self.X_test, self.y_test, self.facts_test, self.foils_test, self.cxt_toks_test = \
+        #    run["X_test"], run["y_test"], run["facts_test"], run["foils_test"], run["cxt_toks_test"]
+        self.y_dev, self.cxt_toks_dev = run["y_val"], run["cxt_toks_val"]
+        self.y_test, self.cxt_toks_test = run["y_test"], run["cxt_toks_test"]
 
         #TODO: RIGHT NOW THIS IS THE ONLY WAY, NEED TO ENABLE GENERATED
         source = "natural"
         self.l0_cxt_toks, self.l1_cxt_toks = self.get_concept_eval_contexts(source)
 
         #%%
-        self.model = get_model(model_name)
-        self.tokenizer = get_tokenizer(model_name)
         self.device = get_device()
-
-        if model_name == "gpt2-large":
-            self.model = self.model.to(self.device)
+        self.model = get_model(model_name, device=self.device)
+        self.tokenizer = get_tokenizer(model_name)
 
         self.new_word_tokens = self.get_new_word_tokens(model_name) 
 
@@ -107,7 +142,7 @@ class MultiTokenEvaluator:
         new_word_token_pairs = []
         other_tokens = []
         other_token_pairs = []
-        for token, token_id in tokenizer.vocab.items():
+        for token, token_id in self.tokenizer.vocab.items():
             if token.startswith("Ġ"):
                 new_word_tokens.append(token_id)
                 new_word_token_pairs.append((token, token_id))
@@ -117,13 +152,32 @@ class MultiTokenEvaluator:
             else:
                 other_tokens.append(token_id)
                 other_token_pairs.append((token, token_id))
+        return new_word_tokens
 
+    def get_llama2_new_word_tokens(self):
+        pattern = re.compile("^[\W][^a-zA-Z]*")
+
+        new_word_tokens = []
+        new_word_token_pairs = []
+        other_tokens = []
+        other_token_pairs = []
+        for token, token_id in self.tokenizer.vocab.items():
+            if token.startswith("▁"):
+                new_word_tokens.append(token_id)
+                new_word_token_pairs.append((token, token_id))
+            elif pattern.match(token):
+                new_word_tokens.append(token_id)
+                new_word_token_pairs.append((token, token_id))
+            else:
+                other_tokens.append(token_id)
+                other_token_pairs.append((token, token_id))
         return new_word_tokens
 
     def get_new_word_tokens(self, model_name):
         if model_name == "gpt2-large":
             return self.get_gpt2_large_new_word_tokens()
-        #elif model_name == "llama2":
+        elif model_name == "llama2":
+            return self.get_llama2_new_word_tokens()
         else:
             return NotImplementedError(f"Model not yet implemented")
     
@@ -154,6 +208,43 @@ class MultiTokenEvaluator:
             l0_cxts = l0_cxts[:int((nsamples*ratio))]
             l1_cxts = l1_cxts[:nsamples]
         return l0_cxts, l1_cxts 
+
+    #########################################
+    # Concept prompt adding for CEBaB.      #
+    #########################################
+    @staticmethod
+    def load_suffixes(concept):
+        if concept == "ambiance":
+            return AMBIANCE_PROMPTS
+        elif concept == "food":
+            return FOOD_PROMPTS
+        elif concept == "noise":
+            return NOISE_PROMPTS
+        elif concept == "service":
+            return SERVICE_PROMPTS
+        elif concept in ["number", "gender"]:
+            return None
+        else:
+            raise ValueError("Incorrect concept")
+
+    @staticmethod
+    def add_suffix(text, suffix, end_space):
+        if end_space:
+            suffix = suffix + " "
+
+        if text.strip().endswith("."):
+            return text + " " + suffix
+        else:
+            return text + ". " + suffix
+        
+    def add_concept_suffix(self, cxt_tokens):
+        text = self.tokenizer.decode(cxt_tokens)
+        suffix = np.random.choice(self.prompt_set)
+        text_w_suffix = self.add_suffix(text, suffix, self.prompt_end_space)
+        suffixed_sentence = self.tokenizer(
+            text_w_suffix, return_tensors="pt"
+        )["input_ids"][0]
+        return suffixed_sentence
 
     #########################################
     # Probability computations              #
@@ -250,7 +341,10 @@ class MultiTokenEvaluator:
             #TODO: will want to replace this pad token with the tokenizer pad token
             cxt = cxt_pad[cxt_pad != pad_token]
             
-            logging.info(f"------New eval context: {cxt}------")
+            if self.prompt_set:
+                cxt = self.add_concept_suffix(cxt)
+            
+            logging.info(f"------New eval context: {self.tokenizer.decode(cxt)}------")
             l0_word_probs, l1_word_probs = self.compute_all_word_probs(cxt, method)
 
             export_path = os.path.join(self.outdir, f"word_probs_sample_{i}.pkl")
@@ -295,10 +389,14 @@ def compute_eval(model_name, concept, run_path,
     #rundir = os.path.join(
     #    OUT, f"run_output/{concept}/{model_name}/{run_output_folder}"
     #)
-    
+
+    rundir = os.path.dirname(run_path)
+    rundir_name = os.path.basename(rundir)
+
+    run_id = run_path[-27:-4]
     outdir = os.path.join(
-        RESULTS, 
-        f"{output_folder}/{concept}/{model_name}/nuc_{nucleus}/evaliter_{iteration}/h_distribs/{htype}"
+        os.path.dirname(rundir), 
+        f"{output_folder}_{rundir_name}/run_{run_id}/nuc_{nucleus}/evaliter_{iteration}/h_distribs/{htype}"
     )
     os.makedirs(outdir, exist_ok=False)
 
@@ -341,7 +439,7 @@ def get_args():
     argparser.add_argument(
         "-concept",
         type=str,
-        choices=["gender", "number"],
+        choices=["number", "gender", "food", "ambiance", "service", "noise"],
         help="Concept to create embedded word lists for"
     )
     argparser.add_argument(
@@ -373,6 +471,12 @@ def get_args():
         help="Whether to use nucleus sampling",
     )
     argparser.add_argument(
+        "-run_path",
+        type=str,
+        default=None,
+        help="Run to evaluate"
+    )
+    argparser.add_argument(
         "-out_folder",
         type=str,
         default="test",
@@ -392,38 +496,33 @@ if __name__=="__main__":
     args = get_args()
     logging.info(args)
 
-    #model_name = args.model
-    #concept = args.concept
-    #nucleus = args.nucleus
-    #k = args.k
-    #nsamples=args.nsamples
-    #msamples=args.msamples
-    #nwords = None
-    #output_folder = args.out_folder
-    #nruns = 3
-    htype=args.htype
-    model_name = "gpt2-large"
-    concept = "number"
-    nucleus = True
-    k=1
-    nsamples= 100
-    msamples= 15
+    model_name = args.model
+    concept = args.concept
+    nucleus = args.nucleus
+    k = args.k
+    nsamples=args.nsamples
+    msamples=args.msamples
     nwords = None
-    output_folder = "multitokeneval"
-    nruns = 1
-    htype = "l0_cxt_qxhs_par"
+    output_folder = args.out_folder
+    run_path = args.run_path
+    nruns = 3
+    htype=args.htype
+    #model_name = "gpt2-large"
+    #concept = "food"
+    #nucleus = True
+    #k=1
+    #nsamples=3
+    #msamples=3
+    #nwords = None
+    #output_folder = "test_multitokeneval"
+    #nruns = 1
+    #htype = "l1_cxt_qxhs_par"
+    #run_path="out/run_output/food/gpt2-large/leace29022024/run_leace_food_gpt2-large_2024-02-29-17:25:50_0_3.pkl"
     
-    
-    run_output_folder = "leace29022024"
-    run_dir = os.path.join(
-        OUT, f"run_output/{concept}/{model_name}/{run_output_folder}"
-    )
-    run_file = "run_leace_number_gpt2-large_2024-02-29-18:30:00_0_3.pkl"
-    run_file_path = os.path.join(run_dir, run_file)
 
     for i in range(nruns):
         compute_eval(
-            model_name, concept, run_file_path, nsamples, msamples, 
+            model_name, concept, run_path, nsamples, msamples, 
             nwords, nucleus, output_folder, htype, i
         )
     logging.info("Finished exporting all results.")

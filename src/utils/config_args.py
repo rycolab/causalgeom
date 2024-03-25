@@ -17,7 +17,7 @@ def get_train_probes_args():
         "-concept",
         type=str,
         choices=["number", "gender", "food", "ambiance", "service", "noise"],
-        default="food",
+        default="number",
         help="Concept to erase"
     )
     argparser.add_argument(

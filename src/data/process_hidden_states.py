@@ -64,26 +64,25 @@ def format_sample_masked(sample):
     
 ## AR
 def format_sample_ar(sample):
-    # TODO: fix this
-    #hs = sample["fact_hs"][0,:] #take the hidden state before the fact (equals foil)
     hs = sample["hs"]
     fact_emb = sample["fact_embedding"]
     foil_emb = sample["foil_embedding"]
     fact = sample["input_ids_fact"]
     foil = sample["input_ids_foil"]
-    cxt_tok = sample["input_ids_pre_tgt"]
+    cxt_tok = sample["input_ids_pre_tgt_padded"]
+    attention_mask = sample["attention_mask"]
     tgt_label = define_target(sample["tgt_label"])
     max_tokens = count_tgt_tokens(sample)
     if tgt_label == 0 and max_tokens == 1: # number and gender
         y = 0
         u = foil_emb.flatten() - fact_emb.flatten()
-        return (hs, u, y, fact, foil, cxt_tok)
+        return (hs, u, y, fact, foil, cxt_tok, attention_mask)
     elif tgt_label == 1 and max_tokens == 1: # number and gender
         y = 1
         u = fact_emb.flatten() - foil_emb.flatten()
-        return (hs, u, y, fact, foil, cxt_tok)
+        return (hs, u, y, fact, foil, cxt_tok, attention_mask)
     elif tgt_label in [0,1] and max_tokens == 0: # CEBaB concepts
-        return (hs, None, tgt_label, fact, foil, cxt_tok)
+        return (hs, None, tgt_label, fact, foil, cxt_tok, attention_mask)
     else: # max_tokens > 1
         return None
     
@@ -219,7 +218,7 @@ def get_args():
         type=str,
         choices=["number", "gender", "food", "ambiance", "service", "noise"],
         default=None,
-        help="Concept (required for CEBaB, not other datasets)",
+        help="Concept",
     )
     argparser.add_argument(
         "-split",
@@ -248,18 +247,18 @@ if __name__=="__main__":
     args = get_args()
     logging.info(args)
 
-    #DATASET_NAME = args.dataset
-    #MODEL_NAME = args.model
-    #CONCEPT = args.concept
-    #OUT_TYPE = args.outtype
-    #NBATCHES = args.nbatches
-    #SPLIT = args.split
-    DATASET_NAME = "linzen"
-    MODEL_NAME = "llama2"
-    CONCEPT = "number"
-    SPLIT = None
-    OUT_TYPE = "full"
-    NBATCHES = None
+    DATASET_NAME = args.dataset
+    MODEL_NAME = args.model
+    CONCEPT = args.concept
+    OUT_TYPE = args.outtype
+    NBATCHES = args.nbatches
+    SPLIT = args.split
+    #DATASET_NAME = "linzen"
+    #MODEL_NAME = "llama2"
+    #CONCEPT = "number"
+    #SPLIT = None
+    #OUT_TYPE = "full"
+    #NBATCHES = None
 
     if MODEL_NAME in SUPPORTED_AR_MODELS and OUT_TYPE == "full":
         OUT_TYPE = "ar"

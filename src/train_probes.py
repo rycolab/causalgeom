@@ -59,13 +59,15 @@ def get_data_indices(nobs, concept, train_obs, val_obs, test_obs,
         raise ValueError("Concept value not supported.")
     return idx[:train_lastind], idx[train_lastind:val_lastind], idx[val_lastind:test_lastind]
 
-def create_run_datasets(X, U, y, facts, foils, cxt_toks, idx_train, idx_dev, idx_test):
+def create_run_datasets(X, U, y, facts, foils, cxt_toks, attention_masks, idx_train, idx_dev, idx_test):
     X_train, X_dev, X_test = X[idx_train], X[idx_dev], X[idx_test]
     U_train, U_dev, U_test = U[idx_train], U[idx_dev], U[idx_test]
     y_train, y_dev, y_test = y[idx_train], y[idx_dev], y[idx_test]
     facts_train, facts_dev, facts_test = facts[idx_train], facts[idx_dev], facts[idx_test]
     foils_train, foils_dev, foils_test = foils[idx_train], foils[idx_dev], foils[idx_test]
     cxt_toks_train, cxt_toks_dev, cxt_toks_test = cxt_toks[idx_train], cxt_toks[idx_dev], cxt_toks[idx_test]
+    attention_masks_train, attention_masks_dev, attention_masks_test = attention_masks[idx_train], attention_masks[idx_dev], attention_masks[idx_test]
+
 
     logging.info(f"y_train shape: {y_train.shape}")
     logging.info(f"y_dev shape: {y_dev.shape}")
@@ -78,18 +80,21 @@ def create_run_datasets(X, U, y, facts, foils, cxt_toks, idx_train, idx_dev, idx
         "facts_train": facts_train,
         "foils_train": foils_train,
         "cxt_toks_train": cxt_toks_train,
+        "attention_masks_train": attention_masks_train,
         "X_dev": X_dev, 
         "U_dev": U_dev,
         "y_dev": y_dev,
         "facts_dev": facts_dev,
         "foils_dev": foils_dev,
         "cxt_toks_dev": cxt_toks_dev,
+        "attention_masks_dev": attention_masks_dev,
         "X_test": X_test, 
         "U_test": U_test,
         "y_test": y_test,
         "facts_test": facts_test,
         "foils_test": foils_test,
         "cxt_toks_test": cxt_toks_test,
+        "attention_masks_test": attention_masks_test,
     }
 
 def compute_leace_affine(X_train, y_train):
@@ -112,9 +117,14 @@ def train_probes(run_data):
     X_train, X_dev, X_test = run_data["X_train"], run_data["X_dev"], run_data["X_test"]
     U_train, U_dev, U_test = run_data["U_train"], run_data["U_dev"], run_data["U_test"]
     y_train, y_dev, y_test = run_data["y_train"], run_data["y_dev"], run_data["y_test"]
-    facts_train, facts_dev, facts_test = run_data["facts_train"], run_data["facts_dev"], run_data["facts_test"]
-    foils_train, foils_dev, foils_test = run_data["foils_train"], run_data["foils_dev"], run_data["foils_test"]
-    cxt_toks_train, cxt_toks_dev, cxt_toks_test = run_data["cxt_toks_train"], run_data["cxt_toks_dev"], run_data["cxt_toks_test"]
+    facts_train, facts_dev, facts_test = \
+        run_data["facts_train"], run_data["facts_dev"], run_data["facts_test"]
+    foils_train, foils_dev, foils_test = \
+        run_data["foils_train"], run_data["foils_dev"], run_data["foils_test"]
+    cxt_toks_train, cxt_toks_dev, cxt_toks_test = \
+        run_data["cxt_toks_train"], run_data["cxt_toks_dev"], run_data["cxt_toks_test"]
+    attention_masks_train, attention_masks_dev, attention_masks_test = \
+        run_data["attention_masks_train"], run_data["attention_masks_dev"], run_data["attention_masks_test"]
     
     #%%
     start = time.time()
@@ -196,6 +206,7 @@ def train_probes(run_data):
         foils_val=foils_dev,
         facts_val=facts_dev,
         cxt_toks_val = cxt_toks_dev,
+        attention_masks_val = attention_masks_dev,
         nobs_train = X_train.shape[0],
         nobs_test = X_test.shape[0],
         X_test=X_test,
@@ -204,6 +215,7 @@ def train_probes(run_data):
         foils_test=foils_test,
         facts_test=facts_test,
         cxt_toks_test = cxt_toks_test,
+        attention_masks_test = attention_masks_test,
     )
     
     return full_results
@@ -228,7 +240,7 @@ if __name__ == '__main__':
     #TODO: fix this, probably by reshuffling the CEBaB data (though this has implications
     # for what samples are included esp. in dev, test)
     if cfg['concept'] in ["number", "gender"]:
-        X, U, y, facts, foils, cxt_toks = load_processed_data(cfg['concept'], cfg['model_name'])
+        X, U, y, facts, foils, cxt_toks, attention_masks = load_processed_data(cfg['concept'], cfg['model_name'])
     elif cfg['concept'] in ["food", "ambiance", "service", "noise"]:
         run_data = load_processed_data(cfg['concept'], cfg['model_name'])
     else:
@@ -262,7 +274,7 @@ if __name__ == '__main__':
                 cfg["train_share"], cfg["val_share"]
             )
             run_data = create_run_datasets(
-                X, U, y, facts, foils, cxt_toks, idx_train, idx_val, idx_test
+                X, U, y, facts, foils, cxt_toks, attention_masks, idx_train, idx_val, idx_test
             )
         elif cfg['concept'] in ["food", "ambiance", "service", "noise"]:
             #TODO: probably need to implement some sort of shuffling here 
