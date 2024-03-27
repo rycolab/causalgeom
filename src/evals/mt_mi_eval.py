@@ -66,11 +66,12 @@ SERVICE_PROMPTS = [
     "The waiter was", 
     "The host was", 
 ]
+
 AMBIANCE_PROMPTS = [
     "The ambiance was",
     "The atmosphere was",
     "The restaurant was",
-    "The vibe was ",
+    "The vibe was",
     "The setting was",
 ]
 
@@ -293,7 +294,8 @@ class MultiTokenEvaluator:
 
     def compute_batch_p_words(self, token_list, cxt_plus_tl_batched, batch_hidden_states, cxt_last_index, method):
         p_words = []
-        for word_index, word_tok in enumerate(tqdm(token_list)):
+        #for word_index, word_tok in enumerate(tqdm(token_list)):
+        for word_index, word_tok in enumerate(token_list):
             #logging.info(f"------Computing probability of word {word_index}-------")
             cxt_plus_word_tok = cxt_plus_tl_batched[word_index]
             hidden_states = batch_hidden_states[word_index]
@@ -521,6 +523,7 @@ if __name__=="__main__":
     
 
     for i in range(nruns):
+        logging.info(f"Computing eval number {i}")
         compute_eval(
             model_name, concept, run_path, nsamples, msamples, 
             nwords, nucleus, output_folder, htype, i

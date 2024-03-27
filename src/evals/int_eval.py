@@ -135,6 +135,7 @@ def intervene_test_set(test_hs, case, l0_dev_hs, l1_dev_hs, all_hs,
     scores = []
     for h, faid, foid in tqdm(test_hs):
         
+        assert False, "There should be multitoken facts and foils now, need to handle"
         # original distribution
         base_distrib = compute_pxh(h, V, processor)
         

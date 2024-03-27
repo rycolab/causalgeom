@@ -22,7 +22,7 @@ from transformers import TopPLogitsWarper, LogitsProcessorList
 sys.path.append('./src/')
 
 from paths import DATASETS, OUT
-from data.embed_wordlists.embedder_paired import load_concept_token_lists
+from data.embed_wordlists.embedder import load_concept_token_lists
 from utils.lm_loaders import get_V
 
 coloredlogs.install(level=logging.INFO)

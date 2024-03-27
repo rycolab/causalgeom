@@ -65,11 +65,15 @@ def get_tokenizer(model_name, token=None):
 
 def get_model(model_name, token=None, device="cpu"):
     if model_name in ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl"]:
-        return GPT2LMHeadModel.from_pretrained(
+        model = GPT2LMHeadModel.from_pretrained(
             model_name, 
             cache_dir=HF_CACHE,
             device_map="auto"
         )
+        if torch.cuda.device_count() == 1:
+            return model.to(device)
+        else:
+            return model
     elif model_name == "gpt2-base-french":
         return GPT2LMHeadModel.from_pretrained(
             "ClassCat/gpt2-base-french", 

@@ -17,7 +17,7 @@ def get_train_probes_args():
         "-concept",
         type=str,
         choices=["number", "gender", "food", "ambiance", "service", "noise"],
-        default="number",
+        default="food",
         help="Concept to erase"
     )
     argparser.add_argument(
@@ -26,7 +26,7 @@ def get_train_probes_args():
         choices=SUPPORTED_AR_MODELS,
         #required=True,
         dest="model_name",
-        default="gpt2-large",
+        default="llama2",
         help="Model used to extract hidden states & embeddings"
     )
     argparser.add_argument(

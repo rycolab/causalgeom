@@ -63,20 +63,21 @@ def generate_sequence_until_eos(model_name, model, prompt_ids, batch_size, seed,
     device="cpu", P=None, nucleus=False, top_p=0.9):
     torch.manual_seed(seed)
     tokens = prompt_ids.repeat(batch_size, 1)
+    all_tokens = [tokens]
+    if torch.cuda.device_count() == 1:
+        tokens = tokens.to(device)
     token_h_pairs = []
     sm = torch.nn.Softmax(1)#.to(device)
     past_key_values = None
     counter = 0
-    all_tokens = [tokens]
     processor = LogitsProcessorList()
     processor.append(TopPLogitsWarper(0.9))
-    model_max_cxt_length = get_model_cxt_length(model_name)
     while (check_eos(tokens[:,-1], eos_token) or (counter==0)):
         if past_key_values is not None and past_key_values[0][0].shape[2] == max_length:
             #copy = past_key_values[0][0].clone().detach()
             past_key_values = adjust_past_key_values(past_key_values, max_length)
-        if tokens.shape[1] > model_max_cxt_length:
-            tokens = tokens[:,-model_max_cxt_length:]
+        #if tokens.shape[1] > model_max_cxt_length:
+        #    tokens = tokens[:,-model_max_cxt_length:]
         #else:
         #    input_tokens = tokens
         with torch.no_grad():
@@ -108,11 +109,11 @@ def generate_sequence_until_eos(model_name, model, prompt_ids, batch_size, seed,
                 save_h_indicator.append(True)
                 #torch.cat((zip_tokens, zip_sampled_token.unsqueeze(0)), dim=-1)
         #tokens = torch.cat((tokens, sampled_tokens), dim=-1)
-        all_tokens.append(sampled_tokens)
         tokens = sampled_tokens
-        for h, token, save_h in zip(hs.cpu(), sampled_tokens, save_h_indicator):
+        all_tokens.append(sampled_tokens.clone().cpu())
+        for h, sample_all_tokens, sample_new_token, save_h in zip(hs.cpu(), torch.hstack(all_tokens), sampled_tokens, save_h_indicator):
             if save_h:
-                token_h_pairs.append((h, token.item()))
+                token_h_pairs.append((h, sample_new_token.item(), sample_all_tokens))
         counter+=1
         if counter % 100 == 0:
             logging.info(f"Number of tokens so far: {counter}") 
@@ -183,30 +184,27 @@ if __name__=="__main__":
 
     model_name = args.model
     nucleus = args.nucleus
-    
     export_index = args.export_index
-    batch_size = 3
+    
     #model_name = "llama2"
     #nucleus=True
     #export_index = 0
-    #test = True
+    
+    batch_size = 3
     useP=False
     I_P=None
 
 
     device = get_device()
-    #device = "cpu"
     tokenizer = get_tokenizer(model_name)
-    if model_name in GPT2_LIST:
-        model = get_model(model_name).to(device)
+    model = get_model(model_name, device=device)
+
+    if model_name in GPT2_LIST:    
         prompt_ids = tokenizer(tokenizer.bos_token, return_tensors="pt").input_ids #.to(device)
     elif model_name == "llama2":
-        model = get_model(model_name)
         prompt_ids = torch.tensor([tokenizer.bos_token_id])
     else: 
         raise NotImplementedError(f"Model {model_name} not supported")
-
-    
     
     if nucleus:
         outdir = os.path.join(OUT, f"generated_text_nucleus/{model_name}")
@@ -215,19 +213,12 @@ if __name__=="__main__":
 
     
     timestr = time.strftime("%Y%m%d-%H%M%S")
-    outdir = os.path.join(outdir, f"no_I_P/{timestr}")
+    outdir = os.path.join(outdir, f"no_I_P/{timestr}_{export_index}")
 
     os.makedirs(outdir, exist_ok=False)
 
-    if model_name == "gpt2-large":
-        max_length = 1024
-    elif model_name == "gpt2-base-french":
-        max_length = 1024
-    elif model_name == "llama2":
-        max_length = 4096
-    else:
-        raise NotImplementedError(f"Model {model_name} max length not defined.")
-
+    max_length = get_model_cxt_length(model_name)
+    
     count = 0
     while count < 99999999999:
         seed = random.randint(0, 999999999)

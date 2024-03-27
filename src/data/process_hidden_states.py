@@ -63,26 +63,26 @@ def format_sample_masked(sample):
         return None 
     
 ## AR
-def format_sample_ar(sample):
+def format_sample_ar(concept, sample):
     hs = sample["hs"]
     fact_emb = sample["fact_embedding"]
     foil_emb = sample["foil_embedding"]
     fact = sample["input_ids_fact"]
     foil = sample["input_ids_foil"]
-    cxt_tok = sample["input_ids_pre_tgt_padded"]
-    attention_mask = sample["attention_mask"]
+    cxt_tok = sample["input_ids_pre_tgt"]
+    #attention_mask = sample["attention_mask"]
     tgt_label = define_target(sample["tgt_label"])
     max_tokens = count_tgt_tokens(sample)
-    if tgt_label == 0 and max_tokens == 1: # number and gender
-        y = 0
+    
+    if concept in ["number", "gender"] and max_tokens == 1 and tgt_label == 0:
         u = foil_emb.flatten() - fact_emb.flatten()
-        return (hs, u, y, fact, foil, cxt_tok, attention_mask)
-    elif tgt_label == 1 and max_tokens == 1: # number and gender
-        y = 1
+        return (hs, u, tgt_label, fact, foil, cxt_tok)
+    elif concept in ["number", "gender"] and max_tokens == 1 and tgt_label == 1:
         u = fact_emb.flatten() - foil_emb.flatten()
-        return (hs, u, y, fact, foil, cxt_tok, attention_mask)
-    elif tgt_label in [0,1] and max_tokens == 0: # CEBaB concepts
-        return (hs, None, tgt_label, fact, foil, cxt_tok, attention_mask)
+        return (hs, u, tgt_label, fact, foil, cxt_tok)
+    elif concept in ["food", "ambiance", "service", "noise"] and tgt_label in [0,1]\
+         and max_tokens == 0: # CEBaB concepts
+        return (hs, None, tgt_label, fact, foil, cxt_tok)
     else: # max_tokens > 1
         return None
     
@@ -102,12 +102,12 @@ def format_sample_tgt(sample):
         return (foil, id_foil, fact, id_fact, fact_pos)
     
 ## HANDLER
-def format_batch_handler(batch_data, out_type):
+def format_batch_handler(concept, batch_data, out_type):
     formatted_batch = []
     count_drops = 0
     for sample in batch_data:
         if out_type == "ar": 
-            formatted_sample = format_sample_ar(sample)
+            formatted_sample = format_sample_ar(concept, sample)
         elif out_type == "masked":
             formatted_sample = format_sample_masked(sample)
         else:
@@ -121,7 +121,7 @@ def format_batch_handler(batch_data, out_type):
 
 
 #%% FILE HANDLERS
-def create_temp_files(batch_file_dir, tempdir, out_type, nbatches=None, temp_nbatches=100):
+def create_temp_files(concept, batch_file_dir, tempdir, out_type, nbatches=None, temp_nbatches=100):
     """ Loops through batch_file_dir batch npy files containing hidden states,
     concatenates them, and exports temporary files containing 100 batches each
     into tempdir
@@ -139,7 +139,7 @@ def create_temp_files(batch_file_dir, tempdir, out_type, nbatches=None, temp_nba
         filepath = os.path.join(batch_file_dir, filename)
         with open(filepath, 'rb') as f:      
             batch_data, drop_count = format_batch_handler(
-                pickle.load(f), out_type
+                concept, pickle.load(f), out_type
             )
             total_drop_count += drop_count
         if (i + 1) % temp_nbatches == 0 or i == len(files)-1:
@@ -179,8 +179,9 @@ def concat_temp_files(tempdir):
     return all_temps
 
 #%%
-def process_hidden_states(batch_file_dir, output_file, temp_dir, out_type, nbatches=None, delete_batch_dir=False):
-    create_temp_files(batch_file_dir, temp_dir, out_type, nbatches=nbatches)
+def process_hidden_states(concept, batch_file_dir, output_file, temp_dir, out_type, 
+    nbatches=None, delete_batch_dir=False):
+    create_temp_files(concept, batch_file_dir, temp_dir, out_type, nbatches=nbatches)
     data = concat_temp_files(temp_dir)
 
     with open(output_file, 'wb') as f:
@@ -253,10 +254,10 @@ if __name__=="__main__":
     OUT_TYPE = args.outtype
     NBATCHES = args.nbatches
     SPLIT = args.split
-    #DATASET_NAME = "linzen"
+    #DATASET_NAME = "CEBaB"
     #MODEL_NAME = "llama2"
-    #CONCEPT = "number"
-    #SPLIT = None
+    #CONCEPT = "food"
+    #SPLIT = "dev"
     #OUT_TYPE = "full"
     #NBATCHES = None
 
@@ -296,4 +297,4 @@ if __name__=="__main__":
     os.makedirs(TEMPDIR, exist_ok=False)
 
     OUTFILE_PATH = os.path.join(OUTPUT_DIR, OUTFILE_NAME)
-    process_hidden_states(FILEDIR, OUTFILE_PATH, TEMPDIR, OUT_TYPE, nbatches=NBATCHES)
+    process_hidden_states(CONCEPT, FILEDIR, OUTFILE_PATH, TEMPDIR, OUT_TYPE, nbatches=NBATCHES)

@@ -10,7 +10,7 @@ from itertools import zip_longest
 #sys.path.append('..')
 sys.path.append('./src/')
 
-from data.embed_wordlists.embedder_paired import get_emb_outfile_paths, get_token_list_outfile_paths
+from data.embed_wordlists.embedder import get_emb_outfile_paths, get_token_list_outfile_paths
 from utils.lm_loaders import GPT2_LIST, BERT_LIST, SUPPORTED_AR_MODELS
 from paths import DATASETS, FR_DATASETS, HF_CACHE
 
@@ -172,28 +172,26 @@ def load_preprocessed_dataset(dataset_name, model_name, concept=None, split=None
 def load_dataset_pickle(path, dataset_name):
     with open(path, 'rb') as f:     
         data = pd.DataFrame(pickle.load(f))
-        assert data.shape[1] == 7, "Out of date processed dataset"
-        data.columns = ["h", "u", "y", "fact", "foil", "cxt_tok", "attention_mask"]
-        #if data.shape[1] == 3:
-        #    data.columns = ["h", "u", "y"]
-        #elif data.shape[1] == 5:
-        #else:
-        #    raise ValueError("Unexpected processed dataset format")
+        assert data.shape[1] == 6, "Out of date processed dataset"
+        data.columns = ["h", "u", "y", "fact", "foil", "cxt_tok"]        
     
-    #X = np.array([x for x in data["h"]])
-    #U = np.array([x for x in data["u"]])
-    #y = np.array([yi for yi in data["y"]])
+    X = np.array([x for x in data["h"]])
+    U = np.array([x for x in data["u"]])
+    y = np.array([yi for yi in data["y"]])
     #fact = np.array([fact for fact in data["fact"]]).flatten()
+    fact = np.array(list(zip_longest(*data["fact"], fillvalue=-1))).T
     #foil = np.array([foil for foil in data["foil"]]).flatten()
-    #cxt_tok = np.array(list(zip_longest(*data["cxt_tok"], fillvalue=-1))).T
-    X = np.vstack(data["h"])
-    U = np.vstack(data["u"])
-    y = np.vstack(data["y"]).flatten()
-    fact = np.vstack(data["fact"]).flatten()
-    foil = np.vstack(data["foil"]).flatten()
-    cxt_tok = np.vstack(data["cxt_tok"])
-    attention_mask = np.vstack(data["attention_mask"])
-    return X, U, y, fact, foil, cxt_tok, attention_mask
+    foil = np.array(list(zip_longest(*data["foil"], fillvalue=-1))).T
+    cxt_tok = np.array(list(zip_longest(*data["cxt_tok"], fillvalue=-1))).T
+    #X = np.vstack(data["h"])
+    #U = np.vstack(data["u"])
+    #y = np.vstack(data["y"]).flatten()
+    #fact = np.vstack(data["fact"]).flatten()
+    #foil = np.vstack(data["foil"]).flatten()
+    #cxt_tok = np.vstack(data["cxt_tok"])
+    #attention_mask = np.vstack(data["attention_mask"])
+    #return X, U, y, fact, foil, cxt_tok, attention_mask
+    return X, U, y, fact, foil, cxt_tok
 
 def get_processed_dataset_path(dataset_name, model_name, concept=None, split=None):
     if model_name in SUPPORTED_AR_MODELS:
@@ -221,15 +219,15 @@ def load_processed_dataset(dataset_name, model_name, concept=None, split=None):
     return load_dataset_pickle(dataset_path, dataset_name)
 
 def load_gender_split(model_name, split_name):
-    #TODO: will need to handle the cxt_tok situation with non-equal lengths here and below
-    assert False, "debug the attention mask change"
-    X_gsd, U_gsd, y_gsd, fact_gsd, foil_gsd, cxt_tok_gsd, attention_mask_gsd = load_processed_dataset(
+    #TODO
+    assert False, "handle the cxt_tok situation with non-equal lengths here and below"
+    X_gsd, U_gsd, y_gsd, fact_gsd, foil_gsd, cxt_tok_gsd = load_processed_dataset(
         "ud_fr_gsd", model_name, split=split_name
     )
-    X_partut, U_partut, y_partut, fact_partut, foil_partut, cxt_tok_partut, attention_mask_partut = load_processed_dataset(
+    X_partut, U_partut, y_partut, fact_partut, foil_partut, cxt_tok_partut = load_processed_dataset(
         "ud_fr_partut", model_name, split=split_name
     )
-    X_rhapsodie, U_rhapsodie, y_rhapsodie, fact_rhapsodie, foil_rhapsodie, cxt_tok_rhapsodie, attention_mask_rhapsodie = load_processed_dataset(
+    X_rhapsodie, U_rhapsodie, y_rhapsodie, fact_rhapsodie, foil_rhapsodie, cxt_tok_rhapsodie = load_processed_dataset(
         "ud_fr_rhapsodie", model_name, split=split_name
     )
 
@@ -239,15 +237,14 @@ def load_gender_split(model_name, split_name):
     fact = np.hstack([fact_gsd, fact_partut, fact_rhapsodie])
     foil = np.hstack([foil_gsd, foil_partut, foil_rhapsodie])
     cxt_tok = np.hstack([cxt_tok_gsd, cxt_tok_partut, cxt_tok_rhapsodie])
-    attention_mask = np.hstack([attention_mask_gsd, attention_mask_partut, attention_mask_rhapsodie])
-    return X, U, y, fact, foil, cxt_tok, attention_mask
+    return X, U, y, fact, foil, cxt_tok
 
 def load_gender_processed(model_name):
-    X_train, U_train, y_train, fact_train, foil_train, cxt_tok_train, attention_mask_train = load_gender_split(model_name, "train")
+    X_train, U_train, y_train, fact_train, foil_train, cxt_tok_train = load_gender_split(model_name, "train")
     #X_dev, U_dev, y_dev = load_gender_split(model_name, "dev")
-    X_dev, U_dev, y_dev, fact_dev, foil_dev, cxt_tok_dev, attention_mask_dev = load_gender_split(model_name, "dev")
+    X_dev, U_dev, y_dev, fact_dev, foil_dev, cxt_tok_dev = load_gender_split(model_name, "dev")
     #X_test, U_test, y_test = load_gender_split(model_name, "test")
-    X_test, U_test, y_test, fact_test, foil_test, cxt_tok_test, attention_mask_test = load_gender_split(model_name, "test")
+    X_test, U_test, y_test, fact_test, foil_test, cxt_tok_test = load_gender_split(model_name, "test")
     
     #stacking into one
     X = np.vstack([X_train, X_dev, X_test])
@@ -256,17 +253,16 @@ def load_gender_processed(model_name):
     fact = np.hstack([fact_train, fact_dev, fact_test])
     foil = np.hstack([foil_train, foil_dev, foil_test])
     cxt_tok = np.hstack([cxt_tok_train, cxt_tok_dev, cxt_tok_test])
-    attention_mask = np.hstack([attention_mask_train, attention_mask_dev, attention_mask_test])
-    return X, U, y, fact, foil, cxt_tok, attention_mask
+    return X, U, y, fact, foil, cxt_tok
 
 def load_CEBaB_processed(concept_name, model_name):
-    X_train, U_train, y_train, facts_train, foils_train, cxt_toks_train, attention_masks_train = load_processed_dataset(
+    X_train, U_train, y_train, facts_train, foils_train, cxt_toks_train = load_processed_dataset(
         "CEBaB", model_name, concept_name, split="train"
     )
-    X_dev, U_dev, y_dev, facts_dev, foils_dev, cxt_toks_dev, attention_masks_dev = load_processed_dataset(
+    X_dev, U_dev, y_dev, facts_dev, foils_dev, cxt_toks_dev = load_processed_dataset(
         "CEBaB", model_name, concept_name, split="dev"
     )
-    X_test, U_test, y_test, facts_test, foils_test, cxt_toks_test, attention_masks_test = load_processed_dataset(
+    X_test, U_test, y_test, facts_test, foils_test, cxt_toks_test = load_processed_dataset(
         "CEBaB", model_name, concept_name, split="test"
     )
     return {
@@ -276,28 +272,24 @@ def load_CEBaB_processed(concept_name, model_name):
         "facts_train": facts_train,
         "foils_train": foils_train,
         "cxt_toks_train": cxt_toks_train,
-        "attention_masks_train": attention_masks_train,
         "X_dev": X_dev, 
         "U_dev": U_dev,
         "y_dev": y_dev,
         "facts_dev": facts_dev,
         "foils_dev": foils_dev,
         "cxt_toks_dev": cxt_toks_dev,
-        "attention_masks_dev": attention_masks_dev,
         "X_test": X_test, 
         "U_test": U_test,
         "y_test": y_test,
         "facts_test": facts_test,
         "foils_test": foils_test,
         "cxt_toks_test": cxt_toks_test,
-        "attention_masks_test": attention_masks_test,
     }
-
 
 def load_processed_data(concept_name, model_name):
     # TODO fix this trash this function returns different things depending on the args.
     if concept_name == "number":
-        return load_processed_dataset("linzen", model_name)
+        return load_processed_dataset("linzen", model_name, "number")
     elif concept_name == "gender":
         return load_gender_processed(model_name)
     elif concept_name in ["food", "ambiance", "service", "noise"]:
