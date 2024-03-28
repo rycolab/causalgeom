@@ -14,7 +14,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 sys.path.append('./src/')
 
 from paths import HF_CACHE, DATASETS
-
+from utils.auth_utils import load_auth_token
 
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
@@ -53,6 +53,7 @@ def get_tokenizer(model_name, token=None):
             model_name, model_max_length=512
         )
     elif model_name in ["llama2", "llama2_32bit"]:
+        token = load_auth_token()
         tokenizer = AutoTokenizer.from_pretrained(
             "meta-llama/Llama-2-7b-hf", 
             token=token, model_max_length=4096
@@ -97,6 +98,7 @@ def get_model(model_name, token=None, device="cpu"):
             #is_decoder=False
         ).to(device)
     elif model_name == "llama2":
+        token = load_auth_token()
         return AutoModelForCausalLM.from_pretrained(
             "meta-llama/Llama-2-7b-hf",
             cache_dir=HF_CACHE,
@@ -106,6 +108,7 @@ def get_model(model_name, token=None, device="cpu"):
             torch_dtype=torch.float16
         )
     elif model_name == "llama2_32bit":
+        token = load_auth_token()
         return AutoModelForCausalLM.from_pretrained(
             "meta-llama/Llama-2-7b-hf",
             cache_dir=HF_CACHE,

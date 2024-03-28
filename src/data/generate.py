@@ -173,6 +173,7 @@ def get_args():
     argparser.add_argument(
         "-export_index",
         type=int,
+        default=None,
         help="Special index for this job",
     )
     return argparser.parse_args()
@@ -185,10 +186,13 @@ if __name__=="__main__":
     model_name = args.model
     nucleus = args.nucleus
     export_index = args.export_index
-    
+
     #model_name = "llama2"
     #nucleus=True
     #export_index = 0
+    
+    #if export_index is None:
+    #    export_index=random.randint(1,1000000)
     
     batch_size = 3
     useP=False

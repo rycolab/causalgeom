@@ -30,7 +30,7 @@ sys.path.append('./src/')
 from paths import DATASETS, OUT, RESULTS, MODELS
 
 
-from evals.mi_eval import prep_generated_data, compute_inner_loop_qxhs
+from evals.mi_distributor_utils import prep_generated_data, compute_inner_loop_qxhs
 from utils.lm_loaders import SUPPORTED_AR_MODELS
 from evals.eval_utils import load_run_Ps, load_run_output, load_model_eval,\
     renormalize
@@ -77,10 +77,7 @@ AMBIANCE_PROMPTS = [
 
 
 #%%
-# TODO:
-# - incorporate the two functions imported from mi_eval into the class
-#
-class MultiTokenEvaluator:
+class MultiTokenDistributor:
     
     def __init__(self, 
                  model_name, # name of AR model 
@@ -106,13 +103,18 @@ class MultiTokenEvaluator:
             model_name, concept, single_token=False
         )
 
+        if self.nwords is not None:
+            logging.warn(f"Applied nwords={self.nwords}, intended for DEBUGGING ONLY")
+            self.l0_tl = self.l0_tl[:self.nwords]
+            self.l1_tl = self.l1_tl[:self.nwords]
+
         # CEBaB prompts
         self.prompt_set = self.load_suffixes(concept)
         self.prompt_end_space = model_name == "llama2"
 
         #p_x = load_p_x(MODEL_NAME, NUCLEUS)
         self.p_c, self.l0_hs_wff, self.l1_hs_wff, self.all_hs = prep_generated_data(
-            model_name, nucleus
+            model_name, concept, nucleus
         )
 
         #self.X_dev, self.y_dev, self.facts_dev, self.foils_dev, self.cxt_toks_dev = \
@@ -126,7 +128,6 @@ class MultiTokenEvaluator:
         source = "natural"
         self.l0_cxt_toks, self.l1_cxt_toks = self.get_concept_eval_contexts(source)
 
-        #%%
         self.device = get_device()
         self.model = get_model(model_name, device=self.device)
         self.tokenizer = get_tokenizer(model_name)
@@ -327,13 +328,9 @@ class MultiTokenEvaluator:
 
     def compute_all_word_probs(self, cxt, method):
         cxt_last_index = cxt.shape[0] - 1
-        #TODO: get rid of this after debugging
-        if self.nwords is not None:
-            l0_word_probs = self.compute_p_words(self.l0_tl[:self.nwords], cxt, cxt_last_index, method)
-            l1_word_probs = self.compute_p_words(self.l1_tl[:self.nwords], cxt, cxt_last_index, method)
-        else:
-            l0_word_probs = self.compute_p_words(self.l0_tl, cxt, cxt_last_index, method)
-            l1_word_probs = self.compute_p_words(self.l1_tl, cxt, cxt_last_index, method)
+
+        l0_word_probs = self.compute_p_words(self.l0_tl, cxt, cxt_last_index, method)
+        l1_word_probs = self.compute_p_words(self.l1_tl, cxt, cxt_last_index, method)
         return l0_word_probs, l1_word_probs
 
     def compute_lemma_probs(self, padded_contexts, method, pad_token=-1):
@@ -398,7 +395,7 @@ def compute_eval(model_name, concept, run_path,
     run_id = run_path[-27:-4]
     outdir = os.path.join(
         os.path.dirname(rundir), 
-        f"{output_folder}_{rundir_name}/run_{run_id}/nuc_{nucleus}/evaliter_{iteration}/h_distribs/{htype}"
+        f"mt_eval_{rundir_name}/{output_folder}/run_{run_id}/nuc_{nucleus}/evaliter_{iteration}/h_distribs/{htype}"
     )
     os.makedirs(outdir, exist_ok=False)
 
@@ -419,7 +416,7 @@ def compute_eval(model_name, concept, run_path,
         #logging.info(f"Run already evaluated: {run_path}")
         #continue
     #else:
-    evaluator = MultiTokenEvaluator(
+    evaluator = MultiTokenDistributor(
         model_name, 
         concept, 
         nucleus, # nucleus 
@@ -509,17 +506,17 @@ if __name__=="__main__":
     run_path = args.run_path
     nruns = 3
     htype=args.htype
-    #model_name = "gpt2-large"
+    #model_name = "llama2"
     #concept = "food"
     #nucleus = True
     #k=1
     #nsamples=3
     #msamples=3
-    #nwords = None
+    #nwords = 10
     #output_folder = "test_multitokeneval"
     #nruns = 1
     #htype = "l1_cxt_qxhs_par"
-    #run_path="out/run_output/food/gpt2-large/leace29022024/run_leace_food_gpt2-large_2024-02-29-17:25:50_0_3.pkl"
+    #run_path="out/run_output/food/llama2/leace27032024/run_leace_food_llama2_2024-03-27-14:58:45_0_3.pkl"
     
 
     for i in range(nruns):
