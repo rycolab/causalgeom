@@ -89,7 +89,8 @@ def get_concept_hs_w_factfoil_singletoken(generations_folder, l0_tl, l1_tl, nfil
                 #continue
     return l0_hs, l1_hs, other_hs
 
-def get_concept_hs_w_factfoil_multitoken(generations_folder, l0_tl, l1_tl, nfiles=None, perc_samples=.1):
+def get_concept_hs_w_factfoil_multitoken(generations_folder, l0_tl, l1_tl, 
+    nfiles=None, perc_samples=.1):
     files = get_generated_files(generations_folder) 
     logging.info(f"Found {len(files)} generated text files in main directory {generations_folder}")   
 
@@ -101,34 +102,41 @@ def get_concept_hs_w_factfoil_multitoken(generations_folder, l0_tl, l1_tl, nfile
     other_hs = []
     multitoken_matches = 0
     for i, filepath in enumerate(tqdm(files)):
-        with open(filepath, "rb") as f:
-            data = pickle.load(f)
-
-        random.shuffle(data)
-        for h, x, all_tokens in data[:int(len(data)*perc_samples)]:
-            all_tokens = all_tokens.tolist()
-            added_to_concept = False
-            for i in range(len(l0_tl)):
-                l0_wordtok = l0_tl[i]
-                l1_wordtok = l1_tl[i]
-                if all_tokens[-len(l0_wordtok):] == l0_wordtok:
-                    # (h, fact, foil, all_tokens)
-                    l0_hs.append((h.numpy(), l0_wordtok, l1_wordtok, all_tokens)) 
-                    added_to_concept=True
-                    if len(l0_wordtok) > 1:
-                        multitoken_matches+=1
-                    break    
-                elif all_tokens[-len(l1_wordtok):] == l1_wordtok:
-                    # (h, fact, foil, all_tokens)
-                    l1_hs.append((h.numpy(), l1_wordtok, l0_wordtok, all_tokens)) 
-                    added_to_concept=True
-                    if len(l1_wordtok) > 1:
-                        multitoken_matches+=1
-                    break
-                else:
-                    continue
-            if not added_to_concept:
-                other_hs.append(h.numpy())
+        try:
+            with open(filepath, "rb") as f:
+                data = pickle.load(f)
+        except pickle.UnpicklingError:
+            continue
+        else:
+            random.shuffle(data)
+            for h, x, all_tokens in data[:int(len(data)*perc_samples)]:
+                all_tokens = all_tokens.tolist()
+                added_to_concept = False
+                for i in range(len(l0_tl)):
+                    l0_wordtok = l0_tl[i]
+                    l1_wordtok = l1_tl[i]
+                    if all_tokens[-len(l0_wordtok):] == l0_wordtok:
+                        # (h, fact, foil, all_tokens)
+                        l0_hs.append((h.numpy(), l0_wordtok, l1_wordtok, all_tokens)) 
+                        added_to_concept=True
+                        if len(l0_wordtok) > 1:
+                            multitoken_matches+=1
+                        break    
+                    elif all_tokens[-len(l1_wordtok):] == l1_wordtok:
+                        # (h, fact, foil, all_tokens)
+                        l1_hs.append((h.numpy(), l1_wordtok, l0_wordtok, all_tokens)) 
+                        added_to_concept=True
+                        if len(l1_wordtok) > 1:
+                            multitoken_matches+=1
+                        break
+                    else:
+                        continue
+                if not added_to_concept:
+                    other_hs.append(h.numpy())
+                #NOTE: if memory issues, need to subsample concept AND other hs
+                #if len(other_hs) > other_hs_max_length:
+                #    random.shuffle(other_hs)
+                #    other_hs = other_hs[:other_hs_max_length]
     logging.info(f"Generated h's obtained -- l0: {len(l0_hs)}, l1: {len(l1_hs)}, other: {len(other_hs)}.")
     logging.info(f"Number of multitoken matches: {multitoken_matches}")
     return l0_hs, l1_hs, other_hs

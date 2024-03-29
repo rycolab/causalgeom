@@ -120,29 +120,36 @@ def get_model(model_name, token=None, device="cpu"):
         raise ValueError(f"Model name {model_name} not supported")
 
 
-def get_V(model_name, model=None):
+def get_V(model_name, model=None, numpy_cpu=True):
     if model is None:
         model = get_model(model_name)
 
     if model_name in GPT2_LIST:
-        return model.lm_head.weight.detach().cpu().numpy()
+        V = model.lm_head.weight.detach()
     elif model_name == "bert-base-uncased":
         word_embeddings = model.bert.embeddings.word_embeddings.weight
         bias = model.cls.predictions.decoder.bias
-        return torch.cat(
-            (word_embeddings, bias.view(-1, 1)), dim=1).detach().numpy()
+        V = torch.cat(
+            (word_embeddings, bias.view(-1, 1)), dim=1
+        ).detach()
     elif model_name == "camembert-base":
         # i checked that the decoder linear layer weights are tied to the embeddings
         # that said there is no bias at the embedding level, had to fetch the 
         # decoder bias.
         word_embeddings = model.lm_head.decoder.weight
         bias = model.lm_head.decoder.bias
-        return torch.cat(
-            (word_embeddings, bias.view(-1, 1)), dim=1).detach().numpy()
+        V = torch.cat(
+            (word_embeddings, bias.view(-1, 1)), dim=1
+        ).detach()
     elif model_name == "llama2":
-        return model.lm_head.weight.detach().cpu().numpy()
+        V = model.lm_head.weight.detach()
     else:
         raise ValueError(f"Model name {model_name} not supported")
+
+    if numpy_cpu:
+        return V.cpu().numpy()
+    else:
+        return V
 
 #def get_concept_name(model_name):
 #    """ Model name to concept mapper, for now it's one to one so this

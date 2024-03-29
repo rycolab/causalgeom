@@ -35,24 +35,44 @@ def prep_generated_data(model_name, concept, nucleus):
 #########################################
 # Distribution Computation              #
 #########################################
-def compute_inner_loop_qxhs(mode, h, all_hs, P, I_P, V, msamples, processor=None):
-    """ mode param determines whether averaging over hbot or hpar"""
-    all_pxnewh = []
-    idx = np.arange(0, all_hs.shape[0])
-    np.random.shuffle(idx)
-    for other_h in all_hs[idx[:msamples]]:
-        if mode == "hbot":
-            #TODO: check that this is the same as other_h.T @ I_P...
-            newh = other_h @ I_P + h @ P
-        elif mode == "hpar":
-            newh = h @ I_P + other_h @ P
-        else:
-            raise ValueError(f"Incorrect mode {mode}")
-        logits = V @ newh
-        if processor is not None:
-            logits = torch.FloatTensor(logits).unsqueeze(0)
-            tokens = torch.LongTensor([0]).unsqueeze(0)
-            logits = processor(tokens, logits).squeeze(0).numpy()
-        pxnewh = softmax(logits)
-        all_pxnewh.append(pxnewh)
-    return np.vstack(all_pxnewh)
+def compute_inner_loop_qxhs(mode, h, sampled_hs, P, I_P, V, processor=None):
+    """ mode param determines whether averaging over hbot or hpar
+    everything should be on GPU!
+    """
+    mh = h.repeat(sampled_hs.shape[0], 1)
+    if mode == "hbot":
+        newh = sampled_hs @ I_P + mh @ P
+    elif mode == "hpar":
+        newh = mh @ I_P + sampled_hs @ P
+    else:
+        raise ValueError(f"Incorrect mode {mode}")
+    logits = newh @ V.T
+    if processor is not None:
+        raise NotImplementedError("haven't updated this")
+        #logits = torch.FloatTensor(logits).unsqueeze(0)
+        #tokens = torch.LongTensor([0]).unsqueeze(0)
+        #logits = processor(tokens, logits).squeeze(0).numpy()
+    pxnewh = softmax(logits.cpu(), axis=1)
+    return pxnewh
+
+def compute_batch_inner_loop_qxhs(mode, nmH, other_nmH, P, I_P, V, processor=None):
+    """ n is the batch size of the original h's, 
+    m is the number of other h's to average over. """
+    assert nmH.shape == other_nmH.shape, "Incorrect inputs"
+    #start = time.time()
+    if mode == "hbot":
+        newh = other_nmH @ I_P + nmH @ P
+    elif mode == "hpar":
+        newh = nmH @ I_P + other_nmH @ P
+    else:
+        raise ValueError(f"Incorrect mode {mode}")
+    logits = newh @ V.T
+    if processor is not None:
+        raise NotImplementedError("haven't updated this")
+        #logits = torch.FloatTensor(logits).unsqueeze(0)
+        #tokens = torch.LongTensor([0]).unsqueeze(0)
+        #logits = processor(tokens, logits).squeeze(0).numpy()
+    pxnewh = softmax(logits.cpu(), axis=2)
+    #end = time.time()
+    #print(end - start)
+    return pxnewh

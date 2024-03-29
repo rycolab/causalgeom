@@ -59,9 +59,9 @@ def get_model_cxt_length(model_name):
     else: 
         raise NotImplementedError(f"Model {model_name} not supported")
 
-def generate_sequence_until_eos(model_name, model, prompt_ids, batch_size, seed, max_length, eos_token, 
+def generate_sequence_until_eos(model_name, model, prompt_ids, 
+    batch_size, max_length, eos_token, 
     device="cpu", P=None, nucleus=False, top_p=0.9):
-    torch.manual_seed(seed)
     tokens = prompt_ids.repeat(batch_size, 1)
     all_tokens = [tokens]
     if torch.cuda.device_count() == 1:
@@ -72,7 +72,9 @@ def generate_sequence_until_eos(model_name, model, prompt_ids, batch_size, seed,
     counter = 0
     processor = LogitsProcessorList()
     processor.append(TopPLogitsWarper(0.9))
-    while (check_eos(tokens[:,-1], eos_token) or (counter==0)):
+    # NOTE: I've gotten rid of the context extender in favor of just cutting it off
+    # once the context length maxes out.
+    while (check_eos(tokens[:,-1], eos_token) or (counter==0)) and counter < max_length:
         if past_key_values is not None and past_key_values[0][0].shape[2] == max_length:
             #copy = past_key_values[0][0].clone().detach()
             past_key_values = adjust_past_key_values(past_key_values, max_length)
@@ -126,15 +128,16 @@ def generate_sequence_until_eos(model_name, model, prompt_ids, batch_size, seed,
 
 #%%
 def generate_multiple_sequences(model_name, model, tokenizer, prompt_ids, 
-    batch_size, seed, export_index, outdir, max_length,
-    n_generations=1, device="cpu", P=None, nucleus=False, top_p=0.9):
+    batch_size, seed, export_index, outdir, max_length, device="cpu", P=None, nucleus=False, top_p=0.9):
     all_token_h_pairs = []
     all_lengths = []
     eos_token_id = tokenizer.eos_token_id
-    for i in range(n_generations):
+    torch.manual_seed(seed)
+    #for i in range(n_generations):
+    while len(all_token_h_pairs) < 1000:
         all_tokens, token_h_pairs = generate_sequence_until_eos(
-            model_name, model, prompt_ids, batch_size, seed, 
-            max_length, eos_token_id, 
+            model_name, model, prompt_ids, 
+            batch_size, max_length, eos_token_id, 
             device=device, P=P, nucleus=nucleus, top_p=top_p
         )
         torch.cuda.empty_cache()
@@ -142,11 +145,13 @@ def generate_multiple_sequences(model_name, model, tokenizer, prompt_ids,
         all_token_h_pairs += token_h_pairs
         for i in range(all_tokens.shape[0]):
             non_eos_text = tokenizer.decode(
-                all_tokens[i, torch.nonzero(all_tokens[i,:] != eos_token_id)].T.squeeze(0))
+                all_tokens[i, torch.nonzero(all_tokens[i,:] != eos_token_id)].T.squeeze(0)
+            )
             logging.info(f"Generation {i} ---------------------- \n{non_eos_text}")
     export_path = os.path.join(outdir, f"generations_seed_{seed}_{export_index}.pkl")
     with open(export_path, 'wb') as f:
         pickle.dump(all_token_h_pairs, f, protocol=pickle.HIGHEST_PROTOCOL)
+    logging.info(f"Exported generation file: {export_path}")
     torch.cuda.empty_cache()
 
 #%%
@@ -187,7 +192,7 @@ if __name__=="__main__":
     nucleus = args.nucleus
     export_index = args.export_index
 
-    #model_name = "llama2"
+    #model_name = "gpt2-large"
     #nucleus=True
     #export_index = 0
     
