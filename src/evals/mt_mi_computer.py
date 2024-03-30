@@ -29,14 +29,13 @@ sys.path.append('./src/')
 from paths import DATASETS, OUT, RESULTS, MODELS
 
 
-from evals.mi_eval import prep_generated_data, compute_inner_loop_qxhs
 from utils.lm_loaders import SUPPORTED_AR_MODELS
-from evals.eval_utils import load_run_Ps, load_run_output, load_model_eval,\
-    renormalize
+from evals.mi_distributor_utils import prep_generated_data
+from evals.eval_utils import renormalize
 #from data.filter_generations import load_generated_hs_wff
 #from data.data_utils import filter_hs_w_ys, sample_filtered_hs
-from utils.lm_loaders import get_model, get_tokenizer
-from utils.cuda_loaders import get_device
+#from utils.lm_loaders import get_model, get_tokenizer
+#from utils.cuda_loaders import get_device
 
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
@@ -62,7 +61,7 @@ class MultiTokenMIComputer:
         #self.nwords = nwords
         self.h_distribs_dir = h_distribs_dir
         self.p_c, _, _, _ = prep_generated_data(
-            model_name, nucleus
+            model_name, concept, nucleus
         )
 
         
@@ -266,7 +265,7 @@ def compute_mis(model_name, concept, run_path,
 
     outdir = os.path.join(
         os.path.dirname(rundir), 
-        f"{output_folder}_{rundir_name}/run_{run_id}/nuc_{nucleus}/evaliter_{iteration}"
+        f"mt_eval_{rundir_name}/{output_folder}/run_{run_id}/nuc_{nucleus}/evaliter_{iteration}"
     )
     h_distribs_dir = os.path.join(
         outdir, "h_distribs"
@@ -284,7 +283,6 @@ def compute_mis(model_name, concept, run_path,
     run_metadata = {
         "model_name": model_name,
         "concept": concept,
-        "k": k,
         "nucleus": nucleus,
         #"nsamples": nsamples,
         #"msamples": msamples,
@@ -292,10 +290,11 @@ def compute_mis(model_name, concept, run_path,
         "iteration": iteration
     }
     full_run_output = run_metadata | run_eval_output
-    outpath = os.path.join(outdir, f"mi_eval.pkl")
+    actual_outdir = os.path.join(RESULTS, "mis")
+    outpath = os.path.join(actual_outdir, f"mis_{model_name}_{concept}_{rundir_name}_{output_folder}_run_{run_id}_nuc_{nucleus}_evaliter_{iteration}.pkl")
     with open(outpath, "wb") as f:
         pickle.dump(full_run_output, f, protocol=pickle.HIGHEST_PROTOCOL)
-    logging.info(f"Run eval exported: {run_path}")
+    logging.info(f"Run eval exported: {outpath}")
     
 
 #%%#################
@@ -355,27 +354,27 @@ if __name__=="__main__":
     args = get_args()
     logging.info(args)
 
-    #model_name = args.model
-    #concept = args.concept
-    #nucleus = args.nucleus
+    model_name = args.model
+    concept = args.concept
+    nucleus = args.nucleus
     #k = args.k
-    #nsamples=args.nsamples
-    #msamples=args.msamples
-    #nwords = None
-    #output_folder = args.out_folder
-    #run_path = args.run_path
-    #nruns = 3
+    nsamples=args.nsamples
+    msamples=args.msamples
+    nwords = None
+    output_folder = args.out_folder
+    run_path = args.run_path
+    nruns = 3
     
-    model_name = "gpt2-large"
-    concept = "food"
-    nucleus = False
-    k=1
+    #model_name = "gpt2-large"
+    #concept = "food"
+    #nucleus = True
+    #k=1
     #nsamples=3
     #msamples=3
     #nwords = None
-    output_folder = "multitokeneval"
-    nruns=1
-    run_path="out/run_output/food/gpt2-large/leace29022024/run_leace_food_gpt2-large_2024-02-29-17:25:50_0_3.pkl"
+    #output_folder = "n100"
+    #nruns=3
+    #run_path="out/run_output/food/gpt2-large/leace28032024/run_leace_food_gpt2-large_2024-03-28-13:44:28_0_3.pkl"
     
 
     for i in range(nruns):

@@ -33,7 +33,7 @@ from paths import DATASETS, OUT, RESULTS, MODELS
 
 from evals.mi_distributor_utils import prep_generated_data, \
     compute_batch_inner_loop_qxhs
-from utils.lm_loaders import SUPPORTED_AR_MODELS
+from utils.lm_loaders import SUPPORTED_AR_MODELS, GPT2_LIST
 from evals.eval_utils import load_run_Ps, load_run_output, renormalize
 from data.embed_wordlists.embedder import load_concept_token_lists
 #from data.filter_generations import load_generated_hs_wff
@@ -89,15 +89,27 @@ class MultiTokenDistributor:
                  msamples, # number of dev set samples for each q computation
                  nwords, # number of words to use from token lists -- GET RID OF THIS
                  run_path, # path of LEACE training run output
-                 outdir, # directory for exporting individual distributions
+                 output_folder_name, # directory for exporting individual distributions
+                 iteration, # iteration of the eval for this run
                  #single_token -- eventually will be able to add this arg
                 ):
 
         self.nsamples = nsamples
         self.msamples = msamples
         self.nwords = nwords
-        self.outdir = outdir
 
+        # directory handling
+        rundir = os.path.dirname(run_path)
+        rundir_name = os.path.basename(rundir)
+
+        run_id = run_path[-27:-4]
+        self.outdir = os.path.join(
+            os.path.dirname(rundir), 
+            f"mt_eval_{rundir_name}/{output_folder_name}/run_{run_id}/nuc_{nucleus}/evaliter_{iteration}"
+        )
+        os.makedirs(self.outdir, exist_ok=output_folder_name=="test")
+        logging.info(f"Created outdir: {self.outdir}, exist_ok = {output_folder_name=='test'}")
+        
         # Load run data
         run = load_run_output(run_path)
 
@@ -112,7 +124,7 @@ class MultiTokenDistributor:
         self.I_P = torch.tensor(I_P, dtype=torch.float32).to(self.device)
 
         # Load model eval components
-        self.V = get_V(model_name, model=self.model, numpy_cpu=False)
+        self.V = get_V(model_name, model=self.model, numpy_cpu=False).clone().type(torch.float32).to(self.device)
         self.l0_tl, self.l1_tl = load_concept_token_lists(concept, model_name, single_token=False)
 
         if self.nwords is not None:
@@ -122,7 +134,7 @@ class MultiTokenDistributor:
 
         # CEBaB prompts
         self.prompt_set = self.load_suffixes(concept)
-        self.prompt_end_space = model_name == "llama2"
+        #self.prompt_end_space = model_name == "llama2"
 
         #p_x = load_p_x(MODEL_NAME, NUCLEUS)
         self.p_c, self.gen_l0_hs, self.gen_l1_hs, self.gen_all_hs = prep_generated_data(
@@ -148,7 +160,7 @@ class MultiTokenDistributor:
     #########################################
     # Tokenizer specific new word tokens    #
     #########################################
-    def get_gpt2_large_new_word_tokens(self):
+    def get_gpt2_new_word_tokens(self):
         pattern = re.compile("^[\W][^a-zA-Z]*")
 
         new_word_tokens = []
@@ -187,8 +199,8 @@ class MultiTokenDistributor:
         return new_word_tokens
 
     def get_new_word_tokens(self, model_name):
-        if model_name == "gpt2-large":
-            return self.get_gpt2_large_new_word_tokens()
+        if model_name in GPT2_LIST:
+            return self.get_gpt2_new_word_tokens()
         elif model_name == "llama2":
             return self.get_llama2_new_word_tokens()
         else:
@@ -259,23 +271,29 @@ class MultiTokenDistributor:
             raise ValueError("Incorrect concept")
 
     @staticmethod
-    def add_suffix(text, suffix, end_space):
-        if end_space:
-            suffix = suffix + " "
-
-        if text.strip().endswith("."):
-            return text + " " + suffix
+    def add_suffix(text, suffix):
+        stripped_text = text.strip()
+        if stripped_text.endswith("."):
+            return stripped_text + " " + suffix
         else:
-            return text + ". " + suffix
+            return stripped_text + ". " + suffix
         
     def add_concept_suffix(self, cxt_tokens):
         text = self.tokenizer.decode(cxt_tokens)
         suffix = np.random.choice(self.prompt_set)
-        text_w_suffix = self.add_suffix(text, suffix, self.prompt_end_space)
+        text_w_suffix = self.add_suffix(text, suffix)
         suffixed_sentence = self.tokenizer(
             text_w_suffix, return_tensors="pt"
         )["input_ids"][0]
-        return suffixed_sentence
+        double_bos = (
+            suffixed_sentence[:2] == torch.tensor(
+                [self.tokenizer.bos_token_id, self.tokenizer.bos_token_id]
+            )
+        ).all()
+        if double_bos:
+            return suffixed_sentence[1:]
+        else:
+            return suffixed_sentence
 
     #########################################
     # Probability computations              #
@@ -352,16 +370,19 @@ class MultiTokenDistributor:
             )
 
         #batch_tok_ids = cxt_plus_tl_batched[:,(cxt_last_index+1):]
-        batch_hidden_states = output["hidden_states"][-1][:,cxt_last_index:,:]
+        batch_hidden_states = output["hidden_states"][-1][:,cxt_last_index:,:].type(torch.float32)
 
         batch_pxhs = self.compute_pxh_batch_handler(method, batch_hidden_states)
         tl_word_probs = self.compute_batch_p_words(token_list, batch_pxhs)
         return tl_word_probs
 
-    def compute_lemma_probs(self, lemma_samples, method, pad_token=-1):
+    def compute_lemma_probs(self, lemma_samples, method, outdir, pad_token=-1):
         l0_probs, l1_probs = [], []
         for i, cxt_pad in enumerate(tqdm(lemma_samples)):
             cxt = cxt_pad[cxt_pad != pad_token]
+
+            if self.prompt_set:
+                cxt = self.add_concept_suffix(cxt)
 
             logging.info(f"---New eval context: {self.tokenizer.decode(cxt)}---")
 
@@ -369,10 +390,9 @@ class MultiTokenDistributor:
             l1_word_probs = self.compute_p_words(self.l1_tl, cxt, method)
 
             export_path = os.path.join(
-                self.outdir, 
+                outdir, 
                 f"word_probs_sample_{i}.pkl"
-            )
-                
+            )            
             with open(export_path, 'wb') as f:
                 pickle.dump(
                     (l0_word_probs, l1_word_probs), f, 
@@ -385,171 +405,40 @@ class MultiTokenDistributor:
         return np.vstack(l0_probs), np.vstack(l1_probs)
 
     def compute_pxs(self, htype):
+        htype_outdir = os.path.join(
+            self.outdir, 
+            f"h_distribs/{htype}"
+        )
+        os.makedirs(htype_outdir, exist_ok=False)   
+
         assert self.nsamples is not None
         l0_inputs, l1_inputs = self.sample_filtered_contexts()
         if htype == "l0_cxt_qxhs_par": 
-            l0_cxt_qxhs_par = self.compute_lemma_probs(l0_inputs, "hbot")
-            return l0_cxt_qxhs_par
+            l0_cxt_qxhs_par = self.compute_lemma_probs(l0_inputs, "hbot", htype_outdir)
+            #return l0_cxt_qxhs_par
         elif htype == "l1_cxt_qxhs_par":
-            l1_cxt_qxhs_par = self.compute_lemma_probs(l1_inputs, "hbot")
-            return l1_cxt_qxhs_par
+            l1_cxt_qxhs_par = self.compute_lemma_probs(l1_inputs, "hbot", htype_outdir)
+            #return l1_cxt_qxhs_par
         elif htype == "l0_cxt_qxhs_bot":
-            l0_cxt_qxhs_bot = self.compute_lemma_probs(l0_inputs, "hpar")
-            return l0_cxt_qxhs_bot
+            l0_cxt_qxhs_bot = self.compute_lemma_probs(l0_inputs, "hpar", htype_outdir)
+            #return l0_cxt_qxhs_bot
         elif htype == "l1_cxt_qxhs_bot":
-            l1_cxt_qxhs_bot = self.compute_lemma_probs(l1_inputs, "hpar")
-            return l1_cxt_qxhs_bot
+            l1_cxt_qxhs_bot = self.compute_lemma_probs(l1_inputs, "hpar", htype_outdir)
+            #return l1_cxt_qxhs_bot
         elif htype == "l0_cxt_pxhs":
-            l0_cxt_pxhs = self.compute_lemma_probs(l0_inputs, "h")
-            return l0_cxt_pxhs
+            l0_cxt_pxhs = self.compute_lemma_probs(l0_inputs, "h", htype_outdir)
+            #return l0_cxt_pxhs
         elif htype == "l1_cxt_pxhs":
-            l1_cxt_pxhs = self.compute_lemma_probs(l1_inputs, "h")
-            return l1_cxt_pxhs
+            l1_cxt_pxhs = self.compute_lemma_probs(l1_inputs, "h", htype_outdir)
+            #return l1_cxt_pxhs
         else:
             raise ValueError(f"Incorrect htype: {htype}")
 
-# %%
-def compute_eval(model_name, concept, run_path,
-    nsamples, msamples, nwords, nucleus, output_folder, htype, iteration):
-    #rundir = os.path.join(
-    #    OUT, f"run_output/{concept}/{model_name}/{run_output_folder}"
-    #)
-
-    rundir = os.path.dirname(run_path)
-    rundir_name = os.path.basename(rundir)
-
-    run_id = run_path[-27:-4]
-    outdir = os.path.join(
-        os.path.dirname(rundir), 
-        f"mt_eval_{rundir_name}/{output_folder}/run_{run_id}/nuc_{nucleus}/evaliter_{iteration}/h_distribs/{htype}"
-    )
-    os.makedirs(outdir, exist_ok=output_folder=="test")
-
-    #run_files = [x for x in os.listdir(rundir) if x.endswith(".pkl")]
-    #random.shuffle(run_files)
-
-    #for run_file in run_files:
-    #    run_path = os.path.join(rundir, run_file)
-    #outpath = os.path.join(
-    #    outdir, 
-    #    f"{concept}_{model_name}_nuc_{nucleus}_{iteration}_{run_file[:-4]}.pkl"
-    #)
-
-    #run = load_run_output(run_path)
-    #if run["config"]["k"] != k:
-    #    continue
-    #elif os.path.exists(outpath):
-        #logging.info(f"Run already evaluated: {run_path}")
-        #continue
-    #else:
-    evaluator = MultiTokenDistributor(
-        model_name, 
-        concept, 
-        nucleus, # nucleus 
-        nsamples, #nsamples
-        msamples, #msamples
-        nwords, #nwords
-        run_path, #run_path
-        outdir
-    )
-    run_eval_output = evaluator.compute_pxs(htype)
-    logging.info(f"Done")
-    #logging.info(f"Finished computing evals for pair {model_name}, {concept}, folder {run_output_folder}, k:{k}")
-
-#%%#################
-# Main             #
-####################
-def get_args():
-    argparser = argparse.ArgumentParser(description='Formatting Results Tables')
-    argparser.add_argument(
-        "-concept",
-        type=str,
-        choices=["number", "gender", "food", "ambiance", "service", "noise"],
-        help="Concept to create embedded word lists for"
-    )
-    argparser.add_argument(
-        "-model",
-        type=str,
-        choices=SUPPORTED_AR_MODELS,
-        help="Models to create embedding files for"
-    )
-    argparser.add_argument(
-        "-k",
-        type=int,
-        default=1,
-        help="K value for the runs"
-    )
-    argparser.add_argument(
-        "-nsamples",
-        type=int,
-        help="Number of samples for outer loops"
-    )
-    argparser.add_argument(
-        "-msamples",
-        type=int,
-        help="Number of samples for inner loops"
-    )
-    argparser.add_argument(
-        "-nucleus",
-        action="store_true",
-        default=False,
-        help="Whether to use nucleus sampling",
-    )
-    argparser.add_argument(
-        "-run_path",
-        type=str,
-        default=None,
-        help="Run to evaluate"
-    )
-    argparser.add_argument(
-        "-out_folder",
-        type=str,
-        default="test",
-        help="Directory for exporting run eval"
-    )
-    argparser.add_argument(
-        "-htype",
-        type=str,
-        choices=["l0_cxt_qxhs_par", "l1_cxt_qxhs_par", 
-                 "l0_cxt_qxhs_bot", "l1_cxt_qxhs_bot", 
-                 "l0_cxt_pxhs", "l1_cxt_pxhs"],
-        help="Type of test set contexts to compute eval distrib for"
-    )
-    return argparser.parse_args()
-
-if __name__=="__main__":
-    args = get_args()
-    logging.info(args)
-
-    #model_name = args.model
-    #concept = args.concept
-    #nucleus = args.nucleus
-    #k = args.k
-    #nsamples=args.nsamples
-    #msamples=args.msamples
-    #nwords = None
-    #output_folder = args.out_folder
-    #run_path = args.run_path
-    #nruns = 3
-    #htype=args.htype
-    model_name = "llama2"
-    concept = "food"
-    nucleus = True
-    k=1
-    nsamples=3
-    msamples=3
-    nwords = 10
-    output_folder = "test"
-    nruns = 1
-    htype = "l1_cxt_qxhs_par"
-    run_path="out/run_output/food/llama2/leace27032024/run_leace_food_llama2_2024-03-27-14:58:45_0_3.pkl"
-    
-
-    for i in range(nruns):
-        logging.info(f"Computing eval number {i}")
-        compute_eval(
-            model_name, concept, run_path, nsamples, msamples, 
-            nwords, nucleus, output_folder, htype, i
-        )
-    logging.info("Finished exporting all results.")
+    def compute_all_pxs(self):
+        self.compute_pxs("l0_cxt_qxhs_par")
+        self.compute_pxs("l1_cxt_qxhs_par")
+        self.compute_pxs("l0_cxt_qxhs_bot")
+        self.compute_pxs("l1_cxt_qxhs_bot")
+        self.compute_pxs("l0_cxt_pxhs")
+        self.compute_pxs("l1_cxt_pxhs")
 

@@ -219,24 +219,29 @@ def load_processed_dataset(dataset_name, model_name, concept=None, split=None):
     return load_dataset_pickle(dataset_path, dataset_name)
 
 def load_gender_split(model_name, split_name):
-    #TODO
-    assert False, "handle the cxt_tok situation with non-equal lengths here and below"
+
     X_gsd, U_gsd, y_gsd, fact_gsd, foil_gsd, cxt_tok_gsd = load_processed_dataset(
-        "ud_fr_gsd", model_name, split=split_name
+        "ud_fr_gsd", model_name, concept="gender", split=split_name
     )
     X_partut, U_partut, y_partut, fact_partut, foil_partut, cxt_tok_partut = load_processed_dataset(
-        "ud_fr_partut", model_name, split=split_name
+        "ud_fr_partut", model_name, concept="gender", split=split_name
     )
     X_rhapsodie, U_rhapsodie, y_rhapsodie, fact_rhapsodie, foil_rhapsodie, cxt_tok_rhapsodie = load_processed_dataset(
-        "ud_fr_rhapsodie", model_name, split=split_name
+        "ud_fr_rhapsodie", model_name, concept="gender", split=split_name
     )
 
     X = np.vstack([X_gsd, X_partut, X_rhapsodie])
-    U = np.vstack([U_gsd, U_partut, U_rhapsodie])
+    U = np.hstack([U_gsd, U_partut, U_rhapsodie])
     y = np.hstack([y_gsd, y_partut, y_rhapsodie])
-    fact = np.hstack([fact_gsd, fact_partut, fact_rhapsodie])
-    foil = np.hstack([foil_gsd, foil_partut, foil_rhapsodie])
-    cxt_tok = np.hstack([cxt_tok_gsd, cxt_tok_partut, cxt_tok_rhapsodie])
+    
+    all_fact = [*fact_gsd] + [*fact_partut] + [*fact_rhapsodie]
+    fact = np.array(list(zip_longest(*all_fact, fillvalue=-1))).T
+    
+    all_foil = [*foil_gsd] + [*foil_partut] + [*foil_rhapsodie]
+    foil = np.array(list(zip_longest(*all_foil, fillvalue=-1))).T
+    
+    all_cxt_tok = [*cxt_tok_gsd] + [*cxt_tok_partut] + [*cxt_tok_rhapsodie]
+    cxt_tok = np.array(list(zip_longest(*all_cxt_tok, fillvalue=-1))).T
     return X, U, y, fact, foil, cxt_tok
 
 def load_gender_processed(model_name):
@@ -248,11 +253,17 @@ def load_gender_processed(model_name):
     
     #stacking into one
     X = np.vstack([X_train, X_dev, X_test])
-    U = np.vstack([U_train, U_dev, U_test])
+    U = np.hstack([U_train, U_dev, U_test])
     y = np.hstack([y_train, y_dev, y_test])
-    fact = np.hstack([fact_train, fact_dev, fact_test])
-    foil = np.hstack([foil_train, foil_dev, foil_test])
-    cxt_tok = np.hstack([cxt_tok_train, cxt_tok_dev, cxt_tok_test])
+    
+    all_fact = [*fact_train] + [*fact_dev] + [*fact_test]
+    fact = np.array(list(zip_longest(*all_fact, fillvalue=-1))).T
+    
+    all_foil = [*foil_train] + [*foil_dev] + [*foil_test]
+    foil = np.array(list(zip_longest(*all_foil, fillvalue=-1))).T
+    
+    all_cxt_tok = [*cxt_tok_train] + [*cxt_tok_dev] + [*cxt_tok_test]
+    cxt_tok = np.array(list(zip_longest(*all_cxt_tok, fillvalue=-1))).T
     return X, U, y, fact, foil, cxt_tok
 
 def load_CEBaB_processed(concept_name, model_name):

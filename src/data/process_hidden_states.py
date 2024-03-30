@@ -74,12 +74,15 @@ def format_sample_ar(concept, sample):
     tgt_label = define_target(sample["tgt_label"])
     max_tokens = count_tgt_tokens(sample)
     
-    if concept in ["number", "gender"] and max_tokens == 1 and tgt_label == 0:
-        u = foil_emb.flatten() - fact_emb.flatten()
-        return (hs, u, tgt_label, fact, foil, cxt_tok)
-    elif concept in ["number", "gender"] and max_tokens == 1 and tgt_label == 1:
-        u = fact_emb.flatten() - foil_emb.flatten()
-        return (hs, u, tgt_label, fact, foil, cxt_tok)
+    #if concept in ["number", "gender"] and max_tokens == 1 and tgt_label == 0:
+    #    u = foil_emb.flatten() - fact_emb.flatten()
+    #    return (hs, u, tgt_label, fact, foil, cxt_tok)
+    #elif concept in ["number", "gender"] and max_tokens == 1 and tgt_label == 1:
+    #    u = fact_emb.flatten() - foil_emb.flatten()
+    #    return (hs, u, tgt_label, fact, foil, cxt_tok)
+    if concept in ["number", "gender"] and tgt_label in [0,1]:
+        #u = foil_emb.flatten() - fact_emb.flatten()
+        return (hs, None, tgt_label, fact, foil, cxt_tok)
     elif concept in ["food", "ambiance", "service", "noise"] and tgt_label in [0,1]\
          and max_tokens == 0: # CEBaB concepts
         return (hs, None, tgt_label, fact, foil, cxt_tok)
@@ -205,7 +208,6 @@ def get_args():
         "-dataset", 
         type=str,
         choices=["linzen", "CEBaB"] + FR_DATASETS,
-        default=None,
         help="Dataset to process hidden states for"
     )
     argparser.add_argument(
@@ -218,7 +220,6 @@ def get_args():
         "-concept",
         type=str,
         choices=["number", "gender", "food", "ambiance", "service", "noise"],
-        default=None,
         help="Concept",
     )
     argparser.add_argument(
@@ -254,9 +255,9 @@ if __name__=="__main__":
     OUT_TYPE = args.outtype
     NBATCHES = args.nbatches
     SPLIT = args.split
-    #DATASET_NAME = "CEBaB"
-    #MODEL_NAME = "llama2"
-    #CONCEPT = "food"
+    #DATASET_NAME = "ud_fr_gsd"
+    #MODEL_NAME = "gpt2-base-french"
+    #CONCEPT = None
     #SPLIT = "dev"
     #OUT_TYPE = "full"
     #NBATCHES = None

@@ -145,6 +145,11 @@ def get_batch_hs_ar_detailed(model_name, batch, model, tokenizer, V):
         batch["foil"], 
         batch["tgt_label"]):
         
+        # french data bug
+        if (ti.unique() == torch.tensor([tokenizer.pad_token_id])).all():
+            logging.warn("Weird observation skipped")
+            continue
+
         ######################
         # Get hidden states
         ######################
@@ -402,11 +407,11 @@ if __name__=="__main__":
     concept = args.concept
     split = args.split
     batch_size = args.batch_size
-    #dataset_name = "CEBaB"
-    #model_name = "gpt2-large"
-    #concept = "food"
+    #dataset_name = "ud_fr_gsd"
+    #model_name = "gpt2-base-french"
+    #concept = None
     #split = "train"
-    #batch_size = 2
+    #batch_size = 64
 
     # Load model, tokenizer
     device = get_device()
