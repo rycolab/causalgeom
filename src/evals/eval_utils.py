@@ -43,11 +43,6 @@ def load_run_Ps(run_path):
     bias = run["output"].get("bias", None)
     return P, I_P, bias
 
-def load_model_eval(model_name, concept, single_token):
-    V = get_V(model_name)
-    l0_tl, l1_tl = load_concept_token_lists(concept, model_name, single_token)
-    return V, l0_tl, l1_tl
-
 
 #%%#################
 # Distrib Helpers  #
@@ -109,10 +104,6 @@ def get_all_distribs(h, P, I_P, V, l0_tl, l1_tl, processor=None):
 def renormalize(p):
     return p / np.sum(p)
 
-
-#%%###########
-# MI helpers #
-##############
 
 
 #%%######################
