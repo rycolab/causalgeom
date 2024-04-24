@@ -39,6 +39,60 @@ OPENTABLE_BINARY = 'opentable_binary'
 OPENTABLE_TERNARY = 'opentable_ternary'
 OPENTABLE_5_WAY = 'opentable_5_way'
 
+#%%
+FOOD_PROMPTS = [
+    "The cuisine was",
+    "The dishes were",
+    "The meal was",
+    "The food tasted",
+    "The flavors were",
+]
+
+NOISE_PROMPTS = [
+    "The ambient noise level was",
+    "The background noise was",
+    "The surrounding sounds were",
+    "The auditory atmosphere was",
+    "The ambient soundscape was",
+]
+
+SERVICE_PROMPTS = [
+    "The service was", 
+    "The staff was", 
+    "The hospitality extended by the staff was", 
+    "The waiter was", 
+    "The host was", 
+]
+
+AMBIANCE_PROMPTS = [
+    "The ambiance was",
+    "The atmosphere was",
+    "The restaurant was",
+    "The vibe was",
+    "The setting was",
+]
+
+def load_suffixes(concept):
+    if concept == "ambiance":
+        return AMBIANCE_PROMPTS
+    elif concept == "food":
+        return FOOD_PROMPTS
+    elif concept == "noise":
+        return NOISE_PROMPTS
+    elif concept == "service":
+        return SERVICE_PROMPTS
+    elif concept in ["number", "gender"]:
+        return None
+    else:
+        raise ValueError("Incorrect concept")
+
+def add_suffix(text, suffix):
+    stripped_text = text.strip()
+    if stripped_text.endswith("."):
+        return stripped_text + " " + suffix
+    else:
+        return stripped_text + ". " + suffix
+
 
 #%%
 def get_args():
@@ -53,8 +107,11 @@ def get_args():
 
 args = get_args()
 logging.info(args)
-    
+
+#CONCEPT = "ambiance"   
 CONCEPT = args.concept
+CONCEPT_PROMPTS = load_suffixes(CONCEPT)
+#logging.warn("CONCEPT SET FOR TESTING")
 
 #%% data
 TASK_NAME = "opentable_binary"
@@ -102,12 +159,18 @@ def create_concept_df(df, concept):
     concept_df = formatted_df[formatted_df[f"{CONCEPT}_sentiment"].isin([POSITIVE, NEGATIVE])]
     concept_df["tgt_label"] = np.where(concept_df[f"{CONCEPT}_sentiment"] == POSITIVE, 1, 0)
 
-    return concept_df[["pre_tgt_text", "fact_text", "foil_text", "fact", "foil", "tgt_label"]]
+    concept_df["prompt"] = np.random.choice(CONCEPT_PROMPTS, concept_df.shape[0])
+    concept_df["text_w_prompt"] = concept_df.apply(
+        lambda x: add_suffix(x["pre_tgt_text"], x["prompt"]),
+        axis=1
+    )
+    output = concept_df[["text_w_prompt", "fact_text", "foil_text", "fact", "foil", "tgt_label"]]
+    output.columns = ["pre_tgt_text", "fact_text", "foil_text", "fact", "foil", "tgt_label"]
+    return output
 
 
 #%%
 final_train, final_dev, final_test = create_concept_df(train, CONCEPT), create_concept_df(dev, CONCEPT), create_concept_df(test, CONCEPT)
-
 
 #%%
 CEBaB_PATH = os.path.join(DATASETS, f"preprocessed/CEBaB/{CONCEPT}")
@@ -122,33 +185,7 @@ for data, split in splits:
 
 logging.info(f"Successfully exported {CONCEPT} datasets to: {CEBaB_PATH}")
 
-#%%
-#def add_suffix(text, suffix):
-#    if text.strip().endswith("."):
-#        return text + " " + suffix
-#    else:
-#        return text + ". " + suffix
-
-#FOOD_PROMPTS = ['Food tasted ', 'Cuisine proved ', 'Meal was ', 
-#    'Dishes were ', 'The cuisine was ', 'The dishes were ', 'The meal was ']
-
-#formatted_df["pre_tgt_text"] = formatted_df["text"].apply(lambda x: add_suffix(x, test_suffix))
-#formatted_df["fact"] = None #np.where(formatted_df["overall_sentiment"] == 1, " up", " down")
-#formatted_df["foil"] = None #np.where(formatted_df["overall_sentiment"] == 1, " down", " up")
-#formatted_df["fact_text"] = None #formatted_df["pre_tgt_text"] + formatted_df["fact"]
-#formatted_df["foil_text"] = None #formatted_df["pre_tgt_text"] + formatted_df["foil"]
-
-#final_df = formatted_df[["pre_tgt_text", "fact_text", "foil_text", "fact", "foil", "overall_sentiment"]]
-#final_df.columns = ["pre_tgt_text", "fact_text", "foil_text", "fact", "foil", "tgt_label"]
-
-#    return final_df
-
-#%% OVERALL SENTIMENT TEST RUN
-
-#test_suffix = "Thumbs"
-#final_train, final_dev, final_test = format_data(train, test_suffix), format_data(dev, test_suffix), format_data(test, test_suffix)
-
-
-
-#%% TODO: for food --
-# 1. format the labels, {0: negative, 1: positive}
+#%% TESTING
+#testpath = os.path.join(DATASETS, "preprocessed/CEBaB/noise/CEBaB_noise_dev.pkl")
+#with open(testpath, "rb") as f:
+#    data = pickle.load(f)
