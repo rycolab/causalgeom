@@ -13,3 +13,4 @@ source /cluster/home/cguerner/python_venvs/usagebasedprobing/bin/activate
 python -m pip install -r requirements.txt 
 echo "Installed requirements"
 #pip3 install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu116
+

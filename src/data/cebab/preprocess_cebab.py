@@ -39,6 +39,7 @@ OPENTABLE_BINARY = 'opentable_binary'
 OPENTABLE_TERNARY = 'opentable_ternary'
 OPENTABLE_5_WAY = 'opentable_5_way'
 
+
 #%%
 def get_args():
     argparser = argparse.ArgumentParser(description='CEBaB preprocessing args')

@@ -30,8 +30,10 @@ from paths import DATASETS, OUT, RESULTS, MODELS
 
 
 from utils.lm_loaders import SUPPORTED_AR_MODELS
-from evals.mi_distributor_utils import prep_generated_data
+from evals.mi_distributor_utils import prep_generated_data, \
+    get_nucleus_arg
 from evals.eval_utils import renormalize
+
 #from data.filter_generations import load_generated_hs_wff
 #from data.data_utils import filter_hs_w_ys, sample_filtered_hs
 #from utils.lm_loaders import get_model, get_tokenizer
@@ -41,21 +43,19 @@ coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
 
 #%%
-# TODO:
-# - incorporate the two functions imported from mi_eval into the class
-#
-class MultiTokenMIComputer:
+class MIComputer:
     
     def __init__(self, 
                  model_name, # name of AR model 
                  concept, # concept name
-                 nucleus, # whether to use samples generated with nucleus sampling
+                 source, # whether to use samples generated with nucleus sampling
                  h_distribs_dir, # path containing test sample distributions for eval
                  #nsamples, # number of test set samples
                  #msamples, # number of dev set samples for each q computation
                  #nwords, # number of words to use from token lists -- GET RID OF THIS
                 ):
 
+        nucleus = get_nucleus_arg(source)
         #self.nsamples = nsamples
         #self.msamples = msamples
         #self.nwords = nwords
@@ -253,7 +253,7 @@ class MultiTokenMIComputer:
 
 # %%
 def compute_mis(model_name, concept, run_path, 
-    nucleus, output_folder, iteration):
+    source, output_folder, iteration):
     #rundir = os.path.join(
     #    OUT, f"run_output/{concept}/{model_name}/{run_output_folder}"
     #)
@@ -265,17 +265,17 @@ def compute_mis(model_name, concept, run_path,
 
     outdir = os.path.join(
         os.path.dirname(rundir), 
-        f"mt_eval_{rundir_name}/{output_folder}/run_{run_id}/nuc_{nucleus}/evaliter_{iteration}"
+        f"mt_eval_{rundir_name}/{output_folder}/run_{run_id}/source_{source}/evaliter_{iteration}"
     )
     h_distribs_dir = os.path.join(
         outdir, "h_distribs"
     )
     assert os.path.exists(h_distribs_dir), "H distribs dir doesn't exist"
 
-    micomputer = MultiTokenMIComputer(
+    micomputer = MIComputer(
         model_name, 
         concept, 
-        nucleus, # nucleus 
+        source,
         h_distribs_dir, #where the distributions for eval were exported
     )
     run_eval_output = micomputer.compute_run_eval()
@@ -283,7 +283,7 @@ def compute_mis(model_name, concept, run_path,
     run_metadata = {
         "model_name": model_name,
         "concept": concept,
-        "nucleus": nucleus,
+        "source": source,
         #"nsamples": nsamples,
         #"msamples": msamples,
         "run_path": run_path,
@@ -291,7 +291,7 @@ def compute_mis(model_name, concept, run_path,
     }
     full_run_output = run_metadata | run_eval_output
     actual_outdir = os.path.join(RESULTS, "mis")
-    outpath = os.path.join(actual_outdir, f"mis_{model_name}_{concept}_{rundir_name}_{output_folder}_run_{run_id}_nuc_{nucleus}_evaliter_{iteration}.pkl")
+    outpath = os.path.join(actual_outdir, f"mis_{model_name}_{concept}_{rundir_name}_{output_folder}_run_{run_id}_source_{source}_evaliter_{iteration}.pkl")
     with open(outpath, "wb") as f:
         pickle.dump(full_run_output, f, protocol=pickle.HIGHEST_PROTOCOL)
     logging.info(f"Run eval exported: {outpath}")
@@ -315,26 +315,10 @@ def get_args():
         help="Models to create embedding files for"
     )
     argparser.add_argument(
-        "-k",
-        type=int,
-        default=1,
-        help="K value for the runs"
-    )
-    argparser.add_argument(
-        "-nsamples",
-        type=int,
-        help="Number of samples for outer loops"
-    )
-    argparser.add_argument(
-        "-msamples",
-        type=int,
-        help="Number of samples for inner loops"
-    )
-    argparser.add_argument(
-        "-nucleus",
-        action="store_true",
-        default=False,
-        help="Whether to use nucleus sampling",
+        "-source",
+        type=str,
+        choices=["natural", "gen_nucleus", "gen_normal"],
+        help="Which samples to use for eval"
     )
     argparser.add_argument(
         "-run_path",
@@ -356,18 +340,14 @@ if __name__=="__main__":
 
     model_name = args.model
     concept = args.concept
-    nucleus = args.nucleus
-    #k = args.k
-    nsamples=args.nsamples
-    msamples=args.msamples
-    nwords = None
+    source = args.source
     output_folder = args.out_folder
     run_path = args.run_path
     nruns = 3
     
     #model_name = "gpt2-large"
     #concept = "food"
-    #nucleus = True
+    #source = "gen_nucleus"
     #k=1
     #nsamples=3
     #msamples=3
@@ -380,6 +360,7 @@ if __name__=="__main__":
     for i in range(nruns):
         logging.info(f"Computing eval number {i}")
         compute_mis(
-            model_name, concept, run_path, nucleus, output_folder, i
+            model_name, concept, run_path, source, 
+            output_folder, i
         )
     logging.info("Finished exporting all results.")

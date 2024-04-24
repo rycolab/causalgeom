@@ -30,10 +30,9 @@ sys.path.append('./src/')
 
 from paths import DATASETS, OUT, RESULTS, MODELS
 
-
 from utils.lm_loaders import SUPPORTED_AR_MODELS
-from evals.mi_distributor_mt import MultiTokenDistributor
-from evals.mt_mi_computer import compute_mis
+from evals.MultiTokenDistributor import MultiTokenDistributor
+from evals.MIComputer import compute_mis
 
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
@@ -56,10 +55,10 @@ def get_args():
         help="Models to create embedding files for"
     )
     argparser.add_argument(
-        "-k",
-        type=int,
-        default=1,
-        help="K value for the runs"
+        "-source",
+        type=str,
+        choices=["natural", "gen_nucleus", "gen_normal"],
+        help="Which samples to use for eval"
     )
     argparser.add_argument(
         "-nsamples",
@@ -70,12 +69,6 @@ def get_args():
         "-msamples",
         type=int,
         help="Number of samples for inner loops"
-    )
-    argparser.add_argument(
-        "-nucleus",
-        action="store_true",
-        default=False,
-        help="Whether to use nucleus sampling",
     )
     argparser.add_argument(
         "-run_path",
@@ -89,14 +82,12 @@ def get_args():
         default="test",
         help="Directory for exporting run eval"
     )
-    #argparser.add_argument(
-    #    "-htype",
-    #    type=str,
-    #    choices=["l0_cxt_qxhs_par", "l1_cxt_qxhs_par", 
-    #             "l0_cxt_qxhs_bot", "l1_cxt_qxhs_bot", 
-    #             "l0_cxt_pxhs", "l1_cxt_pxhs"],
-    #    help="Type of test set contexts to compute eval distrib for"
-    #)
+    argparser.add_argument(
+        "-batch_size",
+        type=int,
+        default=64,
+        help="Batch size for word probability computation"
+    )
     return argparser.parse_args()
 
 if __name__=="__main__":
@@ -105,26 +96,31 @@ if __name__=="__main__":
 
     model_name = args.model
     concept = args.concept
-    nucleus = args.nucleus
-    k = args.k
+    source = args.source
     nsamples=args.nsamples
     msamples=args.msamples
     nwords = None
     output_folder = args.out_folder
     run_path = args.run_path
+    batch_size = args.batch_size
     nruns = 3
-    #htype=args.htype
+    
+    if source in ['gen_nucleus' 'gen_normal']:
+        batch_size = 3
+    else:
+        batch_size = 64
+    
     #model_name = "gpt2-large"
     #concept = "food"
-    #nucleus = True
-    #k=1
+    #source = "gen_normal"
     #nsamples=3
     #msamples=3
-    #nwords = 10
+    #nwords=None
     #output_folder = "test"
+    #run_path="out/run_output/number/gpt2-large/leace26032024/run_leace_number_gpt2-large_2024-03-26-19:55:11_0_3.pkl"
+    #batch_size = 64
     #nruns = 1
-    #run_path="out/run_output/food/gpt2-large/leace28032024/run_leace_food_gpt2-large_2024-03-28-13:44:28_0_3.pkl"
-    #htype = "l1_cxt_qxhs_par"
+    
     
 
     for i in range(nruns):
@@ -133,20 +129,21 @@ if __name__=="__main__":
         evaluator = MultiTokenDistributor(
             model_name, 
             concept, 
-            nucleus, # nucleus 
+            source, # source 
             nsamples, #nsamples
             msamples, #msamples
             nwords, #nwords
             run_path, #run_path
             output_folder,
-            i
+            i,
+            batch_size
         )
         run_eval_output = evaluator.compute_all_pxs()
         torch.cuda.empty_cache()
         logging.info(f"Eval iteration {i} distributions computed")
 
         compute_mis(
-            model_name, concept, run_path, nucleus, output_folder, i
+            model_name, concept, run_path, source, output_folder, i
         )
         logging.info(f"Eval iteration {i} MIs computed")
     logging.info("Finished running all iterations.")

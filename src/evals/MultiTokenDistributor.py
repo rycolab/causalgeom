@@ -21,9 +21,12 @@ from scipy.special import softmax
 from tqdm import trange
 from transformers import TopPLogitsWarper, LogitsProcessorList
 import torch 
+from torch.utils.data import DataLoader, Dataset
+from abc import ABC
 from itertools import zip_longest
 from scipy.special import softmax
 from scipy.stats import entropy
+import math
 
 #sys.path.append('..')
 sys.path.append('./src/')
@@ -32,7 +35,9 @@ from paths import DATASETS, OUT, RESULTS, MODELS
 
 
 from evals.mi_distributor_utils import prep_generated_data, \
-    compute_batch_inner_loop_qxhs
+    compute_batch_inner_loop_qxhs, get_nucleus_arg, \
+        sample_gen_all_hs_batched, compute_pxh_batch_handler,\
+            fast_compute_p_words
 from utils.lm_loaders import SUPPORTED_AR_MODELS, GPT2_LIST
 from evals.eval_utils import load_run_Ps, load_run_output, renormalize
 from data.embed_wordlists.embedder import load_concept_token_lists
@@ -77,6 +82,18 @@ AMBIANCE_PROMPTS = [
     "The setting was",
 ]
 
+#%%
+class CustomDataset(Dataset, ABC):
+    def __init__(self, token_tensor):
+        self.data = token_tensor
+        self.n_instances = token_tensor.shape[0]
+        
+    def __len__(self):
+        return self.n_instances
+
+    def __getitem__(self, index):
+        return self.data[index]
+
 
 #%%
 class MultiTokenDistributor:
@@ -84,19 +101,22 @@ class MultiTokenDistributor:
     def __init__(self, 
                  model_name, # name of AR model 
                  concept, # concept name
-                 nucleus, # whether to use samples generated with nucleus sampling
+                 source, # whether to use samples generated with nucleus sampling
                  nsamples, # number of test set samples
                  msamples, # number of dev set samples for each q computation
                  nwords, # number of words to use from token lists -- GET RID OF THIS
                  run_path, # path of LEACE training run output
                  output_folder_name, # directory for exporting individual distributions
                  iteration, # iteration of the eval for this run
-                 #single_token -- eventually will be able to add this arg
+                 batch_size, #batch size for the word list probability computation
                 ):
 
         self.nsamples = nsamples
         self.msamples = msamples
         self.nwords = nwords
+        self.batch_size = batch_size
+
+        nucleus = get_nucleus_arg(source)
 
         # directory handling
         rundir = os.path.dirname(run_path)
@@ -105,7 +125,7 @@ class MultiTokenDistributor:
         run_id = run_path[-27:-4]
         self.outdir = os.path.join(
             os.path.dirname(rundir), 
-            f"mt_eval_{rundir_name}/{output_folder_name}/run_{run_id}/nuc_{nucleus}/evaliter_{iteration}"
+            f"mt_eval_{rundir_name}/{output_folder_name}/run_{run_id}/source_{source}/evaliter_{iteration}"
         )
         os.makedirs(self.outdir, exist_ok=output_folder_name=="test")
         logging.info(f"Created outdir: {self.outdir}, exist_ok = {output_folder_name=='test'}")
@@ -133,14 +153,14 @@ class MultiTokenDistributor:
             self.l1_tl = self.l1_tl[:self.nwords]
 
         # CEBaB prompts
-        self.prompt_set = self.load_suffixes(concept)
+        self.prompt_set = self.load_suffixes(concept, source)
+        logging.info(f"Prompt set for samples: {self.prompt_set}")
         #self.prompt_end_space = model_name == "llama2"
 
         #p_x = load_p_x(MODEL_NAME, NUCLEUS)
-        self.p_c, self.gen_l0_hs, self.gen_l1_hs, self.gen_all_hs = prep_generated_data(
+        self.p_c, self.gen_l0_cxt_toks, self.gen_l1_cxt_toks, self.gen_all_hs = prep_generated_data(
             model_name, concept, nucleus
         )
-
 
         #self.X_dev, self.y_dev, self.facts_dev, self.foils_dev, self.cxt_toks_dev = \
         #    run["X_val"], run["y_val"], run["facts_val"], run["foils_val"], run["cxt_toks_val"]
@@ -152,7 +172,6 @@ class MultiTokenDistributor:
             run["y_test"], run["cxt_toks_test"]
 
         #TODO: RIGHT NOW THIS IS THE ONLY WAY, NEED TO ENABLE GENERATED
-        source = "natural"
         self.l0_cxt_toks, self.l1_cxt_toks = self.get_concept_eval_contexts(source)
 
         self.new_word_tokens = self.get_new_word_tokens(model_name) 
@@ -209,66 +228,66 @@ class MultiTokenDistributor:
     #########################################
     # Data handling                         #
     #########################################
-    #TODO: can probs get rid of h's here actually and just revert to the old functions
-    # for MT
     def get_concept_eval_contexts(self, source):
-        if source == "generated":
-            raise NotImplementedError("This is currently not working cuz I save h's not tokens")
-            #l0_hs_n, l1_hs_n = sample_filtered_hs(evaluator.l0_hs_wff, evaluator.l0_hs_wff, evaluator.nsamples)
+        if source in ["gen_nucleus", "gen_normal"]:
+            torch_gen_l0_cxt_toks = [torch.tensor(x) for x in self.gen_l0_cxt_toks]
+            torch_gen_l1_cxt_toks = [torch.tensor(x) for x in self.gen_l1_cxt_toks]
+            l0_cxt_toks = torch.nn.utils.rnn.pad_sequence(torch_gen_l0_cxt_toks, padding_value=-1).T
+            l1_cxt_toks = torch.nn.utils.rnn.pad_sequence(torch_gen_l1_cxt_toks, padding_value=-1).T 
+            return l0_cxt_toks, l1_cxt_toks
         elif source == "natural":
-            #l0_hs = torch.tensor(self.X_test[self.y_test==0], dtype=torch.float32)
-            #l1_hs = torch.tensor(self.X_test[self.y_test==1], dtype=torch.float32)
-
             l0_cxt_toks = torch.tensor(self.cxt_toks_test[self.y_test==0])
             l1_cxt_toks = torch.tensor(self.cxt_toks_test[self.y_test==1])
-            #return l0_hs, l1_hs, l0_cxt_toks, l1_cxt_toks
+            # deleting the generated ones for memory
+            self.gen_l0_cxt_toks, self.gen_l1_cxt_toks = None, None
             return l0_cxt_toks, l1_cxt_toks
         else: 
             raise ValueError(f"Evaluation context source {source} invalid")
 
     def sample_filtered_contexts(self):
-        #TODO:remove commented code once confirmed we dont need h's here
         l0_len = self.l0_cxt_toks.shape[0]
         l1_len = self.l1_cxt_toks.shape[0]
-        ratio = l1_len / l0_len
-        l0_ind = np.arange(l0_len)
-        l1_ind = np.arange(l1_len)
-        np.random.shuffle(l0_ind)
-        np.random.shuffle(l1_ind)
-        if ratio > 1:
-            #l0_hs_sample = self.l0_hs[l0_ind[:self.nsamples]].to(self.device)
-            #l1_hs_sample = self.l1_hs[l1_ind[:int((self.nsamples*ratio))]].to(self.device)
-            l0_cxt_toks_sample = self.l0_cxt_toks[l0_ind[:self.nsamples]].to(self.device)
-            l1_cxt_toks_sample = self.l1_cxt_toks[l1_ind[:int((self.nsamples*ratio))]].to(self.device)
-        else:
-            ratio = l0_len / l1_len
-            #l0_hs_sample = self.l0_hs[l0_ind[:int((self.nsamples*ratio))]].to(self.device)
-            #l1_hs_sample = self.l1_hs[l1_ind[:self.nsamples]].to(self.device)
-            l0_cxt_toks_sample = self.l0_cxt_toks[l0_ind[:int((self.nsamples*ratio))]].to(self.device)
-            l1_cxt_toks_sample = self.l1_cxt_toks[l1_ind[:self.nsamples]].to(self.device)
-
-        #l0_h_cxt_tok_pairs = [*zip(l0_hs_sample, l0_cxt_toks_sample)]
-        #l1_h_cxt_tok_pairs = [*zip(l1_hs_sample, l1_cxt_toks_sample)]
-        #return l0_h_cxt_tok_pairs, l1_h_cxt_tok_pairs 
-        return l0_cxt_toks_sample, l1_cxt_toks_sample
+        if (l0_len < self.nsamples or l1_len < self.nsamples):
+            logging.info(f"Sample contexts: no sampling applied, l0 {l0_len}, l1 {l1_len}")
+            return self.l0_cxt_toks, self.l1_cxt_toks
+        else:    
+            ratio = l1_len / l0_len
+            l0_ind = np.arange(l0_len)
+            l1_ind = np.arange(l1_len)
+            np.random.shuffle(l0_ind)
+            np.random.shuffle(l1_ind)
+            if ratio > 1:
+                l0_cxt_toks_sample = self.l0_cxt_toks[l0_ind[:self.nsamples]].to(self.device)
+                l1_cxt_toks_sample = self.l1_cxt_toks[l1_ind[:int((self.nsamples*ratio))]].to(self.device)
+            else:
+                ratio = l0_len / l1_len
+                l0_cxt_toks_sample = self.l0_cxt_toks[l0_ind[:int((self.nsamples*ratio))]].to(self.device)
+                l1_cxt_toks_sample = self.l1_cxt_toks[l1_ind[:self.nsamples]].to(self.device)
+            logging.info(f"Sample contexts: sampling applied,"
+                         f" l0 {l0_cxt_toks_sample.shape[0]},"
+                         f" l1 {l1_cxt_toks_sample.shape[0]}")
+            return l0_cxt_toks_sample, l1_cxt_toks_sample
 
     #########################################
     # Concept prompt adding for CEBaB.      #
     #########################################
     @staticmethod
-    def load_suffixes(concept):
-        if concept == "ambiance":
-            return AMBIANCE_PROMPTS
-        elif concept == "food":
-            return FOOD_PROMPTS
-        elif concept == "noise":
-            return NOISE_PROMPTS
-        elif concept == "service":
-            return SERVICE_PROMPTS
-        elif concept in ["number", "gender"]:
+    def load_suffixes(concept, source):
+        if source in ["gen_normal", "gen_nucleus"]:
             return None
         else:
-            raise ValueError("Incorrect concept")
+            if concept == "ambiance":
+                return AMBIANCE_PROMPTS
+            elif concept == "food":
+                return FOOD_PROMPTS
+            elif concept == "noise":
+                return NOISE_PROMPTS
+            elif concept == "service":
+                return SERVICE_PROMPTS
+            elif concept in ["number", "gender"]:
+                return None
+            else:
+                raise ValueError("Incorrect concept")
 
     @staticmethod
     def add_suffix(text, suffix):
@@ -298,82 +317,52 @@ class MultiTokenDistributor:
     #########################################
     # Probability computations              #
     #########################################
-    def sample_gen_all_hs_batched(self, n_ntok_H):
-        """ input dimensions: 
-        - n_ntok_H: nwords x (max_ntokens + 1) x d
-        output: nwords x (max_ntokens + 1) x msamples x d
-        """
-        n_ntok_m_H = n_ntok_H[:, :, None, :].repeat(1, 1, self.msamples, 1)
-        idx = np.random.randint(
-            0, self.gen_all_hs.shape[0], 
-            n_ntok_H.shape[0]*n_ntok_H.shape[1]*self.msamples
-        )
-        other_hs = self.gen_all_hs[idx].to(self.device)
-        other_hs_view = other_hs.view(
-            (n_ntok_H.shape[0], n_ntok_H.shape[1], 
-             self.msamples, n_ntok_H.shape[2])
-        )
-        return n_ntok_m_H, other_hs_view
-        
-    def compute_pxh_batch_handler(self, method, nntokH):
-        if method in ["hbot", "hpar"]:
-            nntokmH, other_nntokmH = self.sample_gen_all_hs_batched(nntokH)
-            qxhs = compute_batch_inner_loop_qxhs(
-                method, nntokmH, other_nntokmH, 
-                self.P, self.I_P, self.V
+    def compute_batch_p_words(self, batch_tokens, cxt_last_index, method):
+        batch_tokens = batch_tokens.to(self.device)
+
+        with torch.no_grad():
+            output = self.model(
+                input_ids=batch_tokens, 
+                #attention_mask=attention_mask, 
+                labels=batch_tokens,
+                output_hidden_states=True,
+                #past_key_values= cxt_pkv
             )
-            return qxhs.mean(axis=-2)
-        elif method == "h":
-            logits = nntokH @ self.V.T
-            pxh = softmax(logits.cpu(), axis=-1)
-            return pxh
-        else:
-            raise ValueError(f"Incorrect method argument {method}")
 
-    def compute_batch_p_words(self, token_list, batch_pxh):
-        """ 
-        TODO: would be nice to turn this into a vectorized operation
-        just dont know how to do variable length indexing
-        expected dimensions:
-        - token list: n_words x max_n_tokens
-        - batch_pxh: nwords x (max_n_tokens + 1) x |vocabulary|
+        batch_tok_ids = batch_tokens[:,(cxt_last_index+1):]
+        batch_hidden_states = output["hidden_states"][-1][:,cxt_last_index:,:].type(torch.float32)
 
-        output: len nwords list of word probabilities
-        """
-        all_word_probs = []
-        for word_tokens, word_probs in zip(token_list, batch_pxh):
-            counter=0
-            p_word=1
-            while counter < len(word_tokens):
-                p_word = p_word * word_probs[counter, word_tokens[counter]]
-                counter+=1
-            new_word_prob = word_probs[counter, self.new_word_tokens].sum()
-            p_word = p_word * new_word_prob
-            all_word_probs.append(p_word)
-        return all_word_probs
+        batch_pxhs = compute_pxh_batch_handler(
+            method, batch_hidden_states, self.P, self.I_P, self.V, gpu_out=True
+        )
+        batch_word_probs = fast_compute_p_words(
+            batch_tok_ids, batch_pxhs, self.tokenizer.pad_token_id, 
+            self.new_word_tokens, self.device
+        )
+        return batch_word_probs
 
-    def compute_p_words(self, token_list, cxt, method):
+    def compute_token_list_word_probs(self, token_list, cxt, method):
         cxt_last_index = cxt.shape[0] - 1
         cxt_np = cxt.clone().cpu().numpy()
         cxt_plus_tl = [np.append(cxt_np, x).tolist() for x in token_list]
         cxt_plus_tl_batched = torch.tensor(
             list(zip_longest(*cxt_plus_tl, fillvalue=self.tokenizer.pad_token_id))
-        ).T.to(self.device)
+        ).T
 
-        with torch.no_grad():
-            output = self.model(
-                input_ids=cxt_plus_tl_batched, 
-                #attention_mask=attention_mask, 
-                labels=cxt_plus_tl_batched,
-                output_hidden_states=True,
-                #past_key_values= cxt_pkv
+        ds = CustomDataset(cxt_plus_tl_batched)
+        dl = DataLoader(dataset = ds, batch_size=self.batch_size)
+
+        tl_word_probs = []
+        for i, batch_tokens in enumerate(dl):
+            #pbar.set_description(f"Generating hidden states")
+
+            batch_word_probs = self.compute_batch_p_words(
+                batch_tokens, cxt_last_index, method
             )
 
-        #batch_tok_ids = cxt_plus_tl_batched[:,(cxt_last_index+1):]
-        batch_hidden_states = output["hidden_states"][-1][:,cxt_last_index:,:].type(torch.float32)
+            tl_word_probs += batch_word_probs
 
-        batch_pxhs = self.compute_pxh_batch_handler(method, batch_hidden_states)
-        tl_word_probs = self.compute_batch_p_words(token_list, batch_pxhs)
+            torch.cuda.empty_cache()
         return tl_word_probs
 
     def compute_lemma_probs(self, lemma_samples, method, outdir, pad_token=-1):
@@ -381,13 +370,15 @@ class MultiTokenDistributor:
         for i, cxt_pad in enumerate(tqdm(lemma_samples)):
             cxt = cxt_pad[cxt_pad != pad_token]
 
-            if self.prompt_set:
+            if self.prompt_set is not None:
                 cxt = self.add_concept_suffix(cxt)
 
             logging.info(f"---New eval context: {self.tokenizer.decode(cxt)}---")
 
-            l0_word_probs = self.compute_p_words(self.l0_tl, cxt, method)
-            l1_word_probs = self.compute_p_words(self.l1_tl, cxt, method)
+            l0_word_probs = self.compute_token_list_word_probs(
+                self.l0_tl, cxt, method)
+            l1_word_probs = self.compute_token_list_word_probs(
+                self.l1_tl, cxt, method)
 
             export_path = os.path.join(
                 outdir, 

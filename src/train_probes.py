@@ -109,7 +109,6 @@ def compute_leace_affine(X_train, y_train):
 
 
 def train_probes(run_data):  
-
     X_train, X_dev, X_test = run_data["X_train"], run_data["X_dev"], run_data["X_test"]
     U_train, U_dev, U_test = run_data["U_train"], run_data["U_dev"], run_data["U_test"]
     y_train, y_dev, y_test = run_data["y_train"], run_data["y_dev"], run_data["y_test"]

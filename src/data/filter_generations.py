@@ -105,7 +105,7 @@ def get_concept_hs_w_factfoil_multitoken(generations_folder, l0_tl, l1_tl,
         try:
             with open(filepath, "rb") as f:
                 data = pickle.load(f)
-        except pickle.UnpicklingError:
+        except (pickle.UnpicklingError, EOFError):
             continue
         else:
             random.shuffle(data)
@@ -155,18 +155,26 @@ def load_filtered_hs(model_name, I_P="no_I_P", nsamples=None):
         l0_hs, l1_hs = sample_filtered_hs(l0_hs, l1_hs, nsamples)
     return l0_hs, l1_hs
 """
-def load_generated_hs_wff(model_name, concept, nucleus):
+def load_filtered_generations(model_name, concept, nucleus, new=True):
     if nucleus:
         filtered_hs_dir = os.path.join(OUT, f"filtered_generations_nucleus/{model_name}/{concept}")
     else:
         filtered_hs_dir = os.path.join(OUT, f"filtered_generations/{model_name}/{concept}")
     
-    with open(os.path.join(filtered_hs_dir, "l0_hs_w_factfoil.pkl"), "rb") as f:
-        l0_hs_wff = pickle.load(f)
-    with open(os.path.join(filtered_hs_dir, "l1_hs_w_factfoil.pkl"), "rb") as f:
-        l1_hs_wff = pickle.load(f)
-    with open(os.path.join(filtered_hs_dir, "other_hs.pkl"), "rb") as f:
-        other_hs = pickle.load(f)
+    if new:
+        with open(os.path.join(filtered_hs_dir, "new_l0_hs_w_factfoil.pkl"), "rb") as f:
+            l0_hs_wff = pickle.load(f)
+        with open(os.path.join(filtered_hs_dir, "new_l1_hs_w_factfoil.pkl"), "rb") as f:
+            l1_hs_wff = pickle.load(f)
+        with open(os.path.join(filtered_hs_dir, "new_other_hs.pkl"), "rb") as f:
+            other_hs = pickle.load(f)
+    else:
+        with open(os.path.join(filtered_hs_dir, "l0_hs_w_factfoil.pkl"), "rb") as f:
+            l0_hs_wff = pickle.load(f)
+        with open(os.path.join(filtered_hs_dir, "l1_hs_w_factfoil.pkl"), "rb") as f:
+            l1_hs_wff = pickle.load(f)
+        with open(os.path.join(filtered_hs_dir, "other_hs.pkl"), "rb") as f:
+            other_hs = pickle.load(f)
     return l0_hs_wff, l1_hs_wff, other_hs
 
 # %%
@@ -242,9 +250,9 @@ if __name__ == '__main__':
         generations_folder, l0_tl, l1_tl, nfiles=nfiles, perc_samples=perc_samples
     )
     
-    l0_wff_outfile = os.path.join(outdir, "l0_hs_w_factfoil.pkl")
-    l1_wff_outfile = os.path.join(outdir, "l1_hs_w_factfoil.pkl")
-    other_outfile = os.path.join(outdir, "other_hs.pkl")
+    l0_wff_outfile = os.path.join(outdir, "new_l0_hs_w_factfoil.pkl")
+    l1_wff_outfile = os.path.join(outdir, "new_l1_hs_w_factfoil.pkl")
+    other_outfile = os.path.join(outdir, "new_other_hs.pkl")
     with open(l0_wff_outfile, "wb") as f:
         pickle.dump(l0_hs_wff, f, protocol=pickle.HIGHEST_PROTOCOL)
     with open(l1_wff_outfile, "wb") as f:
