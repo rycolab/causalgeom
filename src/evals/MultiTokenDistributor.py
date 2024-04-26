@@ -37,7 +37,7 @@ from paths import DATASETS, OUT, RESULTS, MODELS
 from evals.mi_distributor_utils import prep_generated_data, \
     compute_batch_inner_loop_qxhs, get_nucleus_arg, \
         sample_gen_all_hs_batched, compute_pxh_batch_handler,\
-            fast_compute_p_words
+            fast_compute_m_p_words, fast_compute_p_words
 from utils.lm_loaders import SUPPORTED_AR_MODELS, GPT2_LIST
 from evals.eval_utils import load_run_Ps, load_run_output, renormalize
 from data.embed_wordlists.embedder import load_concept_token_lists
@@ -124,8 +124,8 @@ class MultiTokenDistributor:
 
         run_id = run_path[-27:-4]
         self.outdir = os.path.join(
-            os.path.dirname(rundir), 
-            f"mt_eval_{rundir_name}/{output_folder_name}/run_{run_id}/source_{source}/evaliter_{iteration}"
+            OUT, 
+            f"mt_eval/{concept}/{model_name}/mt_eval_{rundir_name}/{output_folder_name}/run_{run_id}/source_{source}/evaliter_{iteration}"
         )
         os.makedirs(self.outdir, exist_ok=output_folder_name=="test")
         logging.info(f"Created outdir: {self.outdir}, exist_ok = {output_folder_name=='test'}")
@@ -333,12 +333,21 @@ class MultiTokenDistributor:
         batch_hidden_states = output["hidden_states"][-1][:,cxt_last_index:,:].type(torch.float32)
 
         batch_pxhs = compute_pxh_batch_handler(
-            method, batch_hidden_states, self.P, self.I_P, self.V, gpu_out=True
+            method, batch_hidden_states, self.msamples, self.gen_all_hs,
+            self.P, self.I_P, self.V, True, self.device
         )
-        batch_word_probs = fast_compute_p_words(
-            batch_tok_ids, batch_pxhs, self.tokenizer.pad_token_id, 
-            self.new_word_tokens, self.device
-        )
+        if method == "h":
+            batch_word_probs = fast_compute_p_words(
+                batch_tok_ids, batch_pxhs, self.tokenizer.pad_token_id, 
+                self.new_word_tokens, self.device
+            )
+        elif method in ["hbot", "hpar"]:
+            batch_word_probs = fast_compute_m_p_words(
+                batch_tok_ids, batch_pxhs, self.tokenizer.pad_token_id, 
+                self.new_word_tokens, self.device
+            )
+        else:
+            raise ValueError("Incorrect method")
         return batch_word_probs
 
     def compute_token_list_word_probs(self, token_list, cxt, method):
@@ -360,10 +369,9 @@ class MultiTokenDistributor:
                 batch_tokens, cxt_last_index, method
             )
 
-            tl_word_probs += batch_word_probs
+            tl_word_probs.append(batch_word_probs)
 
-            torch.cuda.empty_cache()
-        return tl_word_probs
+        return torch.hstack(tl_word_probs).cpu().numpy()
 
     def compute_lemma_probs(self, lemma_samples, method, outdir, pad_token=-1):
         l0_probs, l1_probs = [], []
@@ -377,8 +385,10 @@ class MultiTokenDistributor:
 
             l0_word_probs = self.compute_token_list_word_probs(
                 self.l0_tl, cxt, method)
+            torch.cuda.empty_cache()
             l1_word_probs = self.compute_token_list_word_probs(
                 self.l1_tl, cxt, method)
+            torch.cuda.empty_cache()
 
             export_path = os.path.join(
                 outdir, 
@@ -393,7 +403,7 @@ class MultiTokenDistributor:
             l0_probs.append(l0_word_probs)
             l1_probs.append(l1_word_probs)
 
-        return np.vstack(l0_probs), np.vstack(l1_probs)
+        return np.stack(l0_probs), np.stack(l1_probs)
 
     def compute_pxs(self, htype):
         htype_outdir = os.path.join(

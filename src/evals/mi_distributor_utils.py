@@ -92,10 +92,9 @@ def compute_batch_inner_loop_qxhs(mode, nmH, other_nmH,
     P, I_P, V, gpu_out, processor=None):
     """ 
     Dimensions of nmH and other_nmH:
-    - nwords x m_samples x d (single token)
-    - nwords x max_n_tokens x m_samples x d
+    - msamples x nwords x max_n_tokens x d (multi token)
 
-    returns: nwords x max_n_tokens x m_samples x |vocab| (distributions)
+    returns: msamples x nwords x max_n_tokens x |vocab| (distributions)
     """
     #TODO: make this a log softmax
     assert nmH.shape == other_nmH.shape, "Incorrect inputs"
@@ -137,26 +136,57 @@ def sample_gen_all_hs_batched(n_ntok_H, msamples, gen_all_hs, device):
             msamples, n_ntok_H.shape[2])
     )
     return n_ntok_m_H, other_hs_view
-    
-    
-def compute_pxh_batch_handler(method, nntokH, P, I_P, V, gpu_out):
-    if method in ["hbot", "hpar"]:
-        nntokmH, other_nntokmH = sample_gen_all_hs_batched(nntokH)
-        qxhs = compute_batch_inner_loop_qxhs(
-            method, nntokmH, other_nntokmH, 
-            P, I_P, V, gpu_out
-        )
-        return qxhs.mean(axis=-2)
-    elif method == "h":
-        logits = nntokH @ V.T
-        if gpu_out:
-            pxh = torch.nn.functional.softmax(logits, dim=-1)
-        else:
-            pxh = softmax(logits.cpu(), axis=-1)
-        return pxh
-    else:
-        raise ValueError(f"Incorrect method argument {method}")
 
+def sample_gen_all_hs_batched_new(n_ntok_H, msamples, gen_all_hs, device):
+    m_n_ntok_H = n_ntok_H[None, :, :, :].repeat(msamples, 1, 1, 1)
+    idx = np.random.randint(
+        0, gen_all_hs.shape[0], 
+        n_ntok_H.shape[0]*msamples
+    )
+    other_hs = gen_all_hs[idx].to(device)
+    other_hs_view = other_hs.view(
+        (msamples, n_ntok_H.shape[0], n_ntok_H.shape[2])
+    )
+    other_hs_final = other_hs_view[:,:,None,:].repeat(1,1,n_ntok_H.shape[1],1)
+    return m_n_ntok_H, other_hs_final
+
+def compute_qxh_batch(method, nntokH, msamples, all_hs, 
+        P, I_P, V, gpu_out, device):
+    nntokmH, other_nntokmH = sample_gen_all_hs_batched(
+        nntokH, msamples, all_hs, device)
+    qxhs = compute_batch_inner_loop_qxhs(
+        method, nntokmH, other_nntokmH, 
+        P, I_P, V, gpu_out
+    )
+    return qxhs
+
+def compute_qxh_batch_new(method, nntokH, msamples, all_hs, 
+        P, I_P, V, gpu_out, device):
+    mnntokH, other_mnntokH = sample_gen_all_hs_batched_new(
+        nntokH, msamples, all_hs, device)
+    qxhs = compute_batch_inner_loop_qxhs(
+        method, mnntokH, other_mnntokH, 
+        P, I_P, V, gpu_out
+    )
+    return qxhs
+
+def compute_pxh_batch(nntokH, V, gpu_out):
+    logits = nntokH @ V.T
+    if gpu_out:
+        pxh = torch.nn.functional.softmax(logits, dim=-1)
+    else:
+        pxh = softmax(logits.cpu(), axis=-1)
+    return pxh
+
+def compute_pxh_batch_handler(method, nntokH, msamples, all_hs, 
+    P, I_P, V, gpu_out, device):
+    if method in ["hbot","hpar"]:
+        return compute_qxh_batch_new(method, nntokH, msamples, all_hs, 
+                    P, I_P, V, gpu_out, device)
+    elif method == "h":
+        return compute_pxh_batch(nntokH, V, gpu_out)
+    else:
+        raise ValueError(f"Incorrect method arg")
 
 def compute_p_words(batch_token_list, batch_pxh, pad_token_id, new_word_tokens):
     """ 
@@ -180,7 +210,6 @@ def compute_p_words(batch_token_list, batch_pxh, pad_token_id, new_word_tokens):
         p_word = p_word * new_word_prob
         all_word_probs.append(p_word)
     return all_word_probs
-
 
 def fast_compute_p_words(batch_token_list, batch_pxh, 
                             pad_token_id, new_word_tokens, device):
@@ -219,4 +248,47 @@ def fast_compute_p_words(batch_token_list, batch_pxh,
     final_log_p_x = log_p_x + p_new_given_x.log()
     #end = time.time()
     #print(end-start)
-    return final_log_p_x.exp().cpu().tolist()
+    return final_log_p_x.exp().unsqueeze(0).cpu()
+
+def fast_compute_m_p_words(batch_token_list, batch_pxh, 
+                         pad_token_id, new_word_tokens, device):
+    """ 
+    expected dimensions:
+    - batch_token_list: n_words x max_n_tokens
+    - batch_pxh: nwords x (max_n_tokens + 1) x msamples x |vocabulary|
+    - new_word_tokens: list of new word tokens for the model
+
+    output: list of word probabilities
+    """
+    #start = time.time()
+    #batch_pxh = torch.tensor(batch_pxh).to(self.device)
+    batch_log_pxh = batch_pxh.log()
+    seq_lens = (batch_token_list != pad_token_id).sum(1)
+    n = len(batch_token_list)
+    m = batch_pxh.shape[0]
+    max_len = max(seq_lens)
+    seq_idxs = torch.eye(batch_pxh.shape[1]).to(device)
+    log_p_x = torch.zeros((m, n)).to(device)
+    for i in range(max_len): # Could be vectorized further too if a bottleneck
+        #i = 1
+        tok_idxs = batch_token_list[:, i]
+        tok_pxhs = batch_log_pxh[:, :, i, tok_idxs]
+        next_pxhs = (tok_pxhs * seq_idxs).sum(-2)
+        log_p_x += next_pxhs * (i < seq_lens)
+        #p_x *= torch.where((seq_lens > i), tok_pxhs, ones)
+
+    # pnewword
+    #TODO: make this work with log
+    v = batch_pxh.shape[-1]
+    v_mask = torch.isin(
+        torch.arange(v), 
+        torch.tensor(new_word_tokens), 
+        assume_unique=True
+    ).to(device)
+    p_new = (batch_pxh * v_mask).sum(-1)
+    p_new_given_x = p_new[:, :, seq_lens]
+    p_new_given_x_proj = (p_new_given_x * seq_idxs).sum(-2)
+    final_log_p_x = log_p_x + p_new_given_x_proj.log()
+    #end = time.time()
+    #print(end-start)
+    return final_log_p_x.exp()
