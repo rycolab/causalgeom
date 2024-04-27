@@ -31,8 +31,10 @@ from paths import DATASETS, OUT, RESULTS, MODELS
 
 from utils.lm_loaders import SUPPORTED_AR_MODELS
 from evals.mi_distributor_utils import prep_generated_data, \
-    get_nucleus_arg
-from evals.eval_utils import renormalize
+    get_nucleus_arg, get_mt_eval_directory
+#from evals.eval_utils import renormalize
+from evals.mi_computer_utils import combine_lemma_contexts, \
+    compute_all_MIs
 
 #from data.filter_generations import load_generated_hs_wff
 #from data.data_utils import filter_hs_w_ys, sample_filtered_hs
@@ -49,21 +51,28 @@ class MIComputer:
                  model_name, # name of AR model 
                  concept, # concept name
                  source, # whether to use samples generated with nucleus sampling
-                 h_distribs_dir, # path containing test sample distributions for eval
+                 run_path, # path of LEACE training run output
+                 output_folder_name, # directory for exporting individual distributions
+                 iteration, # iteration of the eval for this run
                  #nsamples, # number of test set samples
                  #msamples, # number of dev set samples for each q computation
                  #nwords, # number of words to use from token lists -- GET RID OF THIS
                 ):
 
+        outdir = get_mt_eval_directory(run_path, concept, model_name, 
+            output_folder_name, source, iteration)
+        self.h_distribs_dir = os.path.join(
+            outdir, "h_distribs"
+        )
+        assert os.path.exists(self.h_distribs_dir), "H distribs dir doesn't exist"
+
         nucleus = get_nucleus_arg(source)
         #self.nsamples = nsamples
         #self.msamples = msamples
         #self.nwords = nwords
-        self.h_distribs_dir = h_distribs_dir
-        self.p_c, _, _, _ = prep_generated_data(
-            model_name, concept, nucleus
-        )
-
+        #_, _, _, _ = prep_generated_data(
+        #    model_name, concept, nucleus
+        #)
         
     #########################################
     # Data handling                         #
@@ -79,8 +88,15 @@ class MIComputer:
             l0_probs.append(sample_l0_probs)
             l1_probs.append(sample_l1_probs)
 
-        l0_stacked_probs = np.vstack(l0_probs)
-        l1_stacked_probs = np.vstack(l1_probs)
+        if htype in ["l0_cxt_pxhs", "l1_cxt_pxhs"]:
+            l0_stacked_probs = np.vstack(l0_probs)
+            l1_stacked_probs = np.vstack(l1_probs)
+        elif htype in ["l0_cxt_qxhs_par", "l1_cxt_qxhs_par", 
+                        "l0_cxt_qxhs_bot", "l1_cxt_qxhs_bot"]:
+            l0_stacked_probs = np.stack(l0_probs)
+            l1_stacked_probs = np.stack(l1_probs)
+        else:
+            raise ValueError(f"Incorrect htype: {htype}")
         return l0_stacked_probs, l1_stacked_probs
         
     def load_all_pxs(self):
@@ -106,177 +122,27 @@ class MIComputer:
     #########################################
     # Containment and Stability             #
     #########################################
-    @staticmethod
-    def compute_avg_of_cond_ents(pxs):
-        ents = []
-        #assert case in [0,1], "Incorrect case"
-        #case_pxs = pxs[case]
-        for p in pxs:
-            p_x_c = renormalize(p)
-            ents.append(entropy(p_x_c))
-        return np.mean(ents)
-
-    @staticmethod
-    def compute_ent_of_avg(pxs):
-        #assert case in [0,1], "Incorrect case"
-        #case_pxs = pxs[case]
-        mean_px = pxs.mean(axis=0)
-        p_x_c = renormalize(mean_px)
-        return entropy(p_x_c)
-
-    def compute_containment(self, l0_qxhs_par, l1_qxhs_par, l0_pxhs, l1_pxhs):
-        # H(X|H_par, C)
-        cont_l0_ent_qxhcs = self.compute_avg_of_cond_ents(l0_qxhs_par[0])
-        cont_l1_ent_qxhcs = self.compute_avg_of_cond_ents(l1_qxhs_par[1])
-        cont_ent_qxcs = (self.p_c * np.array([cont_l0_ent_qxhcs, cont_l1_ent_qxhcs])).sum()
-
-        # H(X|C)
-        l0_ent_pxc = self.compute_ent_of_avg(l0_pxhs[0])
-        l1_ent_pxc = self.compute_ent_of_avg(l1_pxhs[1])
-        ent_pxc = (self.p_c * np.array([l0_ent_pxc, l1_ent_pxc])).sum()
-
-        cont_l0_mi = l0_ent_pxc - cont_l0_ent_qxhcs
-        cont_l1_mi = l1_ent_pxc - cont_l1_ent_qxhcs
-        cont_mi = ent_pxc - cont_ent_qxcs
-
-        logging.info(f"Containment metrics: {cont_l0_mi}, {cont_l1_mi}, {cont_mi}")
-        return dict(
-            cont_l0_ent_qxhcs=cont_l0_ent_qxhcs,
-            cont_l1_ent_qxhcs=cont_l1_ent_qxhcs,
-            cont_ent_qxcs=cont_ent_qxcs,
-            l0_ent_pxc=l0_ent_pxc,
-            l1_ent_pxc=l1_ent_pxc,
-            ent_pxc=ent_pxc,
-            cont_l0_mi=cont_l0_mi,
-            cont_l1_mi=cont_l1_mi,
-            cont_mi=cont_mi
-        )
-
-    def compute_stability(self, l0_qxhs_bot, l1_qxhs_bot, l0_pxhs, l1_pxhs):
-        #H(X | H,C)
-        stab_ent_xhc_l0 = self.compute_avg_of_cond_ents(l0_pxhs[0])
-        stab_ent_xhc_l1 = self.compute_avg_of_cond_ents(l1_pxhs[1])
-        stab_ent_xhc = (self.p_c * np.array([stab_ent_xhc_l0, stab_ent_xhc_l1])).sum()
-
-        #H(X| H_bot,C)
-        stab_l0_ent_qxhcs = self.compute_avg_of_cond_ents(l0_qxhs_bot[0])
-        stab_l1_ent_qxhcs = self.compute_avg_of_cond_ents(l1_qxhs_bot[1])
-        stab_ent_qxcs = (self.p_c * np.array([stab_l0_ent_qxhcs, stab_l1_ent_qxhcs])).sum()
-
-        stab_l0_mi = stab_l0_ent_qxhcs - stab_ent_xhc_l0
-        stab_l1_mi = stab_l1_ent_qxhcs - stab_ent_xhc_l1
-        stab_mi = stab_ent_qxcs - stab_ent_xhc
-
-        logging.info(f"Stability metrics: {stab_l0_mi}, {stab_l1_mi}, {stab_mi}")
-        return dict(
-            stab_l0_ent_qxhcs=stab_l0_ent_qxhcs,
-            stab_l1_ent_qxhcs=stab_l1_ent_qxhcs,
-            stab_ent_qxcs=stab_ent_qxcs,
-            stab_ent_xhc_l0=stab_ent_xhc_l0,
-            stab_ent_xhc_l1=stab_ent_xhc_l1,
-            stab_ent_xhc=stab_ent_xhc,
-            stab_l0_mi=stab_l0_mi,
-            stab_l1_mi=stab_l1_mi,
-            stab_mi=stab_mi
-        )
-
-    #########################################
-    # Erasure and Encapsulation             #
-    #########################################
-    @staticmethod
-    def compute_pchs_from_pxhs(pxhs):
-        """ pxhs: tuple (p(l0_words | h), p(l1_words | h))
-        for n h's, i.e., element 0 is a n x n_l0_words 
-        dimensional np.array
-        """
-        pchs = []
-        for pxh in zip(*pxhs):
-            pch_l0 = pxh[0].sum()
-            pch_l1 = pxh[1].sum()
-            pch_bin = renormalize(np.array([pch_l0, pch_l1]))
-            pchs.append(pch_bin)
-        return np.vstack(pchs)
-
-    def compute_concept_mis(self, l0_qxhs_par, l1_qxhs_par, \
-        l0_qxhs_bot, l1_qxhs_bot, l0_pxhs, l1_pxhs):
-        
-        # H(C)
-        ent_pc = entropy(self.p_c)
-
-        # H(C | H_bot)
-        l0_qchs_bot = self.compute_pchs_from_pxhs(l0_qxhs_bot)
-        l1_qchs_bot = self.compute_pchs_from_pxhs(l1_qxhs_bot)
-        qchs_bot = np.vstack([l0_qchs_bot, l1_qchs_bot])
-        ent_qchs_bot = entropy(qchs_bot, axis=1).mean()
-
-        # H(C | H_par)
-        l0_qchs_par = self.compute_pchs_from_pxhs(l0_qxhs_par)
-        l1_qchs_par = self.compute_pchs_from_pxhs(l1_qxhs_par)
-        qchs_par = np.vstack([l0_qchs_par, l1_qchs_par])
-        ent_qchs_par = entropy(qchs_par, axis=1).mean()
-
-        # H(C | H)
-        l0_pchs = self.compute_pchs_from_pxhs(l0_pxhs)
-        l1_pchs = self.compute_pchs_from_pxhs(l1_pxhs)
-        pchs = np.vstack([l0_pchs, l1_pchs])
-        ent_pchs = entropy(pchs, axis=1).mean()
-
-        res = dict(
-            ent_qchs_bot = ent_qchs_bot,
-            ent_qchs_par = ent_qchs_par,
-            ent_pchs = ent_pchs,
-            ent_pc = ent_pc,
-            mi_c_hbot = ent_pc - ent_qchs_bot,
-            mi_c_hpar = ent_pc - ent_qchs_par,
-            mi_c_h = ent_pc - ent_pchs,
-        )
-        logging.info(f"Concept MI metrics I(C; H): {res['mi_c_h']},"
-            f"I(C; Hbot): {res['mi_c_hbot']}, I(C; Hpar): {res['mi_c_hpar']}")
-        return res
-
-    #########################################
-    # Run complete eval                     #
-    #########################################
     def compute_run_eval(self):
-        l0_qxhs_par, l1_qxhs_par, l0_qxhs_bot, l1_qxhs_bot, \
-            l0_pxhs, l1_pxhs = self.load_all_pxs()
-        containment_res = self.compute_containment(
-            l0_qxhs_par, l1_qxhs_par, l0_pxhs, l1_pxhs
-        )
-        stability_res = self.compute_stability(
-            l0_qxhs_bot, l1_qxhs_bot, l0_pxhs, l1_pxhs
-        )
-        concept_mis = self.compute_concept_mis( 
-            l0_qxhs_par, l1_qxhs_par, l0_qxhs_bot, l1_qxhs_bot, l0_pxhs, l1_pxhs
-        )
-        return containment_res | stability_res | concept_mis
+        l0_qxhpars, l1_qxhpars, l0_qxhbots, l1_qxhbots, l0_pxhs, l1_pxhs = self.load_all_pxs()
+
+        all_pxhs = combine_lemma_contexts(l0_pxhs, l1_pxhs)
+        all_qxhpars = combine_lemma_contexts(l0_qxhpars, l1_qxhpars)
+        all_qxhbots = combine_lemma_contexts(l0_qxhbots, l1_qxhbots)
+
+        MIs = compute_all_MIs(all_pxhs, all_qxhbots, all_qxhpars)
+        return MIs
 
 # %%
 def compute_mis(model_name, concept, run_path, 
     source, output_folder, iteration):
-    #rundir = os.path.join(
-    #    OUT, f"run_output/{concept}/{model_name}/{run_output_folder}"
-    #)
-
-    rundir = os.path.dirname(run_path)
-    rundir_name = os.path.basename(rundir)
-
-    run_id = run_path[-27:-4]
-
-    outdir = os.path.join(
-        os.path.dirname(rundir), 
-        f"mt_eval_{rundir_name}/{output_folder}/run_{run_id}/source_{source}/evaliter_{iteration}"
-    )
-    h_distribs_dir = os.path.join(
-        outdir, "h_distribs"
-    )
-    assert os.path.exists(h_distribs_dir), "H distribs dir doesn't exist"
 
     micomputer = MIComputer(
         model_name, 
         concept, 
         source,
-        h_distribs_dir, #where the distributions for eval were exported
+        run_path,
+        output_folder,
+        iteration
     )
     run_eval_output = micomputer.compute_run_eval()
             
@@ -286,10 +152,19 @@ def compute_mis(model_name, concept, run_path,
         "source": source,
         #"nsamples": nsamples,
         #"msamples": msamples,
+        "eval_name": output_folder,
         "run_path": run_path,
-        "iteration": iteration
+        "iteration": iteration,
     }
     full_run_output = run_metadata | run_eval_output
+    
+    
+    # run info
+    rundir = os.path.dirname(run_path)
+    rundir_name = os.path.basename(rundir)
+    run_id = run_path[-27:-4]
+
+    # export
     actual_outdir = os.path.join(RESULTS, "mis")
     outpath = os.path.join(actual_outdir, f"mis_{model_name}_{concept}_{rundir_name}_{output_folder}_run_{run_id}_source_{source}_evaliter_{iteration}.pkl")
     with open(outpath, "wb") as f:

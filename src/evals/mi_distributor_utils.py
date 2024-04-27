@@ -11,7 +11,7 @@ import random
 from scipy.special import softmax
 
 from data.filter_generations import load_filtered_generations
-
+from paths import OUT
 
 #########################################
 # Arg Handling                         #
@@ -24,6 +24,22 @@ def get_nucleus_arg(source):
     else:
         raise ValueError(f"Incorrect {source} argument")
     return nucleus
+
+#########################################
+# Eval Directory Handling               #
+#########################################
+def get_mt_eval_directory(run_path, concept, model_name, 
+    output_folder, source, iteration):
+    rundir = os.path.dirname(run_path)
+    rundir_name = os.path.basename(rundir)
+
+    run_id = run_path[-27:-4]
+    outdir = os.path.join(
+        OUT, 
+        f"mt_eval/{concept}/{model_name}/mt_eval_{rundir_name}/"
+        f"{output_folder}/run_{run_id}/source_{source}/evaliter_{iteration}"
+    )
+    return outdir
 
 #########################################
 # Data Handling                         #

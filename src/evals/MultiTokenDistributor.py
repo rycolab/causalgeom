@@ -37,7 +37,8 @@ from paths import DATASETS, OUT, RESULTS, MODELS
 from evals.mi_distributor_utils import prep_generated_data, \
     compute_batch_inner_loop_qxhs, get_nucleus_arg, \
         sample_gen_all_hs_batched, compute_pxh_batch_handler,\
-            fast_compute_m_p_words, fast_compute_p_words
+            fast_compute_m_p_words, fast_compute_p_words,\
+                get_mt_eval_directory
 from utils.lm_loaders import SUPPORTED_AR_MODELS, GPT2_LIST
 from evals.eval_utils import load_run_Ps, load_run_output, renormalize
 from data.embed_wordlists.embedder import load_concept_token_lists
@@ -119,14 +120,8 @@ class MultiTokenDistributor:
         nucleus = get_nucleus_arg(source)
 
         # directory handling
-        rundir = os.path.dirname(run_path)
-        rundir_name = os.path.basename(rundir)
-
-        run_id = run_path[-27:-4]
-        self.outdir = os.path.join(
-            OUT, 
-            f"mt_eval/{concept}/{model_name}/mt_eval_{rundir_name}/{output_folder_name}/run_{run_id}/source_{source}/evaliter_{iteration}"
-        )
+        self.outdir = get_mt_eval_directory(run_path, concept, model_name, 
+            output_folder_name, source, iteration)
         os.makedirs(self.outdir, exist_ok=output_folder_name=="test")
         logging.info(f"Created outdir: {self.outdir}, exist_ok = {output_folder_name=='test'}")
         

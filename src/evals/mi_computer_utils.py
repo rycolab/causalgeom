@@ -1,0 +1,221 @@
+#%%
+import warnings
+import logging
+import os
+import sys
+import coloredlogs
+import argparse
+
+from scipy.stats import entropy
+import numpy as np
+
+sys.path.append('..')
+
+from evals.eval_utils import renormalize
+
+
+#%%######################################
+# Aggregate over lemma hsamples         #
+#########################################
+def combine_lemma_contexts(l0_samples, l1_samples):
+    all_l0_words = np.vstack((l0_samples[0], l1_samples[0]))
+    all_l1_words = np.vstack((l0_samples[1], l1_samples[1]))
+    all_contexts = (all_l0_words, all_l1_words)
+    return all_contexts
+
+#%%######################################
+# Z(h, c, x) distributions             #
+#########################################
+def compute_p_c(pxhs):
+    """ works for both z and q distributions, i.e.
+    in: (hdim x xdim, hdim x xdim) OR 
+        (hdim x msamples x nwords, hdim x msamples x nwords)
+    out p(c): (cdim)
+    """
+    pchs_l0 = pxhs[0].sum(-1)
+    pchs_l1 = pxhs[1].sum(-1)
+    p_c0 = pchs_l0.mean()
+    p_c1 = pchs_l1.mean()
+    p_c = renormalize([p_c0, p_c1])
+    return p_c
+
+def compute_p_c_mid_h(pxhs):
+    """ 
+    in: (hdim x xdim, hdim x xdim)
+    out p(c|h): (hdim x cdim)
+    """
+    all_pchs_l0 = pxhs[0].sum(1)
+    all_pchs_l1 = pxhs[1].sum(1)
+    all_pchs_unnorm = np.stack((all_pchs_l0, all_pchs_l1))
+    all_pchs = all_pchs_unnorm / all_pchs_unnorm.sum(0)
+    return all_pchs.T
+
+def compute_p_x_mid_c(pxhs):
+    """ 
+    in: (hdim x xdim, hdim x xdim)
+    out p(x|c): (cdim x xdim)
+    """
+    pxhs_l0, pxhs_l1 =  pxhs[0], pxhs[1]
+    z_x_mid_c0 = renormalize(pxhs_l0.mean(0))
+    z_x_mid_c1 = renormalize(pxhs_l1.mean(0))
+    z_x_mid_c = np.stack((z_x_mid_c0, z_x_mid_c1))
+    return z_x_mid_c
+
+def compute_p_x_mid_h_c(pxhs):
+    """ 
+    in: (hdim x xdim, hdim x xdim)
+    out p(x | c, h): (hdim x cdim x xdim)
+    """
+    pxhs_l0, pxhs_l1 = pxhs[0], pxhs[1]
+    p_x_mid_h_c0 = (pxhs_l0.T / pxhs_l0.sum(1)).T
+    p_x_mid_h_c1 = (pxhs_l1.T / pxhs_l1.sum(1)).T
+    p_x_mid_h_c = np.stack((p_x_mid_h_c0, p_x_mid_h_c1), 1)
+    return p_x_mid_h_c
+
+#%%#####################################################
+# qbot/par(hbot, hpar, c, x) distributions             #
+########################################################
+def compute_q_c_mid_h(qxhs):
+    """ 
+    in: (hdim x msamples x nwords, hdim x msamples x nwords)
+    out q(c|hbot\par): hdim x cdim
+    """
+    qchs_l0 = qxhs[0].sum(-1).mean(-1)
+    qchs_l1 = qxhs[1].sum(-1).mean(-1)
+    qchs_unnorm = np.stack((qchs_l0, qchs_l1))
+    qchs = qchs_unnorm / qchs_unnorm.sum(0)
+    return qchs.T
+
+def compute_q_x_mid_c(qxhs):
+    """ qxhs: (hdim x msamples x xdim, hdim x msamples x xdim)
+    out q(x|c): cdim x xdim
+    """
+    q_x_mid_c0_unnorm = qxhs[0].mean(0).mean(0)
+    q_x_mid_c0 = q_x_mid_c0_unnorm / q_x_mid_c0_unnorm.sum()
+    q_x_mid_c1_unnorm = qxhs[1].mean(0).mean(0)
+    q_x_mid_c1 = q_x_mid_c1_unnorm / q_x_mid_c1_unnorm.sum()
+    q_x_mid_c = np.stack((q_x_mid_c0, q_x_mid_c1))
+    return q_x_mid_c
+
+def compute_q_x_mid_h_c(qxhs):
+    """ qxhs: (hdim x msamples x xdim, hdim x msamples x xdim)
+    out q(x|hbot/hpar,c): hdim x cdim x xdim
+    """
+    q_x_mid_h_c0_unnorm = qxhs[0].mean(1)
+    q_x_mid_h_c0 = (q_x_mid_h_c0_unnorm.T / q_x_mid_h_c0_unnorm.sum(1)).T
+    q_x_mid_h_c1_unnorm = qxhs[1].mean(1)
+    q_x_mid_h_c1 = (q_x_mid_h_c1_unnorm.T / q_x_mid_h_c1_unnorm.sum(1)).T
+    q_x_mid_h_c = np.stack((q_x_mid_h_c0, q_x_mid_h_c1),1)
+    return q_x_mid_h_c
+
+#%%#####################################################
+# Compute all distributions                            #
+########################################################
+def compute_all_z_distributions(all_pxhs):
+    z_c = compute_p_c(all_pxhs)
+    z_c_mid_h = compute_p_c_mid_h(all_pxhs)
+    z_x_mid_c = compute_p_x_mid_c(all_pxhs)
+    z_x_mid_h_c = compute_p_x_mid_h_c(all_pxhs)
+    return z_c, z_c_mid_h, z_x_mid_c, z_x_mid_h_c
+
+def compute_all_q_distributions(all_qxhs):
+    q_c = compute_p_c(all_qxhs)
+    q_c_mid_h = compute_q_c_mid_h(all_qxhs)
+    q_x_mid_c = compute_q_x_mid_c(all_qxhs)
+    q_x_mid_h_c = compute_q_x_mid_h_c(all_qxhs)
+    return q_c, q_c_mid_h, q_x_mid_c, q_x_mid_h_c
+
+#%%#####################################################
+# Compute MIs                                          #
+########################################################
+def compute_I_C_H(p_c, p_c_mid_h):
+    """
+    in: 
+    - p_c: (cdim)
+    - p_c_mid_h: (hdim x cdim)
+    out: H(C), H(C|H), I(C;H)
+    """
+    # H(C)
+    H_c = entropy(p_c)
+
+    # H(C | H)
+    H_c_mid_h = entropy(p_c_mid_h,axis=1).mean()
+
+    MI_c_h = H_c - H_c_mid_h
+    return H_c, H_c_mid_h, MI_c_h
+
+def compute_H_x_mid_h_c(p_x_mid_h_c, p_c_mid_h):
+    """ H(X | H, C)
+    Inputs:
+    p(x | h, c): h_dim x c_dim x x_dim
+    p(c | h): hdim x c_dim
+    """
+    inner_ent = entropy(p_x_mid_h_c, axis=2)
+    outer_ent = (inner_ent * p_c_mid_h).sum(-1)
+    H_x_mid_h_c = outer_ent.mean()
+    return H_x_mid_h_c
+
+def compute_I_X_H_mid_C(p_c, p_x_mid_c, p_c_mid_h, p_x_mid_h_c):
+    """ I(X ; H | C)
+    in: 
+    - p(c): (cdim)
+    - p(x | c): (cdim x xdim)
+    - p(c | h): (hdim x c_dim)
+    - p(x | h, c): (h_dim x c_dim x x_dim)
+    out: H(X|C), H(X|H, C), I(X;H|C)
+    """
+    # H(X | C)
+    H_x_c = p_c @ entropy(p_x_mid_c, axis=1)
+
+    # H(X | H, C)
+    H_x_mid_h_c = compute_H_x_mid_h_c(p_x_mid_h_c, p_c_mid_h)
+
+    MI_x_h_mid_c = H_x_c - H_x_mid_h_c
+    return H_x_c, H_x_mid_h_c, MI_x_h_mid_c
+
+def compute_all_MIs(all_pxhs, all_qxhbots, all_qxhpars):
+    z_c, z_c_mid_h, z_x_mid_c, z_x_mid_h_c = compute_all_z_distributions(all_pxhs)
+    qbot_c, qbot_c_mid_hbot, qbot_x_mid_c, qbot_x_mid_hbot_c = compute_all_q_distributions(all_qxhbots)
+    qpar_c, qpar_c_mid_hpar, qpar_x_mid_c, qpar_x_mid_hpar_c = compute_all_q_distributions(all_qxhpars)
+
+    # I(C;H)
+    Hz_c, Hz_c_mid_h, MIz_c_h = compute_I_C_H(z_c, z_c_mid_h)
+    Hqbot_c, Hqbot_c_mid_hbot, MIqbot_c_hbot = compute_I_C_H(
+        qbot_c, qbot_c_mid_hbot
+    )
+    Hqpar_c, Hqpar_c_mid_hpar, MIqpar_c_hpar = compute_I_C_H(
+        qpar_c, qpar_c_mid_hpar
+    )
+
+    # I(X;H|C)
+    Hz_x_c, Hz_x_mid_h_c, MIz_x_h_mid_c = compute_I_X_H_mid_C(
+        z_c, z_x_mid_c, z_c_mid_h, z_x_mid_h_c
+    )
+    Hqbot_x_c, Hqbot_x_mid_hbot_c, MIqbot_x_hbot_mid_c = compute_I_X_H_mid_C(
+        qbot_c, qbot_x_mid_c, qbot_c_mid_hbot, qbot_x_mid_hbot_c
+    )
+    Hqpar_x_c, Hqpar_x_mid_hpar_c, MIqpar_x_hpar_mid_c = compute_I_X_H_mid_C(
+        qpar_c, qpar_x_mid_c, qpar_c_mid_hpar, qpar_x_mid_hpar_c
+    )
+
+    res = {
+        "Hz_c":Hz_c, 
+        "Hz_c_mid_h":Hz_c_mid_h, 
+        "MIz_c_h":MIz_c_h, 
+        "Hqbot_c":Hqbot_c, 
+        "Hqbot_c_mid_hbot":Hqbot_c_mid_hbot, 
+        "MIqbot_c_hbot":MIqbot_c_hbot, 
+        "Hqpar_c":Hqpar_c, 
+        "Hqpar_c_mid_hpar":Hqpar_c_mid_hpar, 
+        "MIqpar_c_hpar":MIqpar_c_hpar, 
+        "Hz_x_c":Hz_x_c, 
+        "Hz_x_mid_h_c":Hz_x_mid_h_c, 
+        "MIz_x_h_mid_c":MIz_x_h_mid_c, 
+        "Hqbot_x_c":Hqbot_x_c, 
+        "Hqbot_x_mid_hbot_c":Hqbot_x_mid_hbot_c, 
+        "MIqbot_x_hbot_mid_c":MIqbot_x_hbot_mid_c, 
+        "Hqpar_x_c":Hqpar_x_c, 
+        "Hqpar_x_mid_hpar_c":Hqpar_x_mid_hpar_c, 
+        "MIqpar_x_hpar_mid_c":MIqpar_x_hpar_mid_c,
+    }
+    return res
