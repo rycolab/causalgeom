@@ -105,10 +105,10 @@ if __name__=="__main__":
     batch_size = args.batch_size
     nruns = 3
     
-    if source in ['gen_nucleus' 'gen_normal']:
-        batch_size = 3
-    else:
-        batch_size = 64
+    #if source in ['gen_nucleus' 'gen_normal']:
+    #    batch_size = 3
+    #else:
+    #    batch_size = 64
     
     #model_name = "gpt2-large"
     #concept = "food"

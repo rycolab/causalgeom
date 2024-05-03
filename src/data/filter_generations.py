@@ -133,10 +133,6 @@ def get_concept_hs_w_factfoil_multitoken(generations_folder, l0_tl, l1_tl,
                         continue
                 if not added_to_concept:
                     other_hs.append(h.numpy())
-                #NOTE: if memory issues, need to subsample concept AND other hs
-                #if len(other_hs) > other_hs_max_length:
-                #    random.shuffle(other_hs)
-                #    other_hs = other_hs[:other_hs_max_length]
     logging.info(f"Generated h's obtained -- l0: {len(l0_hs)}, l1: {len(l1_hs)}, other: {len(other_hs)}.")
     logging.info(f"Number of multitoken matches: {multitoken_matches}")
     return l0_hs, l1_hs, other_hs
@@ -218,14 +214,14 @@ if __name__ == '__main__':
     logging.info(args)
     
     
-    model_name = args.model
-    concept = args.concept
-    nucleus = args.nucleus
-    perc_samples = args.perc_samples
-    #model_name = "llama2"
-    #concept = "food"
-    #nucleus = True
-    #perc_samples = .1
+    #model_name = args.model
+    #concept = args.concept
+    #nucleus = args.nucleus
+    #perc_samples = args.perc_samples
+    model_name = "llama2"
+    concept = "food"
+    nucleus = True
+    perc_samples = .1
     
     #testing options
     nfiles = args.nfiles #keep this to none unless debugging
@@ -250,9 +246,10 @@ if __name__ == '__main__':
         generations_folder, l0_tl, l1_tl, nfiles=nfiles, perc_samples=perc_samples
     )
     
-    l0_wff_outfile = os.path.join(outdir, "new_l0_hs_w_factfoil.pkl")
-    l1_wff_outfile = os.path.join(outdir, "new_l1_hs_w_factfoil.pkl")
-    other_outfile = os.path.join(outdir, "new_other_hs.pkl")
+    #TODO: removed the "new_" here, need to propagate and rename
+    l0_wff_outfile = os.path.join(outdir, "l0_hs_w_factfoil.pkl")
+    l1_wff_outfile = os.path.join(outdir, "l1_hs_w_factfoil.pkl")
+    other_outfile = os.path.join(outdir, "other_hs.pkl")
     with open(l0_wff_outfile, "wb") as f:
         pickle.dump(l0_hs_wff, f, protocol=pickle.HIGHEST_PROTOCOL)
     with open(l1_wff_outfile, "wb") as f:

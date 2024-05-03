@@ -35,10 +35,9 @@ from paths import DATASETS, OUT, RESULTS, MODELS
 
 
 from evals.mi_distributor_utils import prep_generated_data, \
-    compute_batch_inner_loop_qxhs, get_nucleus_arg, \
-        sample_gen_all_hs_batched, compute_pxh_batch_handler,\
-            fast_compute_m_p_words, fast_compute_p_words,\
-                get_mt_eval_directory
+    get_nucleus_arg, get_mt_eval_directory,\
+        intervene_hs, compute_log_pxh_batch,\
+            fast_compute_m_p_words, fast_compute_p_words
 from utils.lm_loaders import SUPPORTED_AR_MODELS, GPT2_LIST
 from evals.eval_utils import load_run_Ps, load_run_output, renormalize
 from data.embed_wordlists.embedder import load_concept_token_lists
@@ -312,6 +311,33 @@ class MultiTokenDistributor:
     #########################################
     # Probability computations              #
     #########################################
+    def compute_pxh_batch_handler(self, method, batch_tok_ids, 
+        batch_hidden_states, gpu_out):
+        if method in ["hbot", "hpar"]:
+            hs_int = intervene_hs(
+                batch_hidden_states, method, 
+                self.msamples, self.gen_all_hs, 
+                self.P, self.I_P, self.device
+            )
+            batch_log_qxhs = compute_log_pxh_batch(
+                hs_int, self.V, gpu_out
+            )
+            batch_word_probs = fast_compute_m_p_words(
+                batch_tok_ids, batch_log_qxhs, self.tokenizer.pad_token_id, 
+                self.new_word_tokens, self.device
+            )
+        elif method == "h":
+            batch_log_pxhs = compute_log_pxh_batch(
+                batch_hidden_states, self.V, gpu_out
+            )
+            batch_word_probs = fast_compute_p_words(
+                batch_tok_ids, batch_log_pxhs, self.tokenizer.pad_token_id, 
+                self.new_word_tokens, self.device
+            )
+        else:
+            raise ValueError(f"Incorrect method arg")
+        return batch_word_probs
+            
     def compute_batch_p_words(self, batch_tokens, cxt_last_index, method):
         batch_tokens = batch_tokens.to(self.device)
 
@@ -326,23 +352,9 @@ class MultiTokenDistributor:
 
         batch_tok_ids = batch_tokens[:,(cxt_last_index+1):]
         batch_hidden_states = output["hidden_states"][-1][:,cxt_last_index:,:].type(torch.float32)
-
-        batch_pxhs = compute_pxh_batch_handler(
-            method, batch_hidden_states, self.msamples, self.gen_all_hs,
-            self.P, self.I_P, self.V, True, self.device
+        batch_word_probs = self.compute_pxh_batch_handler(
+            method, batch_tok_ids, batch_hidden_states, gpu_out=True
         )
-        if method == "h":
-            batch_word_probs = fast_compute_p_words(
-                batch_tok_ids, batch_pxhs, self.tokenizer.pad_token_id, 
-                self.new_word_tokens, self.device
-            )
-        elif method in ["hbot", "hpar"]:
-            batch_word_probs = fast_compute_m_p_words(
-                batch_tok_ids, batch_pxhs, self.tokenizer.pad_token_id, 
-                self.new_word_tokens, self.device
-            )
-        else:
-            raise ValueError("Incorrect method")
         return batch_word_probs
 
     def compute_token_list_word_probs(self, token_list, cxt, method):
