@@ -88,6 +88,12 @@ def get_args():
         default=64,
         help="Batch size for word probability computation"
     )
+    argparser.add_argument(
+        "-n_other_words",
+        type=int,
+        default=500,
+        help="Number of other words to compute probabilities for"
+    )
     return argparser.parse_args()
 
 if __name__=="__main__":
@@ -103,6 +109,7 @@ if __name__=="__main__":
     output_folder = args.out_folder
     run_path = args.run_path
     batch_size = args.batch_size
+    n_other_words = args.n_other_words
     nruns = 3
     
     #if source in ['gen_nucleus' 'gen_normal']:
@@ -133,6 +140,7 @@ if __name__=="__main__":
             nsamples, #nsamples
             msamples, #msamples
             nwords, #nwords
+            n_other_words, 
             run_path, #run_path
             output_folder,
             i,

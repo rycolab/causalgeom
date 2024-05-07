@@ -80,24 +80,27 @@ class MIComputer:
     def load_htype_probs(self, htype):
         htype_dir = os.path.join(self.h_distribs_dir, htype)
         htype_files = os.listdir(htype_dir)
-        l0_probs, l1_probs = [], []
+        l0_probs, l1_probs, other_probs = [], [], []
         for fname in tqdm(htype_files):
             fpath = os.path.join(htype_dir, fname)
             with open(fpath, 'rb') as f:      
-                sample_l0_probs, sample_l1_probs = pickle.load(f)
+                sample_l0_probs, sample_l1_probs, sample_other_probs = pickle.load(f)
             l0_probs.append(sample_l0_probs)
             l1_probs.append(sample_l1_probs)
+            other_probs.append(sample_other_probs)
 
         if htype in ["l0_cxt_pxhs", "l1_cxt_pxhs"]:
             l0_stacked_probs = np.vstack(l0_probs)
             l1_stacked_probs = np.vstack(l1_probs)
+            other_stacked_probs = np.vstack(other_probs)
         elif htype in ["l0_cxt_qxhs_par", "l1_cxt_qxhs_par", 
                         "l0_cxt_qxhs_bot", "l1_cxt_qxhs_bot"]:
             l0_stacked_probs = np.stack(l0_probs)
             l1_stacked_probs = np.stack(l1_probs)
+            other_stacked_probs = np.stack(other_probs)
         else:
             raise ValueError(f"Incorrect htype: {htype}")
-        return l0_stacked_probs, l1_stacked_probs
+        return l0_stacked_probs, l1_stacked_probs, other_stacked_probs
         
     def load_all_pxs(self):
         l0_cxt_qxhs_par = self.load_htype_probs("l0_cxt_qxhs_par")
@@ -165,7 +168,8 @@ def compute_mis(model_name, concept, run_path,
     run_id = run_path[-27:-4]
 
     # export
-    actual_outdir = os.path.join(RESULTS, "mis")
+    actual_outdir = os.path.join(RESULTS, f"mis/{output_folder}")
+    os.makedirs(actual_outdir, exist_ok=True)
     outpath = os.path.join(actual_outdir, f"mis_{model_name}_{concept}_{rundir_name}_{output_folder}_run_{run_id}_source_{source}_evaliter_{iteration}.pkl")
     with open(outpath, "wb") as f:
         pickle.dump(full_run_output, f, protocol=pickle.HIGHEST_PROTOCOL)

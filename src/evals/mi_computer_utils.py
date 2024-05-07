@@ -20,7 +20,8 @@ from evals.eval_utils import renormalize
 def combine_lemma_contexts(l0_samples, l1_samples):
     all_l0_words = np.vstack((l0_samples[0], l1_samples[0]))
     all_l1_words = np.vstack((l0_samples[1], l1_samples[1]))
-    all_contexts = (all_l0_words, all_l1_words)
+    all_na_words = np.vstack((l0_samples[2], l1_samples[2]))
+    all_contexts = (all_l0_words, all_l1_words, all_na_words)
     return all_contexts
 
 #%%######################################
@@ -28,7 +29,7 @@ def combine_lemma_contexts(l0_samples, l1_samples):
 #########################################
 def compute_p_c(pxhs):
     """ works for both z and q distributions, i.e.
-    in: (hdim x xdim, hdim x xdim) OR 
+    in: (hdim x l0_xdim, hdim x l1_xdim, hdim x other_xdim) OR 
         (hdim x msamples x nwords, hdim x msamples x nwords)
     out p(c): (cdim)
     """
@@ -36,76 +37,141 @@ def compute_p_c(pxhs):
     pchs_l1 = pxhs[1].sum(-1)
     p_c0 = pchs_l0.mean()
     p_c1 = pchs_l1.mean()
-    p_c = renormalize([p_c0, p_c1])
+    p_na = 1 - (p_c0 + p_c1)
+    p_c = renormalize([p_c0, p_c1, p_na])
     return p_c
 
 def compute_p_c_mid_h(pxhs):
-    """ 
-    in: (hdim x xdim, hdim x xdim)
+    """ z distribution only
+    in: (hdim x l0_xdim, hdim x l1_xdim, hdim x other_xdim)
     out p(c|h): (hdim x cdim)
     """
     all_pchs_l0 = pxhs[0].sum(1)
     all_pchs_l1 = pxhs[1].sum(1)
     all_pchs_unnorm = np.stack((all_pchs_l0, all_pchs_l1))
-    all_pchs = all_pchs_unnorm / all_pchs_unnorm.sum(0)
+    all_pchs_na = (1 - all_pchs_unnorm.sum(0)).reshape(1,-1)
+    all_pchs = np.concatenate((all_pchs_unnorm, all_pchs_na), 0)
     return all_pchs.T
 
-def compute_p_x_mid_c(pxhs):
-    """ 
-    in: (hdim x xdim, hdim x xdim)
-    out p(x|c): (cdim x xdim)
+def stack_p_x_mid_c(p_x_mid_c0, p_x_mid_c1, p_x_mid_na):
+    """ Stacks three p(x|c) distributions
+    Inputs: (l0_nwords,), (l1_nwords,), (na_nwords,)
+    Output: (cdim x (l0_nwords + l1_nwords + na_nwords))
     """
-    pxhs_l0, pxhs_l1 =  pxhs[0], pxhs[1]
+    n_c0_words = p_x_mid_c0.shape[0]
+    n_c1_words = p_x_mid_c1.shape[0]
+    n_na_words = p_x_mid_na.shape[0]
+    total_words = (
+        n_c0_words + n_c1_words + n_na_words
+    )
+    p_x_mid_c = np.zeros((3, total_words))
+
+    # 0:n_c0_words 
+    c0_end_index = n_c0_words
+    p_x_mid_c[0,:c0_end_index] = p_x_mid_c0
+    # n_c0_words:(n_c0_words + n_c1_words)
+    c1_end_index = (n_c0_words + n_c1_words)
+    p_x_mid_c[1, n_c0_words:c1_end_index] = p_x_mid_c1
+    # (n_c0_words + n_c1_words):
+    p_x_mid_c[2, c1_end_index:] = p_x_mid_na
+    return p_x_mid_c
+
+def compute_p_x_mid_c(pxhs):
+    """ z distribution only
+    in: (hdim x l0_xdim, hdim x l1_xdim, hdim x na_xdim)
+    out p(x|c): (cdim x (l0_xdim + l1_xdim + na_xdim))
+    """
+    pxhs_l0, pxhs_l1, pxhs_other =  pxhs[0], pxhs[1], pxhs[2]
     z_x_mid_c0 = renormalize(pxhs_l0.mean(0))
     z_x_mid_c1 = renormalize(pxhs_l1.mean(0))
-    z_x_mid_c = np.stack((z_x_mid_c0, z_x_mid_c1))
+    z_x_mid_na = renormalize(pxhs_other.mean(0))
+
+    z_x_mid_c = stack_p_x_mid_c(z_x_mid_c0, z_x_mid_c1, z_x_mid_na)
     return z_x_mid_c
 
+def stack_p_x_mid_h_c(p_x_mid_h_c0, p_x_mid_h_c1, p_x_mid_h_na):
+    n_c0_words = p_x_mid_h_c0.shape[1]
+    n_c1_words = p_x_mid_h_c1.shape[1]
+    n_na_words = p_x_mid_h_na.shape[1]
+    n_hs = p_x_mid_h_c0.shape[0]
+    total_words = (
+        n_c0_words + n_c1_words + n_na_words
+    )
+    p_x_mid_h_c = np.zeros((3, n_hs, total_words))
+
+    c0_end_index = n_c0_words
+    p_x_mid_h_c[0,:,:c0_end_index] = p_x_mid_h_c0
+
+    c1_end_index = (n_c0_words + n_c1_words)
+    p_x_mid_h_c[1, :, n_c0_words:c1_end_index] = p_x_mid_h_c1
+    p_x_mid_h_c[2, :, c1_end_index:] = p_x_mid_h_na
+
+    return p_x_mid_h_c.reshape(p_x_mid_h_c.shape[1], p_x_mid_h_c.shape[0], -1)
+
 def compute_p_x_mid_h_c(pxhs):
-    """ 
-    in: (hdim x xdim, hdim x xdim)
-    out p(x | c, h): (hdim x cdim x xdim)
+    """ z distribution only
+    in: (hdim x l0_nwords, hdim x l1_nwords, hdim x na_nwords)
+    out p(x | c, h): (hdim x cdim x (l0_nwords + l1_nwords + na_nwords))
     """
-    pxhs_l0, pxhs_l1 = pxhs[0], pxhs[1]
-    p_x_mid_h_c0 = (pxhs_l0.T / pxhs_l0.sum(1)).T
-    p_x_mid_h_c1 = (pxhs_l1.T / pxhs_l1.sum(1)).T
-    p_x_mid_h_c = np.stack((p_x_mid_h_c0, p_x_mid_h_c1), 1)
-    return p_x_mid_h_c
+    pxhs_l0, pxhs_l1, pxhs_other =  pxhs[0], pxhs[1], pxhs[2]
+    z_x_mid_h_c0 = (pxhs_l0.T / pxhs_l0.sum(1)).T
+    z_x_mid_h_c1 = (pxhs_l1.T / pxhs_l1.sum(1)).T
+    z_x_mid_h_na = (pxhs_other.T / pxhs_other.sum(1)).T
+
+    z_x_mid_h_c = stack_p_x_mid_h_c(z_x_mid_h_c0, z_x_mid_h_c1, z_x_mid_h_na)
+    return z_x_mid_h_c
 
 #%%#####################################################
 # qbot/par(hbot, hpar, c, x) distributions             #
 ########################################################
 def compute_q_c_mid_h(qxhs):
     """ 
-    in: (hdim x msamples x nwords, hdim x msamples x nwords)
+    in: (hdim x msamples x l0_nwords, 
+         hdim x msamples x l1_nwords, 
+         hdim x msamples x na_nwords)
     out q(c|hbot\par): hdim x cdim
     """
     qchs_l0 = qxhs[0].sum(-1).mean(-1)
     qchs_l1 = qxhs[1].sum(-1).mean(-1)
     qchs_unnorm = np.stack((qchs_l0, qchs_l1))
-    qchs = qchs_unnorm / qchs_unnorm.sum(0)
+    #qchs = qchs_unnorm / qchs_unnorm.sum(0)
+
+    qchs_na = (1 - qchs_unnorm.sum(0)).reshape(1,-1)
+    qchs = np.concatenate((qchs_unnorm, qchs_na), 0)
     return qchs.T
 
 def compute_q_x_mid_c(qxhs):
-    """ qxhs: (hdim x msamples x xdim, hdim x msamples x xdim)
-    out q(x|c): cdim x xdim
+    """ 
+    in: (hdim x msamples x l0_nwords, 
+         hdim x msamples x l1_nwords, 
+         hdim x msamples x na_nwords)
+    out q(x|c): cdim x (l0_nwords + l1_nwords + na_nwords)
     """
     q_x_mid_c0_unnorm = qxhs[0].mean(0).mean(0)
     q_x_mid_c0 = q_x_mid_c0_unnorm / q_x_mid_c0_unnorm.sum()
     q_x_mid_c1_unnorm = qxhs[1].mean(0).mean(0)
     q_x_mid_c1 = q_x_mid_c1_unnorm / q_x_mid_c1_unnorm.sum()
-    q_x_mid_c = np.stack((q_x_mid_c0, q_x_mid_c1))
+    q_x_mid_na_unnorm = qxhs[2].mean(0).mean(0)
+    q_x_mid_na = q_x_mid_na_unnorm / q_x_mid_na_unnorm.sum()
+
+    q_x_mid_c = stack_p_x_mid_c(q_x_mid_c0, q_x_mid_c1, q_x_mid_na)
     return q_x_mid_c
 
 def compute_q_x_mid_h_c(qxhs):
-    """ qxhs: (hdim x msamples x xdim, hdim x msamples x xdim)
-    out q(x|hbot/hpar,c): hdim x cdim x xdim
+    """ 
+    in: (hdim x msamples x l0_nwords, 
+         hdim x msamples x l1_nwords, 
+         hdim x msamples x na_nwords)
+    out q(x|hbot/hpar,c): hdim x cdim x (l0_nwords + l1_nwords + na_nwords)
     """
     q_x_mid_h_c0_unnorm = qxhs[0].mean(1)
     q_x_mid_h_c0 = (q_x_mid_h_c0_unnorm.T / q_x_mid_h_c0_unnorm.sum(1)).T
     q_x_mid_h_c1_unnorm = qxhs[1].mean(1)
     q_x_mid_h_c1 = (q_x_mid_h_c1_unnorm.T / q_x_mid_h_c1_unnorm.sum(1)).T
-    q_x_mid_h_c = np.stack((q_x_mid_h_c0, q_x_mid_h_c1),1)
+    q_x_mid_h_na_unnorm = qxhs[2].mean(1)
+    q_x_mid_h_na = (q_x_mid_h_na_unnorm.T / q_x_mid_h_na_unnorm.sum(1)).T
+
+    q_x_mid_h_c = stack_p_x_mid_h_c(q_x_mid_h_c0, q_x_mid_h_c1, q_x_mid_h_na)
     return q_x_mid_h_c
 
 #%%#####################################################

@@ -14,7 +14,7 @@ import pandas as pd
 import pickle
 import random 
 
-#sys.path.append('..')
+sys.path.append('..')
 #sys.path.append('./src/')
 
 from paths import DATASETS, OUT, RESULTS, MODELS
@@ -23,7 +23,8 @@ coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
 
 # %% MI RES
-mifolder = os.path.join(RESULTS, "mis")
+mt_eval_run_name = "otherwords_mt_eval"
+mifolder = os.path.join(RESULTS, f"mis/{mt_eval_run_name}")
 mifiles = os.listdir(mifolder)
 # %%
 res_records = []
@@ -116,3 +117,74 @@ table_df_grouped.mean().reset_index().to_csv(os.path.join(RESULTS, "leace_mis_me
 table_df_grouped.std().reset_index().to_csv(os.path.join(RESULTS, "leace_mis_std.csv"), index=False)
 # %%
 logging.info("Done")
+
+#%%
+entropy_cols = [
+    'Hz_c', 'Hz_c_mid_h', 'MIz_c_h', 
+    'Hqbot_c', 'Hqbot_c_mid_hbot','MIqbot_c_hbot', 
+    'Hqpar_c', 'Hqpar_c_mid_hpar', 'MIqpar_c_hpar',
+    'Hz_x_c', 'Hz_x_mid_h_c', 'MIz_x_h_mid_c', 'Hqbot_x_c',
+    'Hqbot_x_mid_hbot_c', 'MIqbot_x_hbot_mid_c', 
+    'Hqpar_x_c',
+    'Hqpar_x_mid_hpar_c', 'MIqpar_x_hpar_mid_c'
+]
+entropy_breakdown = df[['model_name', 'concept', 'source'] + entropy_cols]
+
+entcols_name = {
+    "model_name": "Model",
+    "concept": "Concept",
+    "source": "Sample Source",
+    #"index": "Concept + Model",
+    #"newindex": "Concept + Model + Metric",
+    "metric": "Metric",
+    'Hz_c': "Hz(C)", 
+    'Hz_c_mid_h': "Hz(C | H)", 
+    'MIz_c_h': "MIz(C; H)", 
+    'Hqbot_c': "Hqbot(C)", 
+    'Hqbot_c_mid_hbot': "Hqbot(C | Hbot)",
+    'MIqbot_c_hbot': "MIqbot(C; Hbot)", 
+    'Hqpar_c': "Hqpar(C)", 
+    'Hqpar_c_mid_hpar': "Hqpar(C | Hpar)", 
+    'MIqpar_c_hpar': "MIqpar(C; Hpar)", 
+    'Hz_x_c': "Hz(X | C)",  
+    'Hz_x_mid_h_c': "Hz(X | H, C)",  
+    'MIz_x_h_mid_c': "MIz(X; H | C)", 
+    'Hqbot_x_c': "Hqbot(X | C)",  
+    'Hqbot_x_mid_hbot_c': "Hqbot(X | Hbot, C)",
+    'MIqbot_x_hbot_mid_c': "MIqbot(X; Hbot | C)",
+    'Hqpar_x_c': "Hqpar(X | C)",  
+    'Hqpar_x_mid_hpar_c': "Hqpar(X | Hpar, C)",
+    'MIqpar_x_hpar_mid_c': "MIqpar(X; Hpar | C)",
+}
+
+
+entropy_breakdown.sort_values(by = ["source", "concept", "model_name"], inplace=True)
+entropy_breakdown.columns = [entcols_name[x] for x in entropy_breakdown.columns]
+entropy_breakdown_grouped = entropy_breakdown.groupby(["Sample Source", "Concept", "Model"])
+entropy_breakdown_grouped.mean().reset_index().to_csv(os.path.join(RESULTS, "leace_entropies_mean.csv"), index=False)
+entropy_breakdown_grouped.std().reset_index().to_csv(os.path.join(RESULTS, "leace_entropies_std.csv"), index=False)
+
+#%% 
+ent_break_group = entropy_breakdown.groupby(["source", "concept", "model_name"])
+
+ent_mean = ent_break_group.mean().reset_index()
+ent_mean["index"] = ent_mean["concept"] + "_" + ent_mean["model_name"]
+ent_mean.drop(["source", "concept", "model_name"], axis=1, inplace=True)
+ent_mean = ent_mean[["index"] + entropy_cols]
+ent_mean["metric"] = "mean"
+
+ent_std = ent_break_group.std().reset_index()
+ent_std["index"] = ent_std["concept"] + "_" + ent_std["model_name"]
+ent_std.drop(["source", "concept", "model_name"], axis=1, inplace=True)
+ent_std = ent_std[["index"] + entropy_cols]
+ent_std["metric"] = "std"
+ent_final = pd.concat([ent_mean, ent_std], axis=0)
+ent_final["newindex"] = ent_final["index"] + "_" + ent_final["metric"]
+ent_final = ent_final[["newindex"] + entropy_cols]
+
+ent_final.columns = [entcols_name[x] for x in ent_final.columns]
+ent_final.T.to_csv(os.path.join(RESULTS, "leace_entropies.csv"), index=True)
+#.reset_index().to_csv(os.path.join(RESULTS, "leace_entropies_std.csv"), index=False)
+
+#.reset_index().to_csv(os.path.join(RESULTS, "leace_entropies_mean.csv"), index=False)
+# %%

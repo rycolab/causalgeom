@@ -105,6 +105,7 @@ class MultiTokenDistributor:
                  nsamples, # number of test set samples
                  msamples, # number of dev set samples for each q computation
                  nwords, # number of words to use from token lists -- GET RID OF THIS
+                 n_other_words, # number of other words
                  run_path, # path of LEACE training run output
                  output_folder_name, # directory for exporting individual distributions
                  iteration, # iteration of the eval for this run
@@ -115,6 +116,7 @@ class MultiTokenDistributor:
         self.msamples = msamples
         self.nwords = nwords
         self.batch_size = batch_size
+        self.n_other_words = n_other_words
 
         nucleus = get_nucleus_arg(source)
 
@@ -139,7 +141,11 @@ class MultiTokenDistributor:
 
         # Load model eval components
         self.V = get_V(model_name, model=self.model, numpy_cpu=False).clone().type(torch.float32).to(self.device)
-        self.l0_tl, self.l1_tl = load_concept_token_lists(concept, model_name, single_token=False)
+        self.l0_tl, self.l1_tl, other_tl_full = load_concept_token_lists(concept, model_name, single_token=False)
+
+        # subsample other words
+        random.shuffle(other_tl_full)
+        self.other_tl = other_tl_full[:self.n_other_words]
 
         if self.nwords is not None:
             logging.warn(f"Applied nwords={self.nwords}, intended for DEBUGGING ONLY")
@@ -381,7 +387,7 @@ class MultiTokenDistributor:
         return torch.hstack(tl_word_probs).cpu().numpy()
 
     def compute_lemma_probs(self, lemma_samples, method, outdir, pad_token=-1):
-        l0_probs, l1_probs = [], []
+        l0_probs, l1_probs, other_probs = [], [], []
         for i, cxt_pad in enumerate(tqdm(lemma_samples)):
             cxt = cxt_pad[cxt_pad != pad_token]
 
@@ -396,6 +402,9 @@ class MultiTokenDistributor:
             l1_word_probs = self.compute_token_list_word_probs(
                 self.l1_tl, cxt, method)
             torch.cuda.empty_cache()
+            other_word_probs = self.compute_token_list_word_probs(
+                self.other_tl, cxt, method)
+            torch.cuda.empty_cache()
 
             export_path = os.path.join(
                 outdir, 
@@ -403,14 +412,15 @@ class MultiTokenDistributor:
             )            
             with open(export_path, 'wb') as f:
                 pickle.dump(
-                    (l0_word_probs, l1_word_probs), f, 
+                    (l0_word_probs, l1_word_probs, other_word_probs), f, 
                     protocol=pickle.HIGHEST_PROTOCOL
                 )
                         
             l0_probs.append(l0_word_probs)
             l1_probs.append(l1_word_probs)
+            other_probs.append(other_word_probs)
 
-        return np.stack(l0_probs), np.stack(l1_probs)
+        return np.stack(l0_probs), np.stack(l1_probs), np.stack(other_probs)
 
     def compute_pxs(self, htype):
         htype_outdir = os.path.join(

@@ -30,6 +30,7 @@ EN_NUMBER_WORD_LIST_PATH = os.path.join(DATASETS, f"processed/en/word_lists/othe
 FR_ADJ_LIST_PATH = os.path.join(DATASETS, f"processed/fr/word_lists/adj_pair_list.tsv")
 FR_WORD_LIST_PATH = os.path.join(DATASETS, f"processed/fr/word_lists/other_list.tsv")
 
+#TODO: update this for CEBaB to export nice tokenized other word lists
 CEBAB_FOOD_ADJ_LIST_PATH = os.path.join(DATASETS, f"processed/CEBaB/word_lists_raw/food_adjs.tsv")
 CEBAB_AMBIANCE_ADJ_LIST_PATH = os.path.join(DATASETS, f"processed/CEBaB/word_lists_raw/ambiance_adjs.tsv")
 CEBAB_NOISE_ADJ_LIST_PATH = os.path.join(DATASETS, f"processed/CEBaB/word_lists_raw/noise_adjs.tsv")
@@ -99,12 +100,17 @@ def get_token_list_outfile_paths(concept, model_name, single_token):
     return other_outfile, l0_outfile, l1_outfile
 
 def load_concept_token_lists(concept, model_name, single_token):
-    _, l0_tl_file, l1_tl_file = get_token_list_outfile_paths(
-        concept, model_name, single_token)
-    #other_tl = np.load(other_tl_file)
+    other_tl_file, l0_tl_file, l1_tl_file = get_token_list_outfile_paths(
+        concept, model_name, single_token
+    )
     l0_tl = np.load(l0_tl_file, allow_pickle=True)
     l1_tl = np.load(l1_tl_file, allow_pickle=True)
-    return l0_tl, l1_tl
+    
+    if other_tl_file is not None:
+        other_tl = np.load(other_tl_file, allow_pickle=True)
+    else:
+        other_tl = None
+    return l0_tl, l1_tl, other_tl
 
 def define_add_space(model_name):
     if model_name in GPT2_LIST:
