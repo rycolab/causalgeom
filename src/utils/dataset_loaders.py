@@ -6,7 +6,7 @@ import pandas as pd
 import csv 
 import pickle
 from datasets import load_dataset
-
+from itertools import zip_longest
 #sys.path.append('..')
 sys.path.append('./src/')
 
@@ -121,6 +121,16 @@ def get_udfr_dataset_folder(dataset_name):
     else:
         raise ValueError(f"Dataset name not supported: {dataset_name}")
 
+#%% CEBaB
+def load_CEBaB(concept, split):
+    fpath = os.path.join(
+        DATASETS, 
+        f"preprocessed/CEBaB/{concept}/CEBaB_{concept}_{split}.pkl"
+    )
+    with open(fpath, "rb") as f:
+        df = pickle.load(f).to_dict("records")
+    return df
+
 #%%####################################
 # Preprocessed Dataset General Loader #
 #######################################
@@ -132,10 +142,10 @@ def get_model_type(model_name):
     else: 
         raise ValueError(f"Model {model_name} not supported")
 
-def load_preprocessed_dataset(dataset_name, model_name, split=None):
+def load_preprocessed_dataset(dataset_name, model_name, concept=None, split=None):
     """ Dataset name: ["linzen", "ud_fr_gsd"]
-    Model name: GPT2 + BERT models
-    Split: ["train", "dev", "test"] (only for UD)
+    Model name: GPT2 + BERT models + llama2
+    Split: ["train", "dev", "test"]
     """
     model_type = get_model_type(model_name)
     if dataset_name == "linzen":
@@ -147,6 +157,11 @@ def load_preprocessed_dataset(dataset_name, model_name, split=None):
         return load_udfr(
             model_type, os.path.join(dataset_folder, f"{split}.pkl")
         )
+    elif dataset_name == "CEBaB":
+        assert split in ["train", "dev", "test"], "Must specify split"
+        assert concept in ["food", "ambiance", "service", "noise"], \
+            "Must specify CEBaB concept"
+        return load_CEBaB(concept, split)
     else:
         raise ValueError("invalid dataset name")
 
@@ -157,73 +172,139 @@ def load_preprocessed_dataset(dataset_name, model_name, split=None):
 def load_dataset_pickle(path, dataset_name):
     with open(path, 'rb') as f:     
         data = pd.DataFrame(pickle.load(f))
-        assert data.shape[1] == 5, "Out of date processed dataset"
-        data.columns = ["h", "u", "y", "fact", "foil"]
-        #if data.shape[1] == 3:
-        #    data.columns = ["h", "u", "y"]
-        #elif data.shape[1] == 5:
-        #else:
-        #    raise ValueError("Unexpected processed dataset format")
+        assert data.shape[1] == 6, "Out of date processed dataset"
+        data.columns = ["h", "u", "y", "fact", "foil", "cxt_tok"]        
     
     X = np.array([x for x in data["h"]])
     U = np.array([x for x in data["u"]])
     y = np.array([yi for yi in data["y"]])
-    fact = np.array([fact for fact in data["fact"]]).flatten()
-    foil = np.array([foil for foil in data["foil"]]).flatten()
-    return X, U, y, fact, foil
+    #fact = np.array([fact for fact in data["fact"]]).flatten()
+    fact = np.array(list(zip_longest(*data["fact"], fillvalue=-1))).T
+    #foil = np.array([foil for foil in data["foil"]]).flatten()
+    foil = np.array(list(zip_longest(*data["foil"], fillvalue=-1))).T
+    cxt_tok = np.array(list(zip_longest(*data["cxt_tok"], fillvalue=-1))).T
+    #X = np.vstack(data["h"])
+    #U = np.vstack(data["u"])
+    #y = np.vstack(data["y"]).flatten()
+    #fact = np.vstack(data["fact"]).flatten()
+    #foil = np.vstack(data["foil"]).flatten()
+    #cxt_tok = np.vstack(data["cxt_tok"])
+    #attention_mask = np.vstack(data["attention_mask"])
+    #return X, U, y, fact, foil, cxt_tok, attention_mask
+    return X, U, y, fact, foil, cxt_tok
 
-def get_processed_dataset_path(dataset_name, model_name, split=None):
-    if model_name in GPT2_LIST and split is None:
-        return os.path.join(DATASETS, f"processed/{dataset_name}/ar/{dataset_name}_{model_name}_ar.pkl")
-    elif model_name in GPT2_LIST and split is not None:
-        return os.path.join(DATASETS, f"processed/{dataset_name}/ar/{dataset_name}_{model_name}_ar_{split}.pkl")
+def get_processed_dataset_path(dataset_name, model_name, concept=None, split=None):
+    if model_name in SUPPORTED_AR_MODELS:
+        dataset_dir = os.path.join(DATASETS, f"processed/{dataset_name}/ar")
+        file_name = f"{dataset_name}_{model_name}_ar.pkl"
+        if concept is not None:
+            file_name = file_name[:-len(f".pkl")] + f"_{concept}.pkl"
+        if split is not None:
+            file_name = file_name[:-len(f".pkl")] + f"_{split}.pkl"
+        return os.path.join(dataset_dir, file_name)
     elif model_name in BERT_LIST and split is None:
-        return os.path.join(DATASETS, f"processed/{dataset_name}/masked/{dataset_name}_{model_name}_masked.pkl")
-    elif model_name in BERT_LIST and split is not None:
-        return os.path.join(DATASETS, f"processed/{dataset_name}/masked/{dataset_name}_{model_name}_masked_{split}.pkl")
+        dataset_dir = os.path.join(DATASETS, f"processed/{dataset_name}/masked")
+        file_name = f"{dataset_name}_{model_name}.pkl"
+        if concept is not None:
+            file_name = file_name[:-len(f".pkl")] + f"_{concept}.pkl"
+        if split is not None:
+            file_name = file_name[:-len(f".pkl")] + f"_{split}.pkl"
+        return os.path.join(dataset_dir, file_name)
     else:
-        return None
+        raise NotImplementedError(f"Model name {model_name} and dataset {dataset_name} not implemented")
+    
 
-def load_processed_dataset(dataset_name, model_name, split=None):
-    dataset_path = get_processed_dataset_path(dataset_name, model_name, split)
+def load_processed_dataset(dataset_name, model_name, concept=None, split=None):
+    dataset_path = get_processed_dataset_path(dataset_name, model_name, concept=concept, split=split)
     return load_dataset_pickle(dataset_path, dataset_name)
 
 def load_gender_split(model_name, split_name):
-    #X_gsd, U_gsd, y_gsd = load_processed_dataset("ud_fr_gsd", model_name, split_name)
-    X_gsd, U_gsd, y_gsd, fact_gsd, foil_gsd = load_processed_dataset("ud_fr_gsd", model_name, split_name)
-    #X_partut, U_partut, y_partut = load_processed_dataset("ud_fr_partut", model_name, split_name)
-    X_partut, U_partut, y_partut, fact_partut, foil_partut = load_processed_dataset("ud_fr_partut", model_name, split_name)
-    #X_rhapsodie, U_rhapsodie, y_rhapsodie = load_processed_dataset("ud_fr_rhapsodie", model_name, split_name)
-    X_rhapsodie, U_rhapsodie, y_rhapsodie, fact_rhapsodie, foil_rhapsodie = load_processed_dataset("ud_fr_rhapsodie", model_name, split_name)
+
+    X_gsd, U_gsd, y_gsd, fact_gsd, foil_gsd, cxt_tok_gsd = load_processed_dataset(
+        "ud_fr_gsd", model_name, concept="gender", split=split_name
+    )
+    X_partut, U_partut, y_partut, fact_partut, foil_partut, cxt_tok_partut = load_processed_dataset(
+        "ud_fr_partut", model_name, concept="gender", split=split_name
+    )
+    X_rhapsodie, U_rhapsodie, y_rhapsodie, fact_rhapsodie, foil_rhapsodie, cxt_tok_rhapsodie = load_processed_dataset(
+        "ud_fr_rhapsodie", model_name, concept="gender", split=split_name
+    )
 
     X = np.vstack([X_gsd, X_partut, X_rhapsodie])
-    U = np.vstack([U_gsd, U_partut, U_rhapsodie])
+    U = np.hstack([U_gsd, U_partut, U_rhapsodie])
     y = np.hstack([y_gsd, y_partut, y_rhapsodie])
-    fact = np.hstack([fact_gsd, fact_partut, fact_rhapsodie])
-    foil = np.hstack([foil_gsd, foil_partut, foil_rhapsodie])
-    return X, U, y, fact, foil
+    
+    all_fact = [*fact_gsd] + [*fact_partut] + [*fact_rhapsodie]
+    fact = np.array(list(zip_longest(*all_fact, fillvalue=-1))).T
+    
+    all_foil = [*foil_gsd] + [*foil_partut] + [*foil_rhapsodie]
+    foil = np.array(list(zip_longest(*all_foil, fillvalue=-1))).T
+    
+    all_cxt_tok = [*cxt_tok_gsd] + [*cxt_tok_partut] + [*cxt_tok_rhapsodie]
+    cxt_tok = np.array(list(zip_longest(*all_cxt_tok, fillvalue=-1))).T
+    return X, U, y, fact, foil, cxt_tok
 
 def load_gender_processed(model_name):
-    #X_train, U_train, y_train = load_gender_split(model_name, "train")
-    X_train, U_train, y_train, fact_train, foil_train = load_gender_split(model_name, "train")
+    X_train, U_train, y_train, fact_train, foil_train, cxt_tok_train = load_gender_split(model_name, "train")
     #X_dev, U_dev, y_dev = load_gender_split(model_name, "dev")
-    X_dev, U_dev, y_dev, fact_dev, foil_dev = load_gender_split(model_name, "dev")
+    X_dev, U_dev, y_dev, fact_dev, foil_dev, cxt_tok_dev = load_gender_split(model_name, "dev")
     #X_test, U_test, y_test = load_gender_split(model_name, "test")
-    X_test, U_test, y_test, fact_test, foil_test = load_gender_split(model_name, "test")
+    X_test, U_test, y_test, fact_test, foil_test, cxt_tok_test = load_gender_split(model_name, "test")
     
     #stacking into one
     X = np.vstack([X_train, X_dev, X_test])
-    U = np.vstack([U_train, U_dev, U_test])
+    U = np.hstack([U_train, U_dev, U_test])
     y = np.hstack([y_train, y_dev, y_test])
-    fact = np.hstack([fact_train, fact_dev, fact_test])
-    foil = np.hstack([foil_train, foil_dev, foil_test])
-    return X, U, y, fact, foil
+    
+    all_fact = [*fact_train] + [*fact_dev] + [*fact_test]
+    fact = np.array(list(zip_longest(*all_fact, fillvalue=-1))).T
+    
+    all_foil = [*foil_train] + [*foil_dev] + [*foil_test]
+    foil = np.array(list(zip_longest(*all_foil, fillvalue=-1))).T
+    
+    all_cxt_tok = [*cxt_tok_train] + [*cxt_tok_dev] + [*cxt_tok_test]
+    cxt_tok = np.array(list(zip_longest(*all_cxt_tok, fillvalue=-1))).T
+    return X, U, y, fact, foil, cxt_tok
+
+def load_CEBaB_processed(concept_name, model_name):
+    X_train, U_train, y_train, facts_train, foils_train, cxt_toks_train = load_processed_dataset(
+        "CEBaB", model_name, concept_name, split="train"
+    )
+    X_dev, U_dev, y_dev, facts_dev, foils_dev, cxt_toks_dev = load_processed_dataset(
+        "CEBaB", model_name, concept_name, split="dev"
+    )
+    X_test, U_test, y_test, facts_test, foils_test, cxt_toks_test = load_processed_dataset(
+        "CEBaB", model_name, concept_name, split="test"
+    )
+    return {
+        "X_train": X_train, 
+        "U_train": U_train,
+        "y_train": y_train,
+        "facts_train": facts_train,
+        "foils_train": foils_train,
+        "cxt_toks_train": cxt_toks_train,
+        "X_dev": X_dev, 
+        "U_dev": U_dev,
+        "y_dev": y_dev,
+        "facts_dev": facts_dev,
+        "foils_dev": foils_dev,
+        "cxt_toks_dev": cxt_toks_dev,
+        "X_test": X_test, 
+        "U_test": U_test,
+        "y_test": y_test,
+        "facts_test": facts_test,
+        "foils_test": foils_test,
+        "cxt_toks_test": cxt_toks_test,
+    }
 
 def load_processed_data(concept_name, model_name):
+    # TODO fix this trash this function returns different things depending on the args.
     if concept_name == "number":
-        return load_processed_dataset("linzen", model_name)
+        return load_processed_dataset("linzen", model_name, "number")
     elif concept_name == "gender":
         return load_gender_processed(model_name)
+    elif concept_name in ["food", "ambiance", "service", "noise"]:
+        return load_CEBaB_processed(concept_name, model_name)
     else: 
         raise ValueError("Concept name and model name pair not supported.")
 

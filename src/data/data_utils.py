@@ -24,8 +24,8 @@ def filter_hs_w_ys(X, facts, foils, y, value):
     return sub_hs_wff
 
 def sample_filtered_hs(l0_hs, l1_hs, nsamples):
-    random.shuffle(l0_hs)
-    random.shuffle(l1_hs)
+    np.random.shuffle(l0_hs)
+    np.random.shuffle(l1_hs)
     ratio = len(l1_hs)/len(l0_hs)
     if ratio > 1:
         l0_hs = l0_hs[:nsamples]

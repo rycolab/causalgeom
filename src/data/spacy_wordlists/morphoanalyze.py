@@ -9,29 +9,13 @@ import argparse
 from tqdm import tqdm
 import pickle
 import spacy
-from utils.dataset_loaders import load_wikipedia
 
 #sys.path.append('../../')
 sys.path.append('./src/')
 
+from utils.dataset_loaders import load_wikipedia
 from paths import HF_CACHE, OUT
 
-# %%
-def get_args():
-    argparser = argparse.ArgumentParser(description='Process hidden states')
-    argparser.add_argument(
-        "-language", 
-        type=str,
-        choices=["en", "fr"],
-        help="Which language to extract from"
-    )
-    argparser.add_argument(
-        "-backup_batches", 
-        type=int,
-        default=100,
-        help="Number of batches before temp export"
-    )
-    return argparser.parse_args()
 
 #%%
 def process_sample(sample):
@@ -88,8 +72,11 @@ def create_temp_files(data):
             tempcount+=1
 """
 
-def export_token_dict(token_dict, outfile, switch):
-    switch_outfile = f"{outfile[:-4]}_{switch}.pkl"
+def export_token_dict(token_dict, outfile, switch=None):
+    if switch is not None:
+        switch_outfile = f"{outfile[:-4]}_{switch}.pkl"
+    else:
+        switch_outfile = outfile
     with open(switch_outfile, 'wb') as f:
         pickle.dump(token_dict, f, protocol=pickle.HIGHEST_PROTOCOL)
     logging.info(f"Token dict exported to: {switch_outfile}")
@@ -111,6 +98,22 @@ def create_token_dict(data, outfile, backup_batches):
     
 
 #%%
+def get_args():
+    argparser = argparse.ArgumentParser(description='Process hidden states')
+    argparser.add_argument(
+        "-language", 
+        type=str,
+        choices=["en", "fr"],
+        help="Which language to extract from"
+    )
+    argparser.add_argument(
+        "-backup_batches", 
+        type=int,
+        default=100,
+        help="Number of batches before temp export"
+    )
+    return argparser.parse_args()
+    
 if __name__=="__main__":
     args = get_args()
     logging.info(args)
@@ -123,13 +126,17 @@ if __name__=="__main__":
     
     if language == "fr":
         nlp = spacy.load("fr_core_news_sm")
-    else: 
+    elif language == "en": 
         nlp = spacy.load("en_core_web_sm")
+    else:
+        raise ValueError(f"Unsupported language: {language}")
 
-    OUT_DIR = os.path.join(OUT, f"wordlist")
-    assert os.path.exists(OUT_DIR), f"{OUT_DIR} doesn't exist"
+    OUT_DIR = os.path.join(DATASETS, f"{language}")
+    os.makedirs(OUT_DIR, exist_ok=True)
+    logging.info(f"Created output directory: {OUT_DIR}")
+    #assert os.path.exists(OUT_DIR), f"{OUT_DIR} doesn't exist"
 
-    OUT_FILE = os.path.join(OUT_DIR, f"{language}_new.pkl")
+    OUT_FILE = os.path.join(OUT_DIR, f"{language}_wiki_wordlist.pkl")
 
     #TEMPDIR = os.path.join(OUT_DIR, f"temp_{language}")
     #os.mkdir(TEMPDIR)

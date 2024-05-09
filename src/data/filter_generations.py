@@ -20,9 +20,8 @@ sys.path.append('./src/')
 
 from paths import DATASETS, OUT
 
-from utils.lm_loaders import GPT2_LIST, get_concept_name
-from data.embed_wordlists.embedder import get_token_list_outfile_paths, \
-    load_concept_token_lists
+from utils.lm_loaders import GPT2_LIST, SUPPORTED_AR_MODELS
+from data.spacy_wordlists.embedder import load_concept_token_lists
 from data.data_utils import sample_filtered_hs
 
 coloredlogs.install(level=logging.INFO)
@@ -50,19 +49,32 @@ def get_concept_hs(generations_folder, l0_tl, l1_tl, nsamples=None):
                 continue
     return l0_hs, l1_hs
 
-def get_concept_hs_w_factfoil(generations_folder, l0_tl, l1_tl, nsamples=None):
-    files = os.listdir(generations_folder)
-    if nsamples is not None:
+def get_generated_files(generations_folder):
+    gen_output_folders = os.listdir(generations_folder)
+    files = []
+    for folder in gen_output_folders:
+        folder_path = os.path.join(generations_folder, folder)
+        folder_files = os.listdir(folder_path)
+        for filename in folder_files:
+            if filename.endswith(".pkl"):
+                files.append(os.path.join(folder_path, filename))
+    return files
+
+def get_concept_hs_w_factfoil_singletoken(generations_folder, l0_tl, l1_tl, nfiles=None):
+    files = get_generated_files(generations_folder) 
+    logging.info(f"Found {len(files)} generated text files in main directory {generations_folder}")   
+    
+    if nfiles is not None:
         random.shuffle(files)
-        files = files[:nsamples]
+        files = files[:nfiles]
     l0_hs = []
     l1_hs = []
     other_hs = []
     for i, filepath in enumerate(tqdm(files)):
-        with open(os.path.join(generations_folder, filepath), "rb") as f:
+        with open(filepath, "rb") as f:
             data = pickle.load(f)
 
-        for h, x in data:
+        for h, x, all_tokens in data:
             if x in l0_tl:
                 x_index = np.nonzero(l0_tl==x)[0][0]
                 foil = l1_tl[x_index]
@@ -75,6 +87,55 @@ def get_concept_hs_w_factfoil(generations_folder, l0_tl, l1_tl, nsamples=None):
                 other_hs.append((h.numpy(), x))
                 #continue
     return l0_hs, l1_hs, other_hs
+
+def get_concept_hs_w_factfoil_multitoken(generations_folder, l0_tl, l1_tl, 
+    nfiles=None, perc_samples=.1):
+    files = get_generated_files(generations_folder) 
+    logging.info(f"Found {len(files)} generated text files in main directory {generations_folder}")   
+
+    if nfiles is not None:
+        random.shuffle(files)
+        files = files[:nfiles]
+    l0_hs = []
+    l1_hs = []
+    other_hs = []
+    multitoken_matches = 0
+    for i, filepath in enumerate(tqdm(files)):
+        try:
+            with open(filepath, "rb") as f:
+                data = pickle.load(f)
+        except (pickle.UnpicklingError, EOFError):
+            continue
+        else:
+            random.shuffle(data)
+            for h, x, all_tokens in data[:int(len(data)*perc_samples)]:
+                all_tokens = all_tokens.tolist()
+                added_to_concept = False
+                for i in range(len(l0_tl)):
+                    l0_wordtok = l0_tl[i]
+                    l1_wordtok = l1_tl[i]
+                    if all_tokens[-len(l0_wordtok):] == l0_wordtok:
+                        # (h, fact, foil, all_tokens)
+                        l0_hs.append((h.numpy(), l0_wordtok, l1_wordtok, all_tokens)) 
+                        added_to_concept=True
+                        if len(l0_wordtok) > 1:
+                            multitoken_matches+=1
+                        break    
+                    elif all_tokens[-len(l1_wordtok):] == l1_wordtok:
+                        # (h, fact, foil, all_tokens)
+                        l1_hs.append((h.numpy(), l1_wordtok, l0_wordtok, all_tokens)) 
+                        added_to_concept=True
+                        if len(l1_wordtok) > 1:
+                            multitoken_matches+=1
+                        break
+                    else:
+                        continue
+                if not added_to_concept:
+                    other_hs.append(h.numpy())
+    logging.info(f"Generated h's obtained -- l0: {len(l0_hs)}, l1: {len(l1_hs)}, other: {len(other_hs)}.")
+    logging.info(f"Number of multitoken matches: {multitoken_matches}")
+    return l0_hs, l1_hs, other_hs
+
 
 #%% Loader functions
 """ 
@@ -89,34 +150,39 @@ def load_filtered_hs(model_name, I_P="no_I_P", nsamples=None):
         l0_hs, l1_hs = sample_filtered_hs(l0_hs, l1_hs, nsamples)
     return l0_hs, l1_hs
 """
-def load_generated_hs_wff(model_name, load_other=False, nucleus=False, nsamples=None, I_P="no_I_P"):
+def load_filtered_generations(model_name, concept, nucleus, new=True):
+    #TODO: UNFUCK THIS FUNCTION ONCE THIS HAS RE-RUN
     if nucleus:
-        filtered_hs_dir = os.path.join(OUT, 
-            f"filtered_generations_nucleus/{model_name}/{I_P}")
-    else:
-        filtered_hs_dir = os.path.join(OUT, 
-            f"filtered_generations/{model_name}/{I_P}"
+        filtered_hs_dir = os.path.join(
+            DATASETS, f"filtered_generations/nucleus/{model_name}/{concept}"
         )
-    if load_other:
-        filtered_hs_dir = os.path.join(os.path.join(
-            filtered_hs_dir, '..'), "no_I_P_w_other")
-        #filtered_hs_dir = os.path.join(filtered_hs_dir, f"_w_other")
-    
-    with open(os.path.join(filtered_hs_dir, "l0_hs_w_factfoil.pkl"), "rb") as f:
-        l0_hs_wff = pickle.load(f)
-    with open(os.path.join(filtered_hs_dir, "l1_hs_w_factfoil.pkl"), "rb") as f:
-        l1_hs_wff = pickle.load(f)
-    
-    if load_other:
-        with open(os.path.join(filtered_hs_dir, "other_hs.pkl"), "rb") as f:
-            other_hs = pickle.load(f)
-        return l0_hs_wff, l1_hs_wff, other_hs
+        old_dir = os.path.join(
+            OUT, f"filtered_generations_nucleus/{model_name}/{concept}"
+        )
     else:
-        if nsamples is not None:
-            l0_hs_wff, l1_hs_wff = sample_filtered_hs(
-                l0_hs_wff, l1_hs_wff, nsamples
-            )
-        return l0_hs_wff, l1_hs_wff
+        filtered_hs_dir = os.path.join(
+            DATASETS, f"filtered_generations/ancestral/{model_name}/{concept}"
+        )
+        old_dir = os.path.join(
+            OUT, f"filtered_generations/{model_name}/{concept}"
+        )
+    
+    #TODO: replace old_dir with filtered_hs_dir
+    if new:
+        with open(os.path.join(old_dir, "new_l0_hs_w_factfoil.pkl"), "rb") as f:
+            l0_hs_wff = pickle.load(f)
+        with open(os.path.join(old_dir, "new_l1_hs_w_factfoil.pkl"), "rb") as f:
+            l1_hs_wff = pickle.load(f)
+        with open(os.path.join(old_dir, "new_other_hs.pkl"), "rb") as f:
+            other_hs = pickle.load(f)
+    else:
+        with open(os.path.join(old_dir, "l0_hs_w_factfoil.pkl"), "rb") as f:
+            l0_hs_wff = pickle.load(f)
+        with open(os.path.join(old_dir, "l1_hs_w_factfoil.pkl"), "rb") as f:
+            l1_hs_wff = pickle.load(f)
+        with open(os.path.join(old_dir, "other_hs.pkl"), "rb") as f:
+            other_hs = pickle.load(f)
+    return l0_hs_wff, l1_hs_wff, other_hs
 
 # %%
 def get_args():
@@ -124,14 +190,32 @@ def get_args():
     argparser.add_argument(
         "-model",
         type=str,
-        choices=GPT2_LIST,
+        choices=SUPPORTED_AR_MODELS,
         help="Model for computing hidden states"
+    )
+    argparser.add_argument(
+        "-concept",
+        type=str,
+        choices=["number", "gender", "food", "ambiance", "service", "noise"],
+        help="Concept to create embedded word lists for"
     )
     argparser.add_argument(
         "-nucleus",
         action="store_true",
         default=False,
         help="Whether to use nucleus sampling",
+    )
+    argparser.add_argument(
+        "-perc_samples",
+        type=float,
+        default=.05,
+        help="Percentage of h's stored in a given output file to analyze.",
+    )
+    argparser.add_argument(
+        "-nfiles",
+        type=int,
+        default=None,
+        help="Number of output files to load (should not be used outside debugging).",
     )
     return argparser.parse_args()
 
@@ -142,41 +226,39 @@ if __name__ == '__main__':
     
     
     model_name = args.model
+    concept = args.concept
     nucleus = args.nucleus
-    nfiles=1000
-    #model_name = "gpt2-large"
-    #nucleus = False
-    #nfiles = 10
+    perc_samples = args.perc_samples
+    #model_name = "llama2"
+    #concept = "food"
+    #nucleus = True
+    #perc_samples = .1
+    
+    #testing options
+    nfiles = args.nfiles #keep this to none unless debugging
+    #single_token = False
 
     if nucleus:
         generations_folder = os.path.join(OUT, f"generated_text_nucleus/{model_name}/no_I_P")
-        outdir = os.path.join(OUT, f"filtered_generations_nucleus/{model_name}/no_I_P_w_other")
+        outdir = os.path.join(
+            DATASETS, f"filtered_generations/nucleus/{model_name}/{concept}"
+        )
     else:
         generations_folder = os.path.join(OUT, f"generated_text/{model_name}/no_I_P")
-        outdir = os.path.join(OUT, f"filtered_generations/{model_name}/no_I_P_w_other")
+        outdir = os.path.join(
+            DATASETS, f"filtered_generations/ancestral/{model_name}/{concept}"
+        )
 
-    if not os.path.exists(outdir):
-        os.makedirs(outdir)
-        logging.info(f"Created output directory {outdir}")
+    os.makedirs(outdir, exist_ok=True)
+    logging.info(f"Created output directory {outdir}")
     
-    concept_name = get_concept_name(model_name)
-    l0_tl, l1_tl = load_concept_token_lists(concept_name, model_name)
-
+    l0_tl, l1_tl, _ = load_concept_token_lists(concept, model_name, single_token=False)
+    
     logging.info(f"Filtering generations for model {model_name} with nucleus: {nucleus}")
-
-    #l0_hs, l1_hs = get_concept_hs(
-    #    generations_folder, l0_tl, l1_tl, nsamples=nsamples
-    #)
     
-    #l0_outfile = os.path.join(outdir, "l0_hs.pkl")
-    #l1_outfile = os.path.join(outdir, "l1_hs.pkl")
-    #with open(l0_outfile, "wb") as f:
-    #    pickle.dump(l0_hs, f, protocol=pickle.HIGHEST_PROTOCOL)
-    #with open(l1_outfile, "wb") as f:
-    #    pickle.dump(l1_hs, f, protocol=pickle.HIGHEST_PROTOCOL)
-    
-    l0_hs_wff, l1_hs_wff, other_hs = get_concept_hs_w_factfoil(
-        generations_folder, l0_tl, l1_tl, nsamples=nfiles
+    #NOTE: no support for single_token anymore here
+    l0_hs_wff, l1_hs_wff, other_hs = get_concept_hs_w_factfoil_multitoken(
+        generations_folder, l0_tl, l1_tl, nfiles=nfiles, perc_samples=perc_samples
     )
     
     l0_wff_outfile = os.path.join(outdir, "l0_hs_w_factfoil.pkl")

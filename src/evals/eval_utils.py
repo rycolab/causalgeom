@@ -22,7 +22,6 @@ from transformers import TopPLogitsWarper, LogitsProcessorList
 sys.path.append('./src/')
 
 from paths import DATASETS, OUT
-from data.embed_wordlists.embedder import load_concept_token_lists
 from utils.lm_loaders import get_V
 
 coloredlogs.install(level=logging.INFO)
@@ -42,11 +41,6 @@ def load_run_Ps(run_path):
     I_P = run["output"]["I_P"]
     bias = run["output"].get("bias", None)
     return P, I_P, bias
-
-def load_model_eval(model_name, concept):
-    V = get_V(model_name)
-    l0_tl, l1_tl = load_concept_token_lists(concept, model_name)
-    return V, l0_tl, l1_tl
 
 
 #%%#################
@@ -109,10 +103,6 @@ def get_all_distribs(h, P, I_P, V, l0_tl, l1_tl, processor=None):
 def renormalize(p):
     return p / np.sum(p)
 
-
-#%%###########
-# MI helpers #
-##############
 
 
 #%%######################

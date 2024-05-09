@@ -135,6 +135,7 @@ def intervene_test_set(test_hs, case, l0_dev_hs, l1_dev_hs, all_hs,
     scores = []
     for h, faid, foid in tqdm(test_hs):
         
+        assert False, "There should be multitoken facts and foils now, need to handle"
         # original distribution
         base_distrib = compute_pxh(h, V, processor)
         
@@ -179,9 +180,9 @@ def compute_int_eval_run(model_name, concept, run, run_path,
     nucleus=False, iteration=0):
     
     ### LOADING RUN OUTPUT AND DATA FOR EVAL
-    # TODO: check this bias situation -- should probably use it
     P, I_P, _ = load_run_Ps(run_path)
-    V, l0_tl, l1_tl = load_model_eval(model_name, concept)
+    V = get_V(model_name, model=self.model, numpy_cpu=False).clone().type(torch.float32).to(self.device)
+    l0_tl, l1_tl = load_concept_token_lists(concept, model_name, single_token=True)
 
     # TODO: fixed this, make sure it works
     #train_l0_hs, test_l0_hs, train_l1_hs, test_l1_hs = prep_data_from_test_only(

@@ -79,24 +79,46 @@ def batch_tokenize_text(text, tokenizer):
         padding="max_length", truncation=True
     )
 
-def get_raw_sample_hs(model_name, pre_tgt_ids, attention_mask, tgt_ids, model):
-    nopad_ti = pre_tgt_ids[attention_mask == 1]
-    tgt_ti = torch.cat((nopad_ti, torch.LongTensor(tgt_ids)), 0)
+#def get_raw_sample_hs_factfoil(model_name, pre_tgt_ids, attention_mask, tgt_ids, model):
+#    nopad_ti = pre_tgt_ids[attention_mask == 1]
+#    tgt_ti = torch.cat((nopad_ti, torch.LongTensor(tgt_ids)), 0)
+#    if model_name == "llama2":
+#        tgt_ti = tgt_ti.unsqueeze(0)
+#    tgt_ti_dev = tgt_ti.to(device)
+#    with torch.no_grad():
+#        #TODO: check that the logits are the same
+#        output = model(
+#            input_ids=tgt_ti_dev, 
+#            #attention_mask=attention_mask, 
+#            labels=tgt_ti_dev,
+#            output_hidden_states=True
+#        )
+#    if model_name == "llama2":
+#        return tgt_ti.numpy(), output.hidden_states[-1][0].cpu().numpy()
+#    elif model_name in GPT2_LIST:
+#        return tgt_ti.numpy(), output.hidden_states[-1].cpu().numpy()
+#    else:
+#        raise NotImplementedError(f"Model {model_name} not yet implemented")
+
+def get_raw_sample_hs(model_name, input_ids, attention_mask, model):
+    nopad_ti = input_ids[attention_mask == 1]
+
     if model_name == "llama2":
-        tgt_ti = tgt_ti.unsqueeze(0)
-    tgt_ti_dev = tgt_ti.to(device)
+        nopad_ti = nopad_ti.unsqueeze(0)
+    
+    nopad_ti_dev = nopad_ti.to(device)
+    
     with torch.no_grad():
-        #TODO: check that the logits are the same
         output = model(
-            input_ids=tgt_ti_dev, 
+            input_ids=nopad_ti_dev, 
             #attention_mask=attention_mask, 
-            labels=tgt_ti_dev,
+            labels=nopad_ti_dev,
             output_hidden_states=True
         )
     if model_name == "llama2":
-        return tgt_ti.numpy(), output.hidden_states[-1][0].cpu().numpy()
+        return nopad_ti.squeeze(0).numpy(), output.hidden_states[-1][0].cpu().numpy()
     elif model_name in GPT2_LIST:
-        return tgt_ti.numpy(), output.hidden_states[-1].cpu().numpy()
+        return nopad_ti.numpy(), output.hidden_states[-1].cpu().numpy()
     else:
         raise NotImplementedError(f"Model {model_name} not yet implemented")
 
@@ -108,7 +130,7 @@ def get_tgt_hs(raw_hs, tgt_tokens):
     tgt_hs = raw_hs[-(len(tgt_tokens)+1):]
     return tgt_hs
 
-def get_batch_hs_ar(model_name, batch, model, tokenizer, V):
+def get_batch_hs_ar_detailed(model_name, batch, model, tokenizer, V):
     batch_hs = []
     tok_facts = batch_tokenize_tgts(model_name, batch["fact"], tokenizer)
     tok_foils = batch_tokenize_tgts(model_name, batch["foil"], tokenizer)
@@ -123,16 +145,29 @@ def get_batch_hs_ar(model_name, batch, model, tokenizer, V):
         batch["foil"], 
         batch["tgt_label"]):
         
+        # french data bug
+        if (ti.unique() == torch.tensor([tokenizer.pad_token_id])).all():
+            logging.warn("Weird observation skipped")
+            continue
+
         ######################
         # Get hidden states
         ######################
         # NOTE: for dynamic program will need to separately
         # loop through all tokenizations of verb and iverb
-        fact_ti, fact_raw_hs = get_raw_sample_hs(model_name, ti, am, tfa, model)
-        fact_hs = get_tgt_hs(fact_raw_hs, tfa)
+        #TODO: right now I get hidden states for prefix + fact and prefix + foil
+        # but in the end I only use h for prefix -- should get rid of this for speed
+        #fact_ti, fact_raw_hs = get_raw_sample_hs_factfoil(model_name, ti, am, tfa, model)
+        #fact_hs = get_tgt_hs(fact_raw_hs, tfa)
 
-        foil_ti, foil_raw_hs = get_raw_sample_hs(model_name, ti, am, tfo, model)
-        foil_hs = get_tgt_hs(foil_raw_hs, tfo)
+        #foil_ti, foil_raw_hs = get_raw_sample_hs_factfoil(model_name, ti, am, tfo, model)
+        #foil_hs = get_tgt_hs(foil_raw_hs, tfo)
+
+        ######################################
+        # Get hidden states not by fact foil #
+        ######################################
+        nopad_ti, raw_hs = get_raw_sample_hs(model_name, ti, am, model)
+        last_h = raw_hs[-1] 
 
         ######################
         # Get verb embeddings
@@ -144,23 +179,96 @@ def get_batch_hs_ar(model_name, batch, model, tokenizer, V):
             fact = fact,
             foil = foil,
             tgt_label = tgt_label,
-            input_ids_pre_tgt = ti,
+            input_ids_pre_tgt_padded = ti, 
+            attention_mask = am, 
+            input_ids_pre_tgt = nopad_ti,
             input_ids_fact = tfa, 
-            fact_hs = fact_hs, 
+            hs = last_h,
+            #fact_hs = fact_hs, 
             #verb_raw_hs = fact_raw_hs,
             fact_embedding = fact_embedding,
             input_ids_foil = tfo, 
-            foil_hs = foil_hs,
+            #foil_hs = foil_hs,
             #iverb_raw_hs=iverb_raw_hs,
             foil_embedding = foil_embedding,
         ))
     return batch_hs
 
+#def format_batch_ar(batch, batch_hs, 
+#        input_ids, attention_mask, 
+#        tokenized_facts, tokenized_foils, V):
+#    """ after obtaining hidden states in a batch, formats
+#    each individual sample
+#    """
+#    data = []
+#    for ti, am, tfa, tfo, fact, foil, tgt_label, hs in zip(
+#        input_ids, 
+#        attention_mask, 
+#        tokenized_facts,
+#        tokenized_foils,
+#        batch["fact"], 
+#        batch["foil"], 
+#        batch["tgt_label"],
+#        batch_hs):
+#
+#        ti_nopad = ti[am==1]
+#        hs_nopad = hs[am==1]
+#        last_h = hs_nopad[-1]
+#        fact_embedding = V[tfa,:]
+#        foil_embedding = V[tfo,:]
+#
+#        data.append(dict(
+#            fact = fact,
+#            foil = foil,
+#            tgt_label = tgt_label,
+#            input_ids_pre_tgt = ti_nopad,
+#            input_ids_fact = tfa, 
+#            hs = last_h, 
+#            fact_hs = None, 
+#            #verb_raw_hs = fact_raw_hs,
+#            fact_embedding = fact_embedding,
+#            input_ids_foil = tfo, 
+#            foil_hs = None,
+#            #iverb_raw_hs=iverb_raw_hs,
+#            foil_embedding = foil_embedding,
+#        ))
+#    return data
+
+#def get_batch_hs_ar(model_name, batch, model, tokenizer, V):
+#    batch_hs = []
+#    tok_facts = batch_tokenize_tgts(model_name, batch["fact"], tokenizer)
+#    tok_foils = batch_tokenize_tgts(model_name, batch["foil"], tokenizer)
+#    tok_text = batch_tokenize_text(batch["pre_tgt_text"], tokenizer)
+#    input_ids = tok_text["input_ids"].to(device)
+#    attention_mask = tok_text["attention_mask"].to(device)
+#
+#    with torch.no_grad():
+#        
+#        output = model(
+#            input_ids=input_ids, 
+#            attention_mask=attention_mask, 
+#            labels=input_ids,
+#            output_hidden_states=True
+#        )
+#    
+#    batch_hs = output.hidden_states[-1].cpu().numpy()
+#    #if model_name == "llama2":
+#    #    return tgt_ti.numpy(), output.hidden_states[-1][0].cpu().numpy()
+#    #elif model_name in GPT2_LIST:
+#    #    return tgt_ti.numpy(), output.hidden_states[-1].cpu().numpy()
+#
+#    formatted_batch = format_batch_ar(
+#        batch, batch_hs, 
+#        tok_text["input_ids"], tok_text["attention_mask"],
+#        tok_facts, tok_foils, V
+#    )
+#    return formatted_batch
+
 def collect_hs_ar(model_name, dl, model, tokenizer, V, output_dir):
     for i, batch in enumerate(pbar:=tqdm(dl)):
         pbar.set_description(f"Generating hidden states")
 
-        batch_data = get_batch_hs_ar(model_name, batch, model, tokenizer, V)
+        batch_data = get_batch_hs_ar_detailed(model_name, batch, model, tokenizer, V)
         export_batch(output_dir, i, batch_data)
 
         torch.cuda.empty_cache()
@@ -257,7 +365,7 @@ def get_args():
     argparser.add_argument(
         "-dataset", 
         type=str,
-        choices=["linzen"] + FR_DATASETS,
+        choices=["linzen", "CEBaB"] + FR_DATASETS,
         default="linzen",
         help="Dataset to collect hidden states for"
     )
@@ -268,11 +376,24 @@ def get_args():
         help="Model for computing hidden states"
     )
     argparser.add_argument(
+        "-concept",
+        type=str,
+        choices=["number", "gender", "food", "ambiance", "service", "noise"],
+        default=None,
+        help="Concept (required for CEBaB, not other datasets)",
+    )
+    argparser.add_argument(
         "-split",
         type=str,
         choices=["train", "dev", "test"],
         default=None,
         help="For UD data, specifies which split to collect hs for"
+    )
+    argparser.add_argument(
+        "-batch_size",
+        type=int,
+        default=64,
+        help="Batch size for collecting hidden states"
     )
     return argparser.parse_args()
 
@@ -281,35 +402,37 @@ if __name__=="__main__":
     args = get_args()
     logging.info(args)
 
-    #dataset_name = args.dataset
-    #model_name = args.model
-    #split = args.split
-    dataset_name = "linzen"
-    model_name = "llama2"
-    split = "train"
-    batch_size = 64
+    dataset_name = args.dataset
+    model_name = args.model
+    concept = args.concept
+    split = args.split
+    batch_size = args.batch_size
+    #dataset_name = "ud_fr_gsd"
+    #model_name = "gpt2-base-french"
+    #concept = None
+    #split = "train"
+    #batch_size = 64
 
     # Load model, tokenizer
     device = get_device()
 
     tokenizer = get_tokenizer(model_name)
     #pad_token_id = tokenizer.encode(tokenizer.pad_token)[0]
-    model = get_model(model_name)
+    model = get_model(model_name, device=device)
     V = get_V(model_name, model)
 
-    model = model.to(device)
-
     # load data
-    data = load_preprocessed_dataset(dataset_name, model_name, split)
+    data = load_preprocessed_dataset(dataset_name, model_name, concept, split)
     ds = CustomDataset(data)
     dl = DataLoader(dataset = ds, batch_size=batch_size)
 
     # Output dir
-    if split is None:
-        output_dir = os.path.join(OUT, f"hidden_states/{dataset_name}/{model_name}")
-    else:
-        output_dir = os.path.join(OUT, f"hidden_states/{dataset_name}/{model_name}/{split}")
-
+    output_dir = os.path.join(OUT, f"hidden_states/{dataset_name}/{model_name}")
+    if concept is not None:
+        output_dir = os.path.join(output_dir, f"{concept}")
+    if split is not None:
+        output_dir = os.path.join(output_dir, f"{split}")
+    
     os.makedirs(output_dir, exist_ok=False)
 
     # Collect HS
