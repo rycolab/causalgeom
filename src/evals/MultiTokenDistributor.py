@@ -101,7 +101,7 @@ class MultiTokenDistributor:
     def __init__(self, 
                  model_name, # name of AR model 
                  concept, # concept name
-                 source, # whether to use samples generated with nucleus sampling
+                 source, # ["natural", "gen_ancestral", "gen_nucleus"]
                  nsamples, # number of test set samples
                  msamples, # number of dev set samples for each q computation
                  nwords, # number of words to use from token lists -- GET RID OF THIS
@@ -133,6 +133,7 @@ class MultiTokenDistributor:
         self.device = get_device()
         self.model = get_model(model_name, device=self.device)
         self.tokenizer = get_tokenizer(model_name)
+        self.new_word_tokens = self.get_new_word_tokens(model_name) 
 
         # Load with device
         P, I_P, _ = load_run_Ps(run_path)
@@ -153,28 +154,27 @@ class MultiTokenDistributor:
             self.l1_tl = self.l1_tl[:self.nwords]
 
         # CEBaB prompts
-        self.prompt_set = self.load_suffixes(concept, source)
+        #TODO: clean this up once tested
+        #self.prompt_set = self.load_suffixes(concept, source)
+        self.prompt_set = None # added suffixes to CEBaB data in preprocessing
         logging.info(f"Prompt set for samples: {self.prompt_set}")
         #self.prompt_end_space = model_name == "llama2"
 
-        #p_x = load_p_x(MODEL_NAME, NUCLEUS)
-        self.p_c, self.gen_l0_cxt_toks, self.gen_l1_cxt_toks, self.gen_all_hs = prep_generated_data(
+        # Load generated samples
+        _, self.gen_l0_cxt_toks, self.gen_l1_cxt_toks, self.gen_all_hs = prep_generated_data(
             model_name, concept, nucleus
         )
 
-        #self.X_dev, self.y_dev, self.facts_dev, self.foils_dev, self.cxt_toks_dev = \
-        #    run["X_val"], run["y_val"], run["facts_val"], run["foils_val"], run["cxt_toks_val"]
-        #self.X_test, self.y_test, self.facts_test, self.foils_test, self.cxt_toks_test = \
-        #    run["X_test"], run["y_test"], run["facts_test"], run["foils_test"], run["cxt_toks_test"]
+        # Load test set samples
         self.y_dev, self.cxt_toks_dev = \
             run["y_val"], run["cxt_toks_val"]
         self.y_test, self.cxt_toks_test = \
             run["y_test"], run["cxt_toks_test"]
 
-        #TODO: RIGHT NOW THIS IS THE ONLY WAY, NEED TO ENABLE GENERATED
+        # Select L0 and L1 samples to use to compute distributions based on source
+        # TODO: need to try to do this with all_hs samples -- need past_key_values!
         self.l0_cxt_toks, self.l1_cxt_toks = self.get_concept_eval_contexts(source)
-
-        self.new_word_tokens = self.get_new_word_tokens(model_name) 
+        
 
     #########################################
     # Tokenizer specific new word tokens    #
@@ -229,7 +229,7 @@ class MultiTokenDistributor:
     # Data handling                         #
     #########################################
     def get_concept_eval_contexts(self, source):
-        if source in ["gen_nucleus", "gen_normal"]:
+        if source in ["gen_nucleus", "gen_ancestral"]:
             torch_gen_l0_cxt_toks = [torch.tensor(x) for x in self.gen_l0_cxt_toks]
             torch_gen_l1_cxt_toks = [torch.tensor(x) for x in self.gen_l1_cxt_toks]
             l0_cxt_toks = torch.nn.utils.rnn.pad_sequence(torch_gen_l0_cxt_toks, padding_value=-1).T
@@ -271,6 +271,7 @@ class MultiTokenDistributor:
     #########################################
     # Concept prompt adding for CEBaB.      #
     #########################################
+    #TODO: once tested, delete the three functions in this section
     @staticmethod
     def load_suffixes(concept, source):
         if source in ["gen_normal", "gen_nucleus"]:
@@ -433,22 +434,16 @@ class MultiTokenDistributor:
         l0_inputs, l1_inputs = self.sample_filtered_contexts()
         if htype == "l0_cxt_qxhs_par": 
             l0_cxt_qxhs_par = self.compute_lemma_probs(l0_inputs, "hbot", htype_outdir)
-            #return l0_cxt_qxhs_par
         elif htype == "l1_cxt_qxhs_par":
             l1_cxt_qxhs_par = self.compute_lemma_probs(l1_inputs, "hbot", htype_outdir)
-            #return l1_cxt_qxhs_par
         elif htype == "l0_cxt_qxhs_bot":
             l0_cxt_qxhs_bot = self.compute_lemma_probs(l0_inputs, "hpar", htype_outdir)
-            #return l0_cxt_qxhs_bot
         elif htype == "l1_cxt_qxhs_bot":
             l1_cxt_qxhs_bot = self.compute_lemma_probs(l1_inputs, "hpar", htype_outdir)
-            #return l1_cxt_qxhs_bot
         elif htype == "l0_cxt_pxhs":
             l0_cxt_pxhs = self.compute_lemma_probs(l0_inputs, "h", htype_outdir)
-            #return l0_cxt_pxhs
         elif htype == "l1_cxt_pxhs":
             l1_cxt_pxhs = self.compute_lemma_probs(l1_inputs, "h", htype_outdir)
-            #return l1_cxt_pxhs
         else:
             raise ValueError(f"Incorrect htype: {htype}")
 

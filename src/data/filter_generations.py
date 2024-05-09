@@ -150,30 +150,38 @@ def load_filtered_hs(model_name, I_P="no_I_P", nsamples=None):
         l0_hs, l1_hs = sample_filtered_hs(l0_hs, l1_hs, nsamples)
     return l0_hs, l1_hs
 """
-def load_filtered_generations(model_name, concept, nucleus):#, new=True):
+def load_filtered_generations(model_name, concept, nucleus, new=True):
+    #TODO: UNFUCK THIS FUNCTION ONCE THIS HAS RE-RUN
     if nucleus:
         filtered_hs_dir = os.path.join(
             DATASETS, f"filtered_generations/nucleus/{model_name}/{concept}"
+        )
+        old_dir = os.path.join(
+            OUT, f"filtered_generations_nucleus/{model_name}/{concept}"
         )
     else:
         filtered_hs_dir = os.path.join(
             DATASETS, f"filtered_generations/ancestral/{model_name}/{concept}"
         )
+        old_dir = os.path.join(
+            OUT, f"filtered_generations/{model_name}/{concept}"
+        )
     
-    #if new:
-    #    with open(os.path.join(filtered_hs_dir, "new_l0_hs_w_factfoil.pkl"), "rb") as f:
-    #        l0_hs_wff = pickle.load(f)
-    #    with open(os.path.join(filtered_hs_dir, "new_l1_hs_w_factfoil.pkl"), "rb") as f:
-    #        l1_hs_wff = pickle.load(f)
-    #    with open(os.path.join(filtered_hs_dir, "new_other_hs.pkl"), "rb") as f:
-    #        other_hs = pickle.load(f)
-    #else:
-    with open(os.path.join(filtered_hs_dir, "l0_hs_w_factfoil.pkl"), "rb") as f:
-        l0_hs_wff = pickle.load(f)
-    with open(os.path.join(filtered_hs_dir, "l1_hs_w_factfoil.pkl"), "rb") as f:
-        l1_hs_wff = pickle.load(f)
-    with open(os.path.join(filtered_hs_dir, "other_hs.pkl"), "rb") as f:
-        other_hs = pickle.load(f)
+    #TODO: replace old_dir with filtered_hs_dir
+    if new:
+        with open(os.path.join(old_dir, "new_l0_hs_w_factfoil.pkl"), "rb") as f:
+            l0_hs_wff = pickle.load(f)
+        with open(os.path.join(old_dir, "new_l1_hs_w_factfoil.pkl"), "rb") as f:
+            l1_hs_wff = pickle.load(f)
+        with open(os.path.join(old_dir, "new_other_hs.pkl"), "rb") as f:
+            other_hs = pickle.load(f)
+    else:
+        with open(os.path.join(old_dir, "l0_hs_w_factfoil.pkl"), "rb") as f:
+            l0_hs_wff = pickle.load(f)
+        with open(os.path.join(old_dir, "l1_hs_w_factfoil.pkl"), "rb") as f:
+            l1_hs_wff = pickle.load(f)
+        with open(os.path.join(old_dir, "other_hs.pkl"), "rb") as f:
+            other_hs = pickle.load(f)
     return l0_hs_wff, l1_hs_wff, other_hs
 
 # %%
