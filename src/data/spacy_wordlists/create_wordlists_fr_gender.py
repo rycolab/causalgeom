@@ -175,7 +175,7 @@ drop_threshold = 1000
 token_data = load_wiki_wordlist(language)
 
 # Creating Export Directory
-EXPORT_DIR = os.path.join(DATASETS, f"processed/{language}/number_word_lists")
+EXPORT_DIR = os.path.join(DATASETS, f"processed/{language}/gender_word_lists")
 os.makedirs(EXPORT_DIR, exist_ok=True)
 
 # Processing Tagged Wikipedia Words

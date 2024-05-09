@@ -23,10 +23,11 @@ coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
 
 # %% MI RES
-mt_eval_run_name = "otherwords_mt_eval"
+mt_eval_run_name = "big_otherwords_mt_eval"
 mifolder = os.path.join(RESULTS, f"mis/{mt_eval_run_name}")
 mifiles = os.listdir(mifolder)
-# %%
+
+#%%
 res_records = []
 for mifile in mifiles:
     mifilepath = os.path.join(mifolder, mifile)

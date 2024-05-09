@@ -40,7 +40,7 @@ from evals.mi_distributor_utils import prep_generated_data, \
             fast_compute_m_p_words, fast_compute_p_words
 from utils.lm_loaders import SUPPORTED_AR_MODELS, GPT2_LIST
 from evals.eval_utils import load_run_Ps, load_run_output, renormalize
-from data.embed_wordlists.embedder import load_concept_token_lists
+from data.spacy_wordlists.embedder import load_concept_token_lists
 #from data.filter_generations import load_generated_hs_wff
 #from data.data_utils import filter_hs_w_ys, sample_filtered_hs
 from utils.lm_loaders import get_model, get_tokenizer, get_V

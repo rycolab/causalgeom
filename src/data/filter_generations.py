@@ -21,8 +21,7 @@ sys.path.append('./src/')
 from paths import DATASETS, OUT
 
 from utils.lm_loaders import GPT2_LIST, SUPPORTED_AR_MODELS
-from data.embed_wordlists.embedder import get_token_list_outfile_paths, \
-    load_concept_token_lists
+from data.spacy_wordlists.embedder import load_concept_token_lists
 from data.data_utils import sample_filtered_hs
 
 coloredlogs.install(level=logging.INFO)
@@ -151,26 +150,30 @@ def load_filtered_hs(model_name, I_P="no_I_P", nsamples=None):
         l0_hs, l1_hs = sample_filtered_hs(l0_hs, l1_hs, nsamples)
     return l0_hs, l1_hs
 """
-def load_filtered_generations(model_name, concept, nucleus, new=True):
+def load_filtered_generations(model_name, concept, nucleus):#, new=True):
     if nucleus:
-        filtered_hs_dir = os.path.join(OUT, f"filtered_generations_nucleus/{model_name}/{concept}")
+        filtered_hs_dir = os.path.join(
+            DATASETS, f"filtered_generations/nucleus/{model_name}/{concept}"
+        )
     else:
-        filtered_hs_dir = os.path.join(OUT, f"filtered_generations/{model_name}/{concept}")
+        filtered_hs_dir = os.path.join(
+            DATASETS, f"filtered_generations/ancestral/{model_name}/{concept}"
+        )
     
-    if new:
-        with open(os.path.join(filtered_hs_dir, "new_l0_hs_w_factfoil.pkl"), "rb") as f:
-            l0_hs_wff = pickle.load(f)
-        with open(os.path.join(filtered_hs_dir, "new_l1_hs_w_factfoil.pkl"), "rb") as f:
-            l1_hs_wff = pickle.load(f)
-        with open(os.path.join(filtered_hs_dir, "new_other_hs.pkl"), "rb") as f:
-            other_hs = pickle.load(f)
-    else:
-        with open(os.path.join(filtered_hs_dir, "l0_hs_w_factfoil.pkl"), "rb") as f:
-            l0_hs_wff = pickle.load(f)
-        with open(os.path.join(filtered_hs_dir, "l1_hs_w_factfoil.pkl"), "rb") as f:
-            l1_hs_wff = pickle.load(f)
-        with open(os.path.join(filtered_hs_dir, "other_hs.pkl"), "rb") as f:
-            other_hs = pickle.load(f)
+    #if new:
+    #    with open(os.path.join(filtered_hs_dir, "new_l0_hs_w_factfoil.pkl"), "rb") as f:
+    #        l0_hs_wff = pickle.load(f)
+    #    with open(os.path.join(filtered_hs_dir, "new_l1_hs_w_factfoil.pkl"), "rb") as f:
+    #        l1_hs_wff = pickle.load(f)
+    #    with open(os.path.join(filtered_hs_dir, "new_other_hs.pkl"), "rb") as f:
+    #        other_hs = pickle.load(f)
+    #else:
+    with open(os.path.join(filtered_hs_dir, "l0_hs_w_factfoil.pkl"), "rb") as f:
+        l0_hs_wff = pickle.load(f)
+    with open(os.path.join(filtered_hs_dir, "l1_hs_w_factfoil.pkl"), "rb") as f:
+        l1_hs_wff = pickle.load(f)
+    with open(os.path.join(filtered_hs_dir, "other_hs.pkl"), "rb") as f:
+        other_hs = pickle.load(f)
     return l0_hs_wff, l1_hs_wff, other_hs
 
 # %%
@@ -197,7 +200,7 @@ def get_args():
     argparser.add_argument(
         "-perc_samples",
         type=float,
-        default=.1,
+        default=.05,
         help="Percentage of h's stored in a given output file to analyze.",
     )
     argparser.add_argument(
@@ -214,14 +217,14 @@ if __name__ == '__main__':
     logging.info(args)
     
     
-    #model_name = args.model
-    #concept = args.concept
-    #nucleus = args.nucleus
-    #perc_samples = args.perc_samples
-    model_name = "llama2"
-    concept = "food"
-    nucleus = True
-    perc_samples = .1
+    model_name = args.model
+    concept = args.concept
+    nucleus = args.nucleus
+    perc_samples = args.perc_samples
+    #model_name = "llama2"
+    #concept = "food"
+    #nucleus = True
+    #perc_samples = .1
     
     #testing options
     nfiles = args.nfiles #keep this to none unless debugging
@@ -229,15 +232,19 @@ if __name__ == '__main__':
 
     if nucleus:
         generations_folder = os.path.join(OUT, f"generated_text_nucleus/{model_name}/no_I_P")
-        outdir = os.path.join(OUT, f"filtered_generations_nucleus/{model_name}/{concept}")
+        outdir = os.path.join(
+            DATASETS, f"filtered_generations/nucleus/{model_name}/{concept}"
+        )
     else:
         generations_folder = os.path.join(OUT, f"generated_text/{model_name}/no_I_P")
-        outdir = os.path.join(OUT, f"filtered_generations/{model_name}/{concept}")
+        outdir = os.path.join(
+            DATASETS, f"filtered_generations/ancestral/{model_name}/{concept}"
+        )
 
     os.makedirs(outdir, exist_ok=True)
     logging.info(f"Created output directory {outdir}")
     
-    l0_tl, l1_tl = load_concept_token_lists(concept, model_name, single_token=False)
+    l0_tl, l1_tl, _ = load_concept_token_lists(concept, model_name, single_token=False)
     
     logging.info(f"Filtering generations for model {model_name} with nucleus: {nucleus}")
     
@@ -246,7 +253,6 @@ if __name__ == '__main__':
         generations_folder, l0_tl, l1_tl, nfiles=nfiles, perc_samples=perc_samples
     )
     
-    #TODO: removed the "new_" here, need to propagate and rename
     l0_wff_outfile = os.path.join(outdir, "l0_hs_w_factfoil.pkl")
     l1_wff_outfile = os.path.join(outdir, "l1_hs_w_factfoil.pkl")
     other_outfile = os.path.join(outdir, "other_hs.pkl")
