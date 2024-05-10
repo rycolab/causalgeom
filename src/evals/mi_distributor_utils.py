@@ -86,34 +86,40 @@ def prep_generated_data(model_name, concept, nucleus, max_all_hs=500000):
 
 
 #########################################
+# Past Key Values Handling              #
+#########################################
+def duplicate_pkv(pkv, num_repeats):
+    return tuple(tuple(torch.cat([tensor] * num_repeats, dim=0) for tensor in layer) for layer in pkv)
+
+#########################################
 # Distribution Computation              #
 #########################################
-def compute_batch_inner_loop_qxhs(mode, nmH, other_nmH, 
-    P, I_P, V, gpu_out, processor=None):
-    """ 
-    Dimensions of nmH and other_nmH:
-    - msamples x nwords x max_n_tokens x d (multi token)
-
-    returns: msamples x nwords x max_n_tokens x |vocab| (distributions)
-    """
-    assert nmH.shape == other_nmH.shape, "Incorrect inputs"
-    if mode == "hbot":
-        newh = other_nmH @ I_P + nmH @ P
-    elif mode == "hpar":
-        newh = nmH @ I_P + other_nmH @ P
-    else:
-        raise ValueError(f"Incorrect mode {mode}")
-    logits = newh @ V.T
-    if processor is not None:
-        raise NotImplementedError("haven't updated this")
-        #logits = torch.FloatTensor(logits).unsqueeze(0)
-        #tokens = torch.LongTensor([0]).unsqueeze(0)
-        #logits = processor(tokens, logits).squeeze(0).numpy()
-    log_pxnewh = torch.nn.functional.log_softmax(logits, dim=-1)
-    if gpu_out:
-        return log_pxnewh
-    else:
-        return log_pxnewh.cpu()
+#def compute_batch_inner_loop_qxhs(mode, nmH, other_nmH, 
+#    P, I_P, V, gpu_out, processor=None):
+#    """ 
+#    Dimensions of nmH and other_nmH:
+#    - msamples x nwords x max_n_tokens x d (multi token)
+#
+#    returns: msamples x nwords x max_n_tokens x |vocab| (distributions)
+#    """
+#    assert nmH.shape == other_nmH.shape, "Incorrect inputs"
+#    if mode == "hbot":
+#        newh = other_nmH @ I_P + nmH @ P
+#    elif mode == "hpar":
+#        newh = nmH @ I_P + other_nmH @ P
+#    else:
+#        raise ValueError(f"Incorrect mode {mode}")
+#    logits = newh @ V.T
+#    if processor is not None:
+#        raise NotImplementedError("haven't updated this")
+#        #logits = torch.FloatTensor(logits).unsqueeze(0)
+#        #tokens = torch.LongTensor([0]).unsqueeze(0)
+#        #logits = processor(tokens, logits).squeeze(0).numpy()
+#    log_pxnewh = torch.nn.functional.log_softmax(logits, dim=-1)
+#    if gpu_out:
+#        return log_pxnewh
+#    else:
+#        return log_pxnewh.cpu()
     
 #def OLD_sample_gen_all_hs_batched(n_ntok_H, msamples, gen_all_hs, device):
 #    """ input dimensions: 
@@ -132,35 +138,35 @@ def compute_batch_inner_loop_qxhs(mode, nmH, other_nmH,
 #    )
 #    return n_ntok_m_H, other_hs_view
 
-def sample_gen_all_hs_batched(n_ntok_H, msamples, gen_all_hs, device):
-    """ input dimensions: 
-    - n_ntok_H: nwords x (max_ntokens + 1) x d
-    output: msamples x nwords x (max_ntokens + 1) x d
-    - where the other h sample is the same for the (max_ntokens + 1) dim
-    """
-    m_n_ntok_H = n_ntok_H[None, :, :, :].repeat(msamples, 1, 1, 1)
-    idx = np.random.randint(
-        0, gen_all_hs.shape[0], 
-        n_ntok_H.shape[0]*msamples
-    )
-    other_hs = gen_all_hs[idx].to(device)
-    other_hs_view = other_hs.view(
-        (msamples, n_ntok_H.shape[0], n_ntok_H.shape[2])
-    )
-    other_hs_final = other_hs_view[:,:,None,:].repeat(1,1,n_ntok_H.shape[1],1)
-    return m_n_ntok_H, other_hs_final
+#def sample_gen_all_hs_batched(n_ntok_H, msamples, gen_all_hs, device):
+#    """ input dimensions: 
+#    - n_ntok_H: nwords x (max_ntokens + 1) x d
+#    output: msamples x nwords x (max_ntokens + 1) x d
+#    - where the other h sample is the same for the (max_ntokens + 1) dim
+#    """
+#    m_n_ntok_H = n_ntok_H[None, :, :, :].repeat(msamples, 1, 1, 1)
+#    idx = np.random.randint(
+#        0, gen_all_hs.shape[0], 
+#        n_ntok_H.shape[0]*msamples
+#    )
+#    other_hs = gen_all_hs[idx].to(device)
+#    other_hs_view = other_hs.view(
+#        (msamples, n_ntok_H.shape[0], n_ntok_H.shape[2])
+#    )
+#    other_hs_final = other_hs_view[:,:,None,:].repeat(1,1,n_ntok_H.shape[1],1)
+#    return m_n_ntok_H, other_hs_final
 
-def compute_qxh_batch(method, nntokH, msamples, all_hs, 
-        P, I_P, V, gpu_out, device):
-    """ Computes q distribution by first sampling from all_hs 
-    and then computing q(x|hbot, hpar)"""
-    mnntokH, other_mnntokH = sample_gen_all_hs_batched(
-        nntokH, msamples, all_hs, device)
-    qxhs = compute_batch_inner_loop_qxhs(
-        method, mnntokH, other_mnntokH, 
-        P, I_P, V, gpu_out
-    )
-    return qxhs
+#def compute_qxh_batch(method, nntokH, msamples, all_hs, 
+#        P, I_P, V, gpu_out, device):
+#    """ Computes q distribution by first sampling from all_hs 
+#    and then computing q(x|hbot, hpar)"""
+#    mnntokH, other_mnntokH = sample_gen_all_hs_batched(
+#        nntokH, msamples, all_hs, device)
+#    qxhs = compute_batch_inner_loop_qxhs(
+#        method, mnntokH, other_mnntokH, 
+#        P, I_P, V, gpu_out
+#    )
+#    return qxhs
 
 def compute_log_pxh_batch(nntokH, V, gpu_out):
     logits = nntokH @ V.T
@@ -238,7 +244,7 @@ def fast_compute_m_p_words(batch_token_list, batch_log_pxh,
     """ 
     expected dimensions:
     - batch_token_list: n_words x max_n_tokens
-    - batch_pxh: nwords x (max_n_tokens + 1) x msamples x |vocabulary|
+    - batch_pxh: msamples x nwords x (max_n_tokens + 1) x |vocabulary|
     - new_word_tokens: list of new word tokens for the model
 
     output: list of word probabilities

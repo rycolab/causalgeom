@@ -37,7 +37,8 @@ from paths import DATASETS, OUT, RESULTS, MODELS
 from evals.mi_distributor_utils import prep_generated_data, \
     get_nucleus_arg, get_mt_eval_directory,\
         intervene_hs, compute_log_pxh_batch,\
-            fast_compute_m_p_words, fast_compute_p_words
+            fast_compute_m_p_words, fast_compute_p_words,\
+                duplicate_pkv
 from utils.lm_loaders import SUPPORTED_AR_MODELS, GPT2_LIST
 from evals.eval_utils import load_run_Ps, load_run_output, renormalize
 from data.spacy_wordlists.embedder import load_concept_token_lists
@@ -345,47 +346,82 @@ class MultiTokenDistributor:
             raise ValueError(f"Incorrect method arg")
         return batch_word_probs
             
-    def compute_batch_p_words(self, batch_tokens, cxt_last_index, method):
+    def create_batch_pkv(self, batch_nwords, cxt_pkv, batch_size_pkv):
+        if (batch_nwords < self.batch_size or 
+            batch_size_pkv is None):
+            return duplicate_pkv(cxt_pkv, batch_nwords)
+        else:
+            return batch_size_pkv
+
+    def compute_batch_p_words(self, batch_tokens, cxt_pkv, 
+        batch_size_pkv, cxt_hidden_state, method): 
         batch_tokens = batch_tokens.to(self.device)
+        
+        dup_pkv = self.create_batch_pkv(
+            batch_tokens.shape[0], cxt_pkv, batch_size_pkv
+        )
 
         with torch.no_grad():
-            output = self.model(
+            pkv_output = self.model(
                 input_ids=batch_tokens, 
                 #attention_mask=attention_mask, 
                 labels=batch_tokens,
                 output_hidden_states=True,
-                #past_key_values= cxt_pkv
+                past_key_values=dup_pkv
             )
 
-        batch_tok_ids = batch_tokens[:,(cxt_last_index+1):]
-        batch_hidden_states = output["hidden_states"][-1][:,cxt_last_index:,:].type(torch.float32)
+        pkv_batch_hs = pkv_output["hidden_states"][-1]
+        batch_cxt_hidden_state = cxt_hidden_state[None, :, :].repeat(
+            batch_tokens.shape[0], 1, 1
+        )
+        batch_hidden_states = torch.cat(
+            (batch_cxt_hidden_state, pkv_batch_hs), 1
+        ).type(torch.float32)
         batch_word_probs = self.compute_pxh_batch_handler(
-            method, batch_tok_ids, batch_hidden_states, gpu_out=True
+            method, batch_tokens, batch_hidden_states, gpu_out=True
         )
         return batch_word_probs
 
-    def compute_token_list_word_probs(self, token_list, cxt, method):
-        cxt_last_index = cxt.shape[0] - 1
-        cxt_np = cxt.clone().cpu().numpy()
-        cxt_plus_tl = [np.append(cxt_np, x).tolist() for x in token_list]
-        cxt_plus_tl_batched = torch.tensor(
-            list(zip_longest(*cxt_plus_tl, fillvalue=self.tokenizer.pad_token_id))
+    def compute_token_list_word_probs(self, token_list, cxt_hidden_state, 
+        cxt_pkv, method):
+        tl_batched = torch.tensor(
+            list(zip_longest(*token_list, fillvalue=self.tokenizer.pad_token_id))
         ).T
 
-        ds = CustomDataset(cxt_plus_tl_batched)
-        dl = DataLoader(dataset = ds, batch_size=self.batch_size)
+        ds = CustomDataset(tl_batched)
+        dl = DataLoader(dataset=ds, batch_size=self.batch_size)
+
+        if tl_batched.shape[0] > self.batch_size:
+            batch_size_pkv = duplicate_pkv(cxt_pkv, self.batch_size)
+        else:
+            batch_size_pkv = None
 
         tl_word_probs = []
         for i, batch_tokens in enumerate(dl):
-            #pbar.set_description(f"Generating hidden states")
+            #i, batch_tokens = next(enumerate(dl))
 
             batch_word_probs = self.compute_batch_p_words(
-                batch_tokens, cxt_last_index, method
+                batch_tokens, cxt_pkv, batch_size_pkv, 
+                cxt_hidden_state, method
             )
 
             tl_word_probs.append(batch_word_probs)
 
         return torch.hstack(tl_word_probs).cpu().numpy()
+
+    def compute_cxt_pkv_h(self, cxt):
+        cxt_tok = cxt.to(self.device)
+        with torch.no_grad():
+            cxt_output = self.model(
+                input_ids=cxt_tok, 
+                #attention_mask=attention_mask, 
+                labels=cxt_tok,
+                output_hidden_states=True,
+                #past_key_values= cxt_pkv
+            )
+            cxt_pkv = cxt_output.past_key_values
+        cxt_hidden_state = cxt_output["hidden_states"][-1][-1].unsqueeze(0)
+        return cxt_pkv, cxt_hidden_state
 
     def compute_lemma_probs(self, lemma_samples, method, outdir, pad_token=-1):
         l0_probs, l1_probs, other_probs = [], [], []
@@ -397,15 +433,20 @@ class MultiTokenDistributor:
 
             logging.info(f"---New eval context: {self.tokenizer.decode(cxt)}---")
 
-            l0_word_probs = self.compute_token_list_word_probs(
-                self.l0_tl, cxt, method)
+            #start = time.time()
+            cxt_pkv, cxt_hidden_state = self.compute_cxt_pkv_h(cxt)
+
+            l0_word_probs = self.compute_token_list_word_probs(self.l0_tl, 
+                cxt_hidden_state, cxt_pkv, method)
             torch.cuda.empty_cache()
-            l1_word_probs = self.compute_token_list_word_probs(
-                self.l1_tl, cxt, method)
+            l1_word_probs = self.compute_token_list_word_probs(self.l1_tl, 
+                cxt_hidden_state, cxt_pkv, method)
             torch.cuda.empty_cache()
-            other_word_probs = self.compute_token_list_word_probs(
-                self.other_tl, cxt, method)
+            other_word_probs = self.compute_token_list_word_probs(self.other_tl, 
+                cxt_hidden_state, cxt_pkv, method)
             torch.cuda.empty_cache()
+            #end = time.time()
+            #pkv_time = end - start
 
             export_path = os.path.join(
                 outdir, 
