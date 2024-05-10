@@ -57,7 +57,7 @@ def get_args():
     argparser.add_argument(
         "-source",
         type=str,
-        choices=["natural", "gen_nucleus", "gen_normal"],
+        choices=["natural", "gen_nucleus", "gen_ancestral"],
         help="Which samples to use for eval"
     )
     argparser.add_argument(

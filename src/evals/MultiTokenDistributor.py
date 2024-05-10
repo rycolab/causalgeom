@@ -462,7 +462,7 @@ class MultiTokenDistributor:
             l1_probs.append(l1_word_probs)
             other_probs.append(other_word_probs)
 
-        return np.stack(l0_probs), np.stack(l1_probs), np.stack(other_probs)
+        return l0_probs, l1_probs, other_probs
 
     def compute_pxs(self, htype):
         htype_outdir = os.path.join(

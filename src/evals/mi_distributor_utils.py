@@ -13,6 +13,7 @@ from scipy.special import softmax, log_softmax
 sys.path.append('..')
 
 from data.filter_generations import load_filtered_generations
+from utils.lm_loaders import GPT2_LIST
 from paths import OUT
 
 #########################################
@@ -54,7 +55,8 @@ def compute_p_c_bin(l0_hs, l1_hs):
     p_c = c_counts / np.sum(c_counts)
     return p_c
 
-def prep_generated_data(model_name, concept, nucleus, max_all_hs=500000):
+def prep_generated_data(model_name, concept, nucleus, 
+    cxt_max_length_pct=0.9, max_all_hs=500000):
     """ Loads generated text, filtered into concept and other hs """
     l0_gens, l1_gens, other_hs = load_filtered_generations(
         model_name, concept, nucleus=nucleus
@@ -78,11 +80,27 @@ def prep_generated_data(model_name, concept, nucleus, max_all_hs=500000):
 
     l0_cxt_toks = [all_tok[:-len(fact)] for _,fact,_,all_tok in l0_gens]
     l1_cxt_toks = [all_tok[:-len(fact)] for _,fact,_,all_tok in l1_gens]
+
+    if model_name in GPT2_LIST:
+        cxt_max_length = 1024
+    elif model_name == "llama2":
+        cxt_max_length = 4096
+    else:
+        cxt_max_length = None
+    cxt_size_limit = cxt_max_length * cxt_max_length_pct
+
+    lim_l0_cxt_toks = [
+        x for x in l0_cxt_toks if len(x) < cxt_size_limit
+    ]
+    lim_l1_cxt_toks = [
+        x for x in l1_cxt_toks if len(x) < cxt_size_limit
+    ]
+
     logging.info(f"Loaded generated hs: model {model_name}, "
-                 f"concept {concept}, nucleus {nucleus}"
-                 f"l0 {len(l0_cxt_toks)}, l1 {len(l1_cxt_toks)}"
-                 f"other {all_hs.shape[0]}")
-    return p_c, l0_cxt_toks, l1_cxt_toks, all_hs
+                f"concept {concept}, nucleus {nucleus}"
+                f"l0 {len(lim_l0_cxt_toks)}, l1 {len(lim_l1_cxt_toks)}"
+                f"other {all_hs.shape[0]}")
+    return p_c, lim_l0_cxt_toks, lim_l1_cxt_toks, all_hs
 
 
 #########################################

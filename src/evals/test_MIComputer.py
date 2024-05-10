@@ -71,6 +71,7 @@ distributor = MIComputer(
     iteration,
 )
 
+#%%
 l0_qxhpars, l1_qxhpars, l0_qxhbots, l1_qxhbots, l0_pxhs, l1_pxhs = distributor.load_all_pxs()
 
 

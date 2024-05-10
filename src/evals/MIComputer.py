@@ -78,6 +78,10 @@ class MIComputer:
     # Data handling                         #
     #########################################
     def load_htype_probs(self, htype):
+        """ Loads word probabilities exported by MultiTokenDistributor
+        pxhs output dim: (n_hs, l0_nwords), (n_hs, l1_nwords), (n_hs, other_nwords)
+        qxhs output dim: (n_hs, msamples, l0_nwords), (n_hs, msamples, l1_nwords), (n_hs, msamples, other_nwords)
+        """
         htype_dir = os.path.join(self.h_distribs_dir, htype)
         htype_files = os.listdir(htype_dir)
         l0_probs, l1_probs, other_probs = [], [], []
