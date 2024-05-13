@@ -102,7 +102,7 @@ class MultiTokenDistributor:
     def __init__(self, 
                  model_name, # name of AR model 
                  concept, # concept name
-                 source, # ["natural", "gen_ancestral", "gen_nucleus"]
+                 source, # ["natural_concept", "gen_ancestral_concept", "gen_nucleus_concept", "gen_ancestral_all", "gen_nucleus_all"]
                  nsamples, # number of test set samples
                  msamples, # number of dev set samples for each q computation
                  nwords, # number of words to use from token lists -- GET RID OF THIS
@@ -118,6 +118,7 @@ class MultiTokenDistributor:
         self.nwords = nwords
         self.batch_size = batch_size
         self.n_other_words = n_other_words
+        self.p_new_word = True
 
         nucleus = get_nucleus_arg(source)
 
@@ -134,7 +135,7 @@ class MultiTokenDistributor:
         self.device = get_device()
         self.model = get_model(model_name, device=self.device)
         self.tokenizer = get_tokenizer(model_name)
-        self.new_word_tokens = self.get_new_word_tokens(model_name) 
+        self.new_word_tokens = self.get_new_word_tokens(model_name)
 
         # Load with device
         P, I_P, _ = load_run_Ps(run_path)
@@ -162,7 +163,7 @@ class MultiTokenDistributor:
         #self.prompt_end_space = model_name == "llama2"
 
         # Load generated samples
-        _, self.gen_l0_cxt_toks, self.gen_l1_cxt_toks, self.gen_all_hs = prep_generated_data(
+        self.gen_all_hs, self.gen_l0_cxt_toks, self.gen_l1_cxt_toks, self.gen_other_cxt_toks = prep_generated_data(
             model_name, concept, nucleus
         )
 
@@ -173,7 +174,6 @@ class MultiTokenDistributor:
             run["y_test"], run["cxt_toks_test"]
 
         # Select L0 and L1 samples to use to compute distributions based on source
-        # TODO: need to try to do this with all_hs samples -- need past_key_values!
         self.l0_cxt_toks, self.l1_cxt_toks = self.get_concept_eval_contexts(source)
         
 

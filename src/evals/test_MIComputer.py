@@ -49,7 +49,7 @@ warnings.filterwarnings("ignore")
 from evals.MIComputer import MIComputer
 
 model_name="gpt2-large"
-concept="number"
+concept="food"
 source="natural"
 #nsamples=5
 #msamples=5
@@ -57,12 +57,12 @@ source="natural"
 #n_other_words=10
 #batch_size=32
 run_path=os.path.join(
-    OUT, "run_output/number/gpt2-large/leace05042024/run_leace_number_gpt2-large_2024-04-05-15:37:16_0_3.pkl"
+    OUT, "run_output/food/gpt2-large/leacefinal/run_leace_food_gpt2-large_2024-05-04-12:04:06_0_3.pkl"
 )
-output_folder = "otherwords_mt_eval"
+output_folder = "may10"
 iteration = 0
 
-distributor = MIComputer(
+computer = MIComputer(
     model_name,
     concept,
     source,
@@ -72,7 +72,8 @@ distributor = MIComputer(
 )
 
 #%%
-l0_qxhpars, l1_qxhpars, l0_qxhbots, l1_qxhbots, l0_pxhs, l1_pxhs = distributor.load_all_pxs()
+computer.compute_run_eval()
+#l0_qxhpars, l1_qxhpars, l0_qxhbots, l1_qxhbots, l0_pxhs, l1_pxhs = distributor.load_all_pxs()
 
 
 #%%

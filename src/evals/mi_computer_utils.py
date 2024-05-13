@@ -106,7 +106,8 @@ def stack_p_x_mid_h_c(p_x_mid_h_c0, p_x_mid_h_c1, p_x_mid_h_na):
     p_x_mid_h_c[1, :, n_c0_words:c1_end_index] = p_x_mid_h_c1
     p_x_mid_h_c[2, :, c1_end_index:] = p_x_mid_h_na
 
-    return p_x_mid_h_c.reshape(p_x_mid_h_c.shape[1], p_x_mid_h_c.shape[0], -1)
+    #return p_x_mid_h_c.reshape(p_x_mid_h_c.shape[1], p_x_mid_h_c.shape[0], -1)
+    return np.transpose(p_x_mid_h_c, (1, 0, 2))
 
 def compute_p_x_mid_h_c(pxhs):
     """ z distribution only
