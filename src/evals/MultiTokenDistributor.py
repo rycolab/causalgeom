@@ -86,7 +86,10 @@ AMBIANCE_PROMPTS = [
 class CustomDataset(Dataset, ABC):
     def __init__(self, token_tensor):
         self.data = token_tensor
-        self.n_instances = token_tensor.shape[0]
+        if isinstance(token_tensor, torch.Tensor):
+            self.n_instances = token_tensor.shape[0]
+        else:
+            self.n_instances = len(token_tensor)
         
     def __len__(self):
         return self.n_instances
@@ -150,8 +153,9 @@ class MultiTokenDistributor:
 
         if self.nwords is not None:
             logging.warn(f"Applied nwords={self.nwords}, intended for DEBUGGING ONLY")
-            self.l0_tl = self.l0_tl[:self.nwords]
-            self.l1_tl = self.l1_tl[:self.nwords]
+            random_start = random.randint(0, len(self.l0_tl)-self.nwords)
+            self.l0_tl = self.l0_tl[random_start:random_start+self.nwords]
+            self.l1_tl = self.l1_tl[random_start:random_start+self.nwords]
 
         # CEBaB prompts
         #TODO: clean this up once tested
@@ -344,47 +348,82 @@ class MultiTokenDistributor:
         else:
             raise ValueError(f"Incorrect method arg")
         return batch_word_probs
-            
-    def compute_batch_p_words(self, batch_tokens, cxt_last_index, method):
+
+    def compute_batch_p_words(self, batch_tokens, cxt_last_index, method, past_key_values=None):
         batch_tokens = batch_tokens.to(self.device)
-
-        with torch.no_grad():
-            output = self.model(
-                input_ids=batch_tokens, 
-                #attention_mask=attention_mask, 
-                labels=batch_tokens,
-                output_hidden_states=True,
-                #past_key_values= cxt_pkv
-            )
-
+        self.model.eval()
+        if past_key_values is not None:
+            batch_tokens_input = batch_tokens[:,cxt_last_index:]
+        else:
+            batch_tokens_input = batch_tokens
+        output = self.model(
+            input_ids=batch_tokens_input, 
+            #attention_mask=attention_mask, 
+            # labels=batch_tokens,
+            output_hidden_states=True,
+            use_cache=True,
+            past_key_values=past_key_values
+        )
         batch_tok_ids = batch_tokens[:,(cxt_last_index+1):]
-        batch_hidden_states = output["hidden_states"][-1][:,cxt_last_index:,:].type(torch.float32)
+
+        if past_key_values is None:
+            batch_hidden_states = output["hidden_states"][-1][:,cxt_last_index:,:].type(torch.float32)
+        else:
+            batch_hidden_states = output["hidden_states"][-1][:,:,:].type(torch.float32)
+
         batch_word_probs = self.compute_pxh_batch_handler(
             method, batch_tok_ids, batch_hidden_states, gpu_out=True
         )
-        return batch_word_probs
+        return batch_word_probs, output["past_key_values"]
 
     def compute_token_list_word_probs(self, token_list, cxt, method):
+
         cxt_last_index = cxt.shape[0] - 1
         cxt_np = cxt.clone().cpu().numpy()
         cxt_plus_tl = [np.append(cxt_np, x).tolist() for x in token_list]
-        cxt_plus_tl_batched = torch.tensor(
-            list(zip_longest(*cxt_plus_tl, fillvalue=self.tokenizer.pad_token_id))
-        ).T
 
-        ds = CustomDataset(cxt_plus_tl_batched)
-        dl = DataLoader(dataset = ds, batch_size=self.batch_size)
+        cxt_plus_tl_unigram, indexing_unigram = [], [] # [np.append(cxt_np, x).tolist() for x in token_list if (len(x) == 1)]
+        cxt_plus_tl_multigram, indexing_multigram = [], [] # [np.append(cxt_np, x).tolist() for x in token_list if (len(x) > 1)]
+        for ix, x in enumerate(token_list):
+            if len(x) == 1:
+                cxt_plus_tl_unigram.append(np.append(cxt_np, x).tolist())
+                indexing_unigram.append(ix)
+            else:
+                cxt_plus_tl_multigram.append(np.append(cxt_np, x).tolist())
+                indexing_multigram.append(ix)
+
+        def collate_fn(batch):
+            max_len_in_batch = max([len(x) for x in batch])
+            padded_batch = torch.tensor(
+                [x + [self.tokenizer.pad_token_id]*(max_len_in_batch-len(x)) for x in batch]
+            )
+            return padded_batch
+
+        ds = CustomDataset(cxt_plus_tl)
+        dl = DataLoader(dataset=ds, batch_size=self.batch_size, collate_fn=collate_fn)
 
         tl_word_probs = []
-        for i, batch_tokens in enumerate(dl):
-            #pbar.set_description(f"Generating hidden states")
+        past_key_values = None
+        print(cxt_last_index, sum([len(x) for x in token_list])/len(token_list), len(token_list))
+        # 4 1.0435835351089588 l0
+        # 4 1.0048426150121066 l1
+        # 4 1.55 other words
 
-            batch_word_probs = self.compute_batch_p_words(
-                batch_tokens, cxt_last_index, method
-            )
+        # can we separate unigram and multigram tokens?
 
-            tl_word_probs.append(batch_word_probs)
-
+        with torch.no_grad():
+            with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=True):
+                for batch_tokens in dl:
+                    #pbar.set_description(f"Generating hidden states")
+                    if past_key_values is not None:
+                        past_key_values = tuple(
+                            tuple(y[:batch_tokens.size(0),:,:(cxt_last_index),:] for y in x) for x in past_key_values
+                        )
+                    batch_word_probs, past_key_values = self.compute_batch_p_words(
+                        batch_tokens, cxt_last_index, method, past_key_values=past_key_values
+                    )
+                    tl_word_probs.append(batch_word_probs)
+        
         return torch.hstack(tl_word_probs).cpu().numpy()
 
     def compute_lemma_probs(self, lemma_samples, method, outdir, pad_token=-1):
@@ -421,37 +460,38 @@ class MultiTokenDistributor:
             l1_probs.append(l1_word_probs)
             other_probs.append(other_word_probs)
 
-        return np.stack(l0_probs), np.stack(l1_probs), np.stack(other_probs)
+        return (l0_probs), (l1_probs), (other_probs)
 
-    def compute_pxs(self, htype):
+    def compute_pxs(self, htype, exist_ok=False):
         htype_outdir = os.path.join(
             self.outdir, 
             f"h_distribs/{htype}"
         )
-        os.makedirs(htype_outdir, exist_ok=False)   
+        os.makedirs(htype_outdir, exist_ok=exist_ok)   
 
         assert self.nsamples is not None
         l0_inputs, l1_inputs = self.sample_filtered_contexts()
+
         if htype == "l0_cxt_qxhs_par": 
-            l0_cxt_qxhs_par = self.compute_lemma_probs(l0_inputs, "hbot", htype_outdir)
+            self.l0_cxt_qxhs_par = self.compute_lemma_probs(l0_inputs, "hbot", htype_outdir)
         elif htype == "l1_cxt_qxhs_par":
-            l1_cxt_qxhs_par = self.compute_lemma_probs(l1_inputs, "hbot", htype_outdir)
+            self.l1_cxt_qxhs_par = self.compute_lemma_probs(l1_inputs, "hbot", htype_outdir)
         elif htype == "l0_cxt_qxhs_bot":
-            l0_cxt_qxhs_bot = self.compute_lemma_probs(l0_inputs, "hpar", htype_outdir)
+            self.l0_cxt_qxhs_bot = self.compute_lemma_probs(l0_inputs, "hpar", htype_outdir)
         elif htype == "l1_cxt_qxhs_bot":
-            l1_cxt_qxhs_bot = self.compute_lemma_probs(l1_inputs, "hpar", htype_outdir)
+            self.l1_cxt_qxhs_bot = self.compute_lemma_probs(l1_inputs, "hpar", htype_outdir)
         elif htype == "l0_cxt_pxhs":
-            l0_cxt_pxhs = self.compute_lemma_probs(l0_inputs, "h", htype_outdir)
+            self.l0_cxt_pxhs = self.compute_lemma_probs(l0_inputs, "h", htype_outdir)
         elif htype == "l1_cxt_pxhs":
-            l1_cxt_pxhs = self.compute_lemma_probs(l1_inputs, "h", htype_outdir)
+            self.l1_cxt_pxhs = self.compute_lemma_probs(l1_inputs, "h", htype_outdir)
         else:
             raise ValueError(f"Incorrect htype: {htype}")
 
-    def compute_all_pxs(self):
-        self.compute_pxs("l0_cxt_qxhs_par")
-        self.compute_pxs("l1_cxt_qxhs_par")
-        self.compute_pxs("l0_cxt_qxhs_bot")
-        self.compute_pxs("l1_cxt_qxhs_bot")
-        self.compute_pxs("l0_cxt_pxhs")
-        self.compute_pxs("l1_cxt_pxhs")
+    def compute_all_pxs(self, exist_ok=False):
+        self.compute_pxs("l0_cxt_qxhs_par", exist_ok)
+        self.compute_pxs("l1_cxt_qxhs_par", exist_ok)
+        self.compute_pxs("l0_cxt_qxhs_bot", exist_ok)
+        self.compute_pxs("l1_cxt_qxhs_bot", exist_ok)
+        self.compute_pxs("l0_cxt_pxhs", exist_ok)
+        self.compute_pxs("l1_cxt_pxhs", exist_ok)
 
