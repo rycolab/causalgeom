@@ -281,11 +281,11 @@ def pxhs_to_p_x_c_mid_h(all_pxhs, weight_na=1.):
     # The sampled na words in all_pxhs should be scaled up to match p_na
     
     na_scale = (p_na_mid_h / all_pxhs[2].sum(-1)).reshape(-1, 1) * weight_na # shape: (hdim, 1)
-    all_pxhs = [all_pxhs[0], all_pxhs[1], all_pxhs[2] * na_scale]
+    all_pxhs = [all_pxhs[0].clip(min=0), all_pxhs[1].clip(min=0), (all_pxhs[2] * na_scale).clip(min=0)]
 
     h_normalizer = sum([x.sum(-1) for x in all_pxhs]) # shape: (hdim, 1)
     # assert np.allclose(h_normalizer, 1), f"{h_normalizer} should be all 1"
-    all_pxhs = [x / h_normalizer.sum() for x in all_pxhs]
+    all_pxhs = [(x / h_normalizer.sum()) for x in all_pxhs]
     assert np.allclose(sum([x.sum() for x in all_pxhs]), 1), f"{sum([x.sum() for x in all_pxhs])} should be 1"
     
     return all_pxhs
@@ -305,11 +305,11 @@ def pxhs_to_q_x_c_mid_h(all_qxhs, weight_na=1.):
     # The sampled na words in all_pxhs should be scaled up to match p_na
     
     na_scale = np.expand_dims(p_na_mid_h / all_qxhs[2].sum(-1), 2) * weight_na # shape: (hdim, m, 1)
-    all_qxhs = [all_qxhs[0], all_qxhs[1], all_qxhs[2] * na_scale]
+    all_qxhs = [all_qxhs[0].clip(min=0), all_qxhs[1].clip(min=0), (all_qxhs[2] * na_scale).clip(min=0)]
 
     h_normalizer = sum([x.sum(-1) for x in all_qxhs]) # shape: (hdim, 1)
     # assert np.allclose(h_normalizer, 1), f"{h_normalizer} should be all 1"
-    all_qxhs = [x / h_normalizer.sum() for x in all_qxhs]
+    all_qxhs = [(x / h_normalizer.sum()) for x in all_qxhs]
     assert np.allclose(sum([x.sum() for x in all_qxhs]), 1), f"{sum([x.sum() for x in all_qxhs])} should be 1"
     
     return all_qxhs
@@ -320,7 +320,7 @@ def pxhs_to_q_x_c_mid_h(all_qxhs, weight_na=1.):
 ########################################################
 def compute_all_z_distributions(all_pxhs):
     # all_pxhs: tuple(hdim x l0_xdim, hdim x l1_xdim, hdim x other_xdim)
-    all_pxhs = pxhs_to_p_x_c_mid_h(all_pxhs, weight_na=1e-8)
+    all_pxhs = pxhs_to_p_x_c_mid_h(all_pxhs, weight_na=1)
 
     z_c = compute_p_c(all_pxhs)
     z_h = compute_p_h(all_pxhs)
@@ -332,7 +332,7 @@ def compute_all_z_distributions(all_pxhs):
 
 def compute_all_q_distributions(all_qxhs):
     # all_qxhs: tuple(hdim x m x l0_xdim, hdim x m x l1_xdim, hdim x m x other_xdim)
-    all_qxhs = pxhs_to_q_x_c_mid_h(all_qxhs, weight_na=1e-8)
+    all_qxhs = pxhs_to_q_x_c_mid_h(all_qxhs, weight_na=1)
 
     q_c = compute_p_c(all_qxhs)
     q_h = compute_p_h(all_qxhs)
@@ -413,14 +413,17 @@ def compute_I_X_H_mid_C(p_c, p_x_mid_c, p_c_mid_h, p_x_mid_h_c, p_h_c):
     MI_x_h_mid_c = H_x_mid_c - H_x_mid_h_c
     print("MI_x_h_mid_c", MI_x_h_mid_c, H_x_mid_c, H_x_mid_h_c)
 
-    # MI_x_h_mid_c = E_C [KL(p(x,h | c) || p(x | c) p(h | c))]
+    # MI_x_h_mid_c  I(X, H_bot | C) = E_C [KL(p(x,h | c) || p(x | c) p(h | c))]
     p_h_mid_c = p_h_c / p_h_c.sum(0).reshape(1, -1) # shape: (hdim x cdim)
     p_x_h_mid_c = p_x_mid_h_c * np.expand_dims(p_h_mid_c, 2) # shape: (hdim x cdim x xdim)
-    kl = (p_x_h_mid_c * np.log((p_x_h_mid_c+1e-8) / (np.expand_dims(p_x_mid_c, 0) * np.expand_dims(p_h_mid_c, 2)+1e-8))).sum(2).sum(0) # shape: (cdim)
-    print("MI_x_h_mid_c, p_c @ kl", MI_x_h_mid_c, p_c @ kl)
+    
+    # kl = (p_x_h_mid_c * np.log((p_x_h_mid_c+1e-8) / (np.expand_dims(p_x_mid_c, 0) * np.expand_dims(p_h_mid_c, 2)+1e-8))).sum(2).sum(0) # shape: (cdim)
+    # print("MI_x_h_mid_c, p_c @ kl", MI_x_h_mid_c, p_c @ kl)
+    # print(kl)
+
     # ISSUE 1: Most kl mass is in na concept
-    # ISSUE 2: 
-    print(kl)
+    # ISSUE 2: I(X, H_bot | C) and I(X, H_par | C)  too large
+    # MIqpar_x_hpar_mid_c kl too large!
 
     return H_x_mid_c, H_x_mid_h_c, MI_x_h_mid_c
 
