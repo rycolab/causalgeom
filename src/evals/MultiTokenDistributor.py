@@ -49,6 +49,8 @@ from utils.cuda_loaders import get_device
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
 
+GLOBAL_DTYPE = torch.bfloat16
+
 #%%
 FOOD_PROMPTS = [
     "The cuisine was",
@@ -140,11 +142,11 @@ class MultiTokenDistributor:
 
         # Load with device
         P, I_P, _ = load_run_Ps(run_path)
-        self.P = torch.tensor(P, dtype=torch.float32).to(self.device) 
-        self.I_P = torch.tensor(I_P, dtype=torch.float32).to(self.device)
+        self.P = torch.tensor(P, dtype=GLOBAL_DTYPE).to(self.device) 
+        self.I_P = torch.tensor(I_P, dtype=GLOBAL_DTYPE).to(self.device)
 
         # Load model eval components
-        self.V = get_V(model_name, model=self.model, numpy_cpu=False).clone().type(torch.float32).to(self.device)
+        self.V = get_V(model_name, model=self.model, numpy_cpu=False).clone().to(self.device)
         self.l0_tl, self.l1_tl, other_tl_full = load_concept_token_lists(concept, model_name, single_token=False)
 
         # subsample other words
@@ -153,9 +155,8 @@ class MultiTokenDistributor:
 
         if self.nwords is not None:
             logging.warn(f"Applied nwords={self.nwords}, intended for DEBUGGING ONLY")
-            random_start = random.randint(0, len(self.l0_tl)-self.nwords)
-            self.l0_tl = self.l0_tl[random_start:random_start+self.nwords]
-            self.l1_tl = self.l1_tl[random_start:random_start+self.nwords]
+            self.l0_tl = self.l0_tl[:self.nwords]
+            self.l1_tl = self.l1_tl[:self.nwords]
 
         # CEBaB prompts
         #TODO: clean this up once tested
@@ -258,6 +259,7 @@ class MultiTokenDistributor:
             ratio = l1_len / l0_len
             l0_ind = np.arange(l0_len)
             l1_ind = np.arange(l1_len)
+            np.random.seed(10)
             np.random.shuffle(l0_ind)
             np.random.shuffle(l1_ind)
             if ratio > 1:
@@ -327,7 +329,7 @@ class MultiTokenDistributor:
         if method in ["hbot", "hpar"]:
             hs_int = intervene_hs(
                 batch_hidden_states, method, 
-                self.msamples, self.gen_all_hs, 
+                self.msamples, self.gen_all_hs, # [500000, d]
                 self.P, self.I_P, self.device
             )
             batch_log_qxhs = compute_log_pxh_batch(
@@ -367,9 +369,9 @@ class MultiTokenDistributor:
         batch_tok_ids = batch_tokens[:,(cxt_last_index+1):]
 
         if past_key_values is None:
-            batch_hidden_states = output["hidden_states"][-1][:,cxt_last_index:,:].type(torch.float32)
+            batch_hidden_states = output["hidden_states"][-1][:,cxt_last_index:,:]
         else:
-            batch_hidden_states = output["hidden_states"][-1][:,:,:].type(torch.float32)
+            batch_hidden_states = output["hidden_states"][-1][:,:,:]
 
         batch_word_probs = self.compute_pxh_batch_handler(
             method, batch_tok_ids, batch_hidden_states, gpu_out=True
@@ -404,17 +406,15 @@ class MultiTokenDistributor:
 
         tl_word_probs = []
         past_key_values = None
-        print(cxt_last_index, sum([len(x) for x in token_list])/len(token_list), len(token_list))
+        # print(cxt_last_index, sum([len(x) for x in token_list])/len(token_list), len(token_list))
         # 4 1.0435835351089588 l0
         # 4 1.0048426150121066 l1
         # 4 1.55 other words
 
         # can we separate unigram and multigram tokens?
-
         with torch.no_grad():
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=True):
                 for batch_tokens in dl:
-                    #pbar.set_description(f"Generating hidden states")
                     if past_key_values is not None:
                         past_key_values = tuple(
                             tuple(y[:batch_tokens.size(0),:,:(cxt_last_index),:] for y in x) for x in past_key_values
@@ -422,6 +422,7 @@ class MultiTokenDistributor:
                     batch_word_probs, past_key_values = self.compute_batch_p_words(
                         batch_tokens, cxt_last_index, method, past_key_values=past_key_values
                     )
+                    # batch_word_probs: shape (msamples, bs)
                     tl_word_probs.append(batch_word_probs)
         
         return torch.hstack(tl_word_probs).cpu().numpy()
@@ -473,13 +474,13 @@ class MultiTokenDistributor:
         l0_inputs, l1_inputs = self.sample_filtered_contexts()
 
         if htype == "l0_cxt_qxhs_par": 
-            self.l0_cxt_qxhs_par = self.compute_lemma_probs(l0_inputs, "hbot", htype_outdir)
+            self.l0_cxt_qxhs_par = self.compute_lemma_probs(l0_inputs, "hpar", htype_outdir)
         elif htype == "l1_cxt_qxhs_par":
-            self.l1_cxt_qxhs_par = self.compute_lemma_probs(l1_inputs, "hbot", htype_outdir)
+            self.l1_cxt_qxhs_par = self.compute_lemma_probs(l1_inputs, "hpar", htype_outdir)
         elif htype == "l0_cxt_qxhs_bot":
-            self.l0_cxt_qxhs_bot = self.compute_lemma_probs(l0_inputs, "hpar", htype_outdir)
+            self.l0_cxt_qxhs_bot = self.compute_lemma_probs(l0_inputs, "hbot", htype_outdir)
         elif htype == "l1_cxt_qxhs_bot":
-            self.l1_cxt_qxhs_bot = self.compute_lemma_probs(l1_inputs, "hpar", htype_outdir)
+            self.l1_cxt_qxhs_bot = self.compute_lemma_probs(l1_inputs, "hbot", htype_outdir)
         elif htype == "l0_cxt_pxhs":
             self.l0_cxt_pxhs = self.compute_lemma_probs(l0_inputs, "h", htype_outdir)
         elif htype == "l1_cxt_pxhs":
