@@ -90,13 +90,11 @@ class MIComputer:
             other_probs.append(sample_other_probs)
 
         if htype in ["l0_cxt_pxhs", "l1_cxt_pxhs"]:
-            # shape: (nsamples, n_l0_words, ), (nsamples, n_l1_words, ), (nsamples, n_other_words, )
             l0_stacked_probs = np.vstack(l0_probs)
             l1_stacked_probs = np.vstack(l1_probs)
             other_stacked_probs = np.vstack(other_probs)
         elif htype in ["l0_cxt_qxhs_par", "l1_cxt_qxhs_par", 
                         "l0_cxt_qxhs_bot", "l1_cxt_qxhs_bot"]:
-            # shape: (nsamples, msamlpes, n_l0_words, ), (nsamples, msamlpes, n_l1_words, ), (nsamples, msamlpes, n_other_words, )
             l0_stacked_probs = np.stack(l0_probs)
             l1_stacked_probs = np.stack(l1_probs)
             other_stacked_probs = np.stack(other_probs)
