@@ -139,7 +139,6 @@ def sample_gen_all_hs_batched(n_ntok_H, msamples, gen_all_hs, device):
     - where the other h sample is the same for the (max_ntokens + 1) dim
     """
     m_n_ntok_H = n_ntok_H[None, :, :, :].repeat(msamples, 1, 1, 1)
-    np.random.seed(0)
     idx = np.random.randint(
         0, gen_all_hs.shape[0], 
         n_ntok_H.shape[0]*msamples
@@ -198,14 +197,15 @@ def fast_compute_p_words(batch_token_list, batch_log_pxh,
                             pad_token_id, new_word_tokens, device):
     """ 
     expected dimensions:
-    - batch_token_list: bs x max_n_tokens
-    - batch_pxh: bs x (max_n_tokens + 1) x |vocabulary|
+    - batch_token_list: n_words x max_n_tokens
+    - batch_pxh: nwords x (max_n_tokens + 1) x |vocabulary|
     - new_word_tokens: list of new word tokens for the model
 
     output: list of word probabilities
-    final_log_p_x: (bs)
     """
-
+    #start = time.time()
+    #batch_pxh = torch.tensor(batch_pxh).to(self.device)
+    #batch_log_pxh = batch_pxh.log()
     seq_lens = (batch_token_list != pad_token_id).sum(1)
     n = len(batch_token_list)
     max_len = max(seq_lens)
@@ -226,25 +226,24 @@ def fast_compute_p_words(batch_token_list, batch_log_pxh,
         torch.tensor(new_word_tokens), 
         assume_unique=True
     ).to(device)
-
-    log_p_new = (batch_log_pxh + v_mask.log()).logsumexp(dim=-1)
-    log_p_new_given_x = log_p_new[seq_idxs, seq_lens]
-    final_log_p_x = log_p_x + log_p_new_given_x
-
+    p_new = batch_pxh * v_mask
+    p_new_given_x = p_new[seq_idxs, seq_lens].sum(1)
+    final_log_p_x = log_p_x + p_new_given_x.log()
+    #end = time.time()
+    #print(end-start)
     return final_log_p_x.exp().unsqueeze(0).cpu()
 
 def fast_compute_m_p_words(batch_token_list, batch_log_pxh, 
                          pad_token_id, new_word_tokens, device):
     """ 
     expected dimensions:
-    - batch_token_list: bs x max_n_tokens
-    - batch_log_pxh: msamples x bs x (max_n_tokens + 1) x |vocabulary|
+    - batch_token_list: n_words x max_n_tokens
+    - batch_pxh: nwords x (max_n_tokens + 1) x msamples x |vocabulary|
     - new_word_tokens: list of new word tokens for the model
 
     output: list of word probabilities
-    - final_log_p_x: msamples x bs
     """
-
+    #start = time.time()
     seq_lens = (batch_token_list != pad_token_id).sum(1)
     n = len(batch_token_list)
     m = batch_log_pxh.shape[0]
@@ -252,44 +251,42 @@ def fast_compute_m_p_words(batch_token_list, batch_log_pxh,
     seq_idxs = torch.eye(batch_log_pxh.shape[1]).to(device)
     log_p_x = torch.zeros((m, n)).to(device)
     for i in range(max_len): # Could be vectorized further too if a bottleneck
+        #i = 1
         tok_idxs = batch_token_list[:, i]
         tok_pxhs = batch_log_pxh[:, :, i, tok_idxs]
         next_pxhs = (tok_pxhs * seq_idxs).sum(-2)
         log_p_x += next_pxhs * (i < seq_lens)
+        #p_x *= torch.where((seq_lens > i), tok_pxhs, ones)
 
-    v = batch_log_pxh.shape[-1] # vocab size
+    # pnewword
+    #TODO: make this work with log
+    batch_pxh = batch_log_pxh.exp()
+    v = batch_pxh.shape[-1]
     v_mask = torch.isin(
         torch.arange(v), 
-        torch.tensor(new_word_tokens), # 33706 new word tokens
+        torch.tensor(new_word_tokens), 
         assume_unique=True
-    ).to(device) # shape: (vocab_size), automatically broadcasts to (m, nwords, Max_n_tokens + 1, vocab_size)
-    
-    log_p_new = (batch_log_pxh + v_mask.log()).logsumexp(dim=-1)
-    log_p_new_given_x = log_p_new[:, :, seq_lens]
-    log_p_new_given_x_proj = (log_p_new_given_x * seq_idxs).sum(-2)
-
-    final_log_p_x = log_p_x + log_p_new_given_x_proj
-    # torch.Size([5, 72, 2, 50257]) torch.Size([5, 72, 2]) torch.Size([5, 72, 72]) torch.Size([5, 72]) torch.Size([5, 72])
-    # print(v_mask.shape, batch_pxh.shape, p_new.shape, p_new_given_x.shape, p_new_given_x_proj.shape, final_log_p_x.shape)
-    # 72: bs, 2: max_n_tokens + 1, 50257: vocab_size, 5: msamples
+    ).to(device)
+    p_new = (batch_pxh * v_mask).sum(-1)
+    p_new_given_x = p_new[:, :, seq_lens]
+    p_new_given_x_proj = (p_new_given_x * seq_idxs).sum(-2)
+    final_log_p_x = log_p_x + p_new_given_x_proj.log()
+    #end = time.time()
+    #print(end-start)
     return final_log_p_x.exp()
 
 #########################################
 # Single Intervention Functions         #
 #########################################
 def apply_projection(hs, other_hs, mode, P, I_P):
-    # rank(I-P)=d-1 , rank(P)=1
-    print("P rank", torch.linalg.matrix_rank(P))
-    print("I_P rank", torch.linalg.matrix_rank(I_P))
     assert hs.shape == other_hs.shape, "Incorrect inputs"
     if mode == "hbot":
-        newh = hs @ P # + other_hs @ I_P
+        newh = other_hs @ I_P + hs @ P
     elif mode == "hpar":
-        newh = hs @ I_P # + other_hs @ P
+        newh = hs @ I_P + other_hs @ P
     else:
         raise ValueError(f"Incorrect mode {mode}")
     return newh
-
 
 def sample_other_hs(other_hs, nwords, msamples, device):
     idx = np.random.randint(
@@ -299,10 +296,9 @@ def sample_other_hs(other_hs, nwords, msamples, device):
     other_hs_sample = other_hs[idx].to(device)
     # msamples x nwords x d
     other_hs_view = other_hs_sample.view(
-        msamples, nwords, other_hs.shape[1]
+        (msamples, nwords, other_hs.shape[1])
     )
     return other_hs_view
-
 
 def intervene_hs(n_ntok_H, method, msamples, gen_all_hs, P, I_P, device):
     """ input dimensions:
@@ -310,8 +306,6 @@ def intervene_hs(n_ntok_H, method, msamples, gen_all_hs, P, I_P, device):
     output: msamples x nwords x (max_ntokens + 1) x d
     where the first of max_ntokens+1 hs has been intervened upon
     according to method
-    return:
-    - hs_int: msamples x bs x (max_ntokens + 1) x d
     """
     # repeating and splitting batch hs
     m_n_ntok_H = n_ntok_H[None, :, :, :].repeat(msamples, 1, 1, 1)
