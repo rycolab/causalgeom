@@ -50,6 +50,8 @@ from utils.cuda_loaders import get_device
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
 
+GLOBAL_DTYPE = torch.bfloat16
+
 #%%
 class CustomDataset(Dataset, ABC):
     def __init__(self, token_tensor):
@@ -236,7 +238,7 @@ class MultiTokenDistributor:
         if method in ["hbot", "hpar"]:
             hs_int = intervene_hs(
                 batch_hidden_states, method, 
-                self.msamples, self.gen_all_hs, 
+                self.msamples, self.gen_all_hs, # [500000, d]
                 self.P, self.I_P, self.device
             )
             batch_log_qxhs = compute_log_pxh_batch(
@@ -310,15 +312,13 @@ class MultiTokenDistributor:
 
         tl_word_probs = []
         for i, batch_tokens in enumerate(dl):
-            #i, batch_tokens = next(enumerate(dl))
 
             batch_word_probs = self.compute_batch_p_words(
                 batch_tokens, cxt_pkv, batch_size_pkv, 
                 cxt_hidden_state, method
             )
-
             tl_word_probs.append(batch_word_probs)
-
+        
         return torch.hstack(tl_word_probs).cpu().numpy()
 
     def compute_cxt_pkv_h(self, cxt):

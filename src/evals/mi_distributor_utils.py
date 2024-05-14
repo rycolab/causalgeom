@@ -50,11 +50,6 @@ def get_mt_eval_directory(run_path, concept, model_name,
 #########################################
 # Data Handling                         #
 #########################################
-#def compute_p_c_bin(l0_hs, l1_hs):
-#    c_counts = np.array([len(l0_hs), len(l1_hs)])
-#    p_c = c_counts / np.sum(c_counts)
-#    return p_c
-
 def get_all_hs(l0_gens, l1_gens, other_gens, max_all_hs, torch_dtype):
     """ Collects hs from filtered generations,
     stacks them and subsamples to max_all_hs samples.
@@ -171,30 +166,9 @@ def compute_log_pxh_batch(nntokH, V, gpu_out):
     else:
         return log_pxnewh.cpu()
 
-#def compute_p_words(batch_token_list, batch_pxh, pad_token_id, new_word_tokens):
-#    """ 
-#    TODO: would be nice to turn this into a vectorized operation
-#    just dont know how to do variable length indexing
-#    expected dimensions:
-#    - batch_token_list: n_words x max_n_tokens
-#    - batch_pxh: nwords x (max_n_tokens + 1) x |vocabulary|
-#
-#    output: len nwords list of word probabilities
-#    """
-#    all_word_probs = []
-#    for word_tokens, word_probs in zip(batch_token_list, batch_pxh):
-#        counter=0
-#        p_word=1
-#        while (counter < len(word_tokens) and 
-#                word_tokens[counter] != pad_token_id):
-#            p_word = p_word * word_probs[counter, word_tokens[counter]]
-#            counter+=1
-#        new_word_prob = word_probs[counter, new_word_tokens].sum()
-#        p_word = p_word * new_word_prob
-#        all_word_probs.append(p_word)
-#    return all_word_probs
 
 def compute_p_new_word(batch_log_pxh, new_word_tokens, seq_idxs, seq_lens, device):
+    #TODO: log this boy
     batch_pxh = batch_log_pxh.exp()
     v = batch_pxh.shape[2]
     v_mask = torch.isin(
@@ -210,11 +184,12 @@ def fast_compute_p_words(batch_token_list, batch_log_pxh,
                          pad_token_id, new_word_tokens, device):
     """ 
     expected dimensions:
-    - batch_token_list: n_words x max_n_tokens
-    - batch_pxh: nwords x (max_n_tokens + 1) x |vocabulary|
+    - batch_token_list: bs x max_n_tokens
+    - batch_pxh: bs x (max_n_tokens + 1) x |vocabulary|
     - new_word_tokens: list of new word tokens for the model
 
     output: list of word probabilities
+    final_log_p_x: (bs)
     """
     seq_lens = (batch_token_list != pad_token_id).sum(1)
     n = len(batch_token_list)
@@ -235,30 +210,30 @@ def fast_compute_p_words(batch_token_list, batch_log_pxh,
     else:
         return log_p_x.exp().unsqueeze(0).cpu()
 
-def compute_m_p_new_word(batch_log_pxh, new_word_tokens, seq_idxs, seq_lens, device):
-    batch_pxh = batch_log_pxh.exp()
-    v = batch_pxh.shape[-1]
+def compute_m_log_p_new_word(batch_log_pxh, new_word_tokens, seq_idxs, seq_lens, device):
+    v = batch_log_pxh.shape[-1]
     v_mask = torch.isin(
         torch.arange(v), 
         torch.tensor(new_word_tokens), 
         assume_unique=True
     ).to(device)
-    p_new = (batch_pxh * v_mask).sum(-1)
-    p_new_given_x = p_new[:, :, seq_lens]
-    p_new_given_x_proj = (p_new_given_x * seq_idxs).sum(-2)
-    return p_new_given_x_proj
+
+    log_p_new = (batch_log_pxh + v_mask.log()).logsumexp(dim=-1)
+    log_p_new_given_x = log_p_new[seq_idxs, seq_lens]
+    return log_p_new_given_x
 
 def fast_compute_m_p_words(batch_token_list, batch_log_pxh, 
                          pad_token_id, new_word_tokens, device):
     """ 
     expected dimensions:
-    - batch_token_list: n_words x max_n_tokens
-    - batch_pxh: msamples x nwords x (max_n_tokens + 1) x |vocabulary|
+    - batch_token_list: bs x max_n_tokens
+    - batch_log_pxh: msamples x bs x (max_n_tokens + 1) x |vocabulary|
     - new_word_tokens: list of new word tokens for the model
 
     output: list of word probabilities
+    - final_log_p_x: msamples x bs
     """
-    #start = time.time()
+
     seq_lens = (batch_token_list != pad_token_id).sum(1)
     n = len(batch_token_list)
     m = batch_log_pxh.shape[0]
@@ -272,10 +247,10 @@ def fast_compute_m_p_words(batch_token_list, batch_log_pxh,
         log_p_x += next_pxhs * (i < seq_lens)
 
     if new_word_tokens is not None:
-        p_new_word = compute_m_p_new_word(
+        log_p_new_word = compute_m_log_p_new_word(
             batch_log_pxh, new_word_tokens, seq_idxs, seq_lens, device
         )
-        final_log_p_x = log_p_x + p_new_word.log()
+        final_log_p_x = log_p_x + log_p_new_word
         return final_log_p_x.exp()
     else:
         return log_p_x.exp()
@@ -284,14 +259,18 @@ def fast_compute_m_p_words(batch_token_list, batch_log_pxh,
 # Single Intervention Functions         #
 #########################################
 def apply_projection(hs, other_hs, mode, P, I_P):
+    # rank(I-P)=d-1 , rank(P)=1
+    print("P rank", torch.linalg.matrix_rank(P))
+    print("I_P rank", torch.linalg.matrix_rank(I_P))
     assert hs.shape == other_hs.shape, "Incorrect inputs"
     if mode == "hbot":
-        newh = other_hs @ I_P + hs @ P
+        newh = hs @ P # + other_hs @ I_P
     elif mode == "hpar":
-        newh = hs @ I_P + other_hs @ P
+        newh = hs @ I_P # + other_hs @ P
     else:
         raise ValueError(f"Incorrect mode {mode}")
     return newh
+
 
 def sample_other_hs(other_hs, nwords, msamples, device):
     idx = np.random.randint(
@@ -301,9 +280,10 @@ def sample_other_hs(other_hs, nwords, msamples, device):
     other_hs_sample = other_hs[idx].to(device)
     # msamples x nwords x d
     other_hs_view = other_hs_sample.view(
-        (msamples, nwords, other_hs.shape[1])
+        msamples, nwords, other_hs.shape[1]
     )
     return other_hs_view
+
 
 def intervene_hs(n_ntok_H, method, msamples, gen_all_hs, P, I_P, device):
     """ input dimensions:
@@ -311,6 +291,8 @@ def intervene_hs(n_ntok_H, method, msamples, gen_all_hs, P, I_P, device):
     output: msamples x nwords x (max_ntokens + 1) x d
     where the first of max_ntokens+1 hs has been intervened upon
     according to method
+    return:
+    - hs_int: msamples x bs x (max_ntokens + 1) x d
     """
     # repeating and splitting batch hs
     m_n_ntok_H = n_ntok_H[None, :, :, :].repeat(msamples, 1, 1, 1)
