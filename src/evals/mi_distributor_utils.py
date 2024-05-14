@@ -258,15 +258,20 @@ def fast_compute_m_p_words(batch_token_list, batch_log_pxh,
 #########################################
 # Single Intervention Functions         #
 #########################################
-def apply_projection(hs, other_hs, mode, P, I_P):
-    # rank(I-P)=d-1 , rank(P)=1
-    print("P rank", torch.linalg.matrix_rank(P))
-    print("I_P rank", torch.linalg.matrix_rank(I_P))
+def apply_projection(
+    hs, 
+    other_hs, 
+    mode, 
+    P, 
+    I_P
+):
+    # rank(I-P)=d-1: project to H_bot
+    # rank(P)=1: project to H_par
     assert hs.shape == other_hs.shape, "Incorrect inputs"
     if mode == "hbot":
-        newh = hs @ P # + other_hs @ I_P
+        newh = hs @ P + other_hs @ I_P # this term is introducing extra information from other_hs
     elif mode == "hpar":
-        newh = hs @ I_P # + other_hs @ P
+        newh = hs @ I_P + other_hs @ P
     else:
         raise ValueError(f"Incorrect mode {mode}")
     return newh
