@@ -128,33 +128,33 @@ if __name__=="__main__":
     args = get_args()
     logging.info(args)
 
-    #model_name = args.model
-    #concept = args.concept
-    #source = args.source
-    #nsamples= args.nsamples
-    #msamples= args.msamples
-    #nwords = None
-    #output_folder = args.out_folder
-    #run_path = args.run_path
-    #batch_size = args.batch_size
-    #n_other_words = args.n_other_words
-    #torch_dtype = get_data_type(args.torch_dtype)
-    #nruns = 3
-    #exist_ok=False
+    model_name = args.model
+    concept = args.concept
+    source = args.source
+    nsamples= args.nsamples
+    msamples= args.msamples
+    nwords = None
+    output_folder = args.out_folder
+    run_path = args.run_path
+    batch_size = args.batch_size
+    n_other_words = args.n_other_words
+    torch_dtype = get_data_type(args.torch_dtype)
+    nruns = 3
+    exist_ok=False
     
-    model_name = "gpt2-large"
-    concept = "food"
-    source = "gen_ancestral_all"
-    nsamples=10
-    msamples=3
-    nwords=None
-    n_other_words=10
-    output_folder = "test"
-    run_path="run_output/food/gpt2-large/leace26032024/run_leace_food_gpt2-large_2024-03-26-14:40:56_0_3.pkl"
-    batch_size = 8
-    nruns = 1    
-    exist_ok=True
-    torch_dtype = torch.float32
+    #model_name = "gpt2-large"
+    #concept = "food"
+    #source = "gen_ancestral_all"
+    #nsamples=10
+    #msamples=3
+    #nwords=None
+    #n_other_words=10
+    #output_folder = "test"
+    #run_path="out/run_output/food/gpt2-large/leace26032024/run_leace_food_gpt2-large_2024-03-26-14:40:56_0_3.pkl"
+    #batch_size = 8
+    #nruns = 1    
+    #exist_ok=True
+    #torch_dtype = torch.float32
 
     for i in range(nruns):
         logging.info(f"Computing eval number {i}")
@@ -171,8 +171,7 @@ if __name__=="__main__":
             output_folder,
             i,
             batch_size,
-            exist_ok=exist_ok,
-            torch_dtype=torch_dtype,
+            torch_dtype=torch_dtype
         )
         run_eval_output = evaluator.compute_all_pxs()
         torch.cuda.empty_cache()
