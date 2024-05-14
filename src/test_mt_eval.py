@@ -49,7 +49,7 @@ from utils.cuda_loaders import get_device
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
 
-seed = 5
+seed = 10
 random.seed(seed)
 np.random.seed(seed)
 
@@ -61,14 +61,14 @@ from evals.MultiTokenDistributor import MultiTokenDistributor, CustomDataset
 model_name="gpt2-large"
 concept="number"
 source="natural" #"gen_nucleus", "gen_ancestral"
-nsamples=10
-msamples=5
-nwords=2 # None
+nsamples=1
+msamples=25
+nwords=None # ISSUE: larger nwords might cause low I(X, H_par | C) encapsulation ratio!
 n_other_words=500 # 1500
 batch_size=128
 run_path=os.path.join(
     OUT, 
-    "run_output/number/gpt2-large/leace01042024/run_leace_number_gpt2-large_2024-04-01-14:33:55_0_3.pkl"
+    "/cluster/work/cotterell/cguerner/usagebasedprobing/out/run_output/number/gpt2-large/leacefinal/run_leace_number_gpt2-large_2024-05-04-12:07:29_0_3.pkl"
 )
 output_folder = "test"
 iteration = 0
