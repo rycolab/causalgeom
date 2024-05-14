@@ -82,7 +82,8 @@ class MultiTokenDistributor:
                  iteration, # iteration of the eval for this run
                  batch_size, #batch size for the word list probability computation
                  p_new_word=True, # whether to multiply the p(word | h) by p(new_word | h)
-                 exist_ok=False # DEBUG ONLY: export directory exist_ok
+                 exist_ok=False, # DEBUG ONLY: export directory exist_ok
+                 torch_dtype=torch.float32, # torch data type to use for eval
                 ):
 
         self.nsamples = nsamples
@@ -90,6 +91,7 @@ class MultiTokenDistributor:
         self.nwords = nwords
         self.batch_size = batch_size
         self.n_other_words = n_other_words
+        self.torch_dtype = torch_dtype
 
         # Exist ok
         self.exist_ok = exist_ok
@@ -120,12 +122,16 @@ class MultiTokenDistributor:
 
         # Load with device
         P, I_P, _ = load_run_Ps(run_path)
-        self.P = torch.tensor(P, dtype=torch.float32).to(self.device) 
-        self.I_P = torch.tensor(I_P, dtype=torch.float32).to(self.device)
+        self.P = torch.tensor(P, dtype=self.torch_dtype).to(self.device) 
+        self.I_P = torch.tensor(I_P, dtype=self.torch_dtype).to(self.device)
 
         # Load model eval components
-        self.V = get_V(model_name, model=self.model, numpy_cpu=False).clone().type(torch.float32).to(self.device)
-        self.l0_tl, self.l1_tl, other_tl_full = load_concept_token_lists(concept, model_name, single_token=False)
+        self.V = get_V(
+            model_name, model=self.model, numpy_cpu=False
+        ).clone().type(self.torch_dtype).to(self.device)
+        self.l0_tl, self.l1_tl, other_tl_full = load_concept_token_lists(
+            concept, model_name, single_token=False
+        )
 
         # subsample other words
         random.shuffle(other_tl_full)
@@ -138,8 +144,8 @@ class MultiTokenDistributor:
             self.l1_tl = self.l1_tl[random_start:random_start+self.nwords]
 
         # Load generated samples
-        self.gen_all_hs, self.gen_l0_cxt_toks, self.gen_l1_cxt_toks, self.gen_other_cxt_toks = prep_generated_data(
-            model_name, concept, nucleus
+        self.gen_all_hs, self.gen_concept_cxt_toks, self.gen_all_cxt_toks = prep_generated_data(
+            model_name, concept, nucleus, self.torch_dtype
         )
 
         # Load test set samples
@@ -149,9 +155,8 @@ class MultiTokenDistributor:
         self.cxt_toks = self.get_eval_contexts(source)
 
         # Delete cxts for memory
-        self.gen_l0_cxt_toks = None
-        self.gen_l1_cxt_toks = None
-        self.gen_other_cxt_toks = None
+        self.gen_concept_cxt_toks = None
+        self.gen_all_cxt_toks = None
         self.cxt_toks_test = None
 
     #########################################
@@ -208,15 +213,10 @@ class MultiTokenDistributor:
     #########################################
     def get_eval_contexts(self, source, max_nsamples=100000):
         if source in ["gen_ancestral_concept", "gen_nucleus_concept"]:
-            all_cxt_toks = self.gen_l0_cxt_toks + self.gen_l1_cxt_toks
-            padded_cxt_toks = pad_cxt_list(all_cxt_toks, max_nsamples)
+            padded_cxt_toks = pad_cxt_list(self.gen_concept_cxt_toks, max_nsamples)
             return padded_cxt_toks
         elif source in ["gen_ancestral_all", "gen_nucleus_all"]:
-            all_cxt_toks = (
-                self.gen_l0_cxt_toks + self.gen_l1_cxt_toks + 
-                self.gen_other_cxt_toks
-            )
-            padded_cxt_toks = pad_cxt_list(all_cxt_toks, max_nsamples)
+            padded_cxt_toks = pad_cxt_list(self.gen_all_cxt_toks, max_nsamples)
             return padded_cxt_toks
         elif source == "natural_concept":
             return torch.from_numpy(self.cxt_toks_test)
@@ -288,7 +288,7 @@ class MultiTokenDistributor:
         )
         batch_hidden_states = torch.cat(
             (batch_cxt_hidden_state, pkv_batch_hs), 1
-        ).type(torch.float32)
+        ).type(self.torch_dtype)
         batch_word_probs = self.compute_pxh_batch_handler(
             method, batch_tokens, batch_hidden_states, gpu_out=True
         )
@@ -344,7 +344,7 @@ class MultiTokenDistributor:
 
             #start = time.time()
             with torch.no_grad():
-                with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=True):
+                with torch.autocast(device_type="cuda", dtype=self.torch_dtype, enabled=True):
                     cxt_pkv, cxt_hidden_state = self.compute_cxt_pkv_h(cxt)
 
                     l0_word_probs = self.compute_token_list_word_probs(self.l0_tl, 

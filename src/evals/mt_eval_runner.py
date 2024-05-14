@@ -37,6 +37,20 @@ from evals.MIComputer import compute_mis
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
 
+#%%##########################
+# Command Line Arg Handling #
+#############################
+def get_data_type(type_str):
+    if type_str == "float32":
+        return torch.float32
+    elif type_str == "float16":
+        return torch.float16
+    elif type_str == "bfloat16":
+        return torch.bfloat16
+    else:
+        raise NotImplementedError(f"Data type {type_str} not implemented")
+
+
 #%%#################
 # Main             #
 ####################
@@ -101,41 +115,46 @@ def get_args():
         default=500,
         help="Number of other words to compute probabilities for"
     )
+    argparser.add_argument(
+        "-torch_dtype",
+        type=str,
+        choices=["bfloat16", "float16", "float32"],
+        help="Data type to cast all tensors to during evaluation",
+        default="float32"
+    )
     return argparser.parse_args()
 
 if __name__=="__main__":
     args = get_args()
     logging.info(args)
 
-    model_name = args.model
-    concept = args.concept
-    source = args.source
-    nsamples=args.nsamples
-    msamples=args.msamples
-    nwords = None
-    output_folder = args.out_folder
-    run_path = args.run_path
-    batch_size = args.batch_size
-    n_other_words = args.n_other_words
-    nruns = 3
+    #model_name = args.model
+    #concept = args.concept
+    #source = args.source
+    #nsamples= args.nsamples
+    #msamples= args.msamples
+    #nwords = None
+    #output_folder = args.out_folder
+    #run_path = args.run_path
+    #batch_size = args.batch_size
+    #n_other_words = args.n_other_words
+    #torch_dtype = get_data_type(args.torch_dtype)
+    #nruns = 3
+    #exist_ok=False
     
-    #if source in ['gen_nucleus' 'gen_normal']:
-    #    batch_size = 3
-    #else:
-    #    batch_size = 64
-    
-    #model_name = "gpt2-large"
-    #concept = "food"
-    #source = "gen_normal"
-    #nsamples=3
-    #msamples=3
-    #nwords=None
-    #output_folder = "test"
-    #run_path="out/run_output/number/gpt2-large/leace26032024/run_leace_number_gpt2-large_2024-03-26-19:55:11_0_3.pkl"
-    #batch_size = 64
-    #nruns = 1
-    
-    
+    model_name = "gpt2-large"
+    concept = "food"
+    source = "gen_ancestral_all"
+    nsamples=10
+    msamples=3
+    nwords=None
+    n_other_words=10
+    output_folder = "test"
+    run_path="run_output/food/gpt2-large/leace26032024/run_leace_food_gpt2-large_2024-03-26-14:40:56_0_3.pkl"
+    batch_size = 8
+    nruns = 1    
+    exist_ok=True
+    torch_dtype = torch.float32
 
     for i in range(nruns):
         logging.info(f"Computing eval number {i}")
@@ -151,7 +170,9 @@ if __name__=="__main__":
             run_path, #run_path
             output_folder,
             i,
-            batch_size
+            batch_size,
+            exist_ok=exist_ok,
+            torch_dtype=torch_dtype,
         )
         run_eval_output = evaluator.compute_all_pxs()
         torch.cuda.empty_cache()

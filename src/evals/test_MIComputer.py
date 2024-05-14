@@ -50,17 +50,19 @@ from evals.MIComputer import MIComputer
 
 model_name="gpt2-large"
 concept="food"
-source="natural"
-#nsamples=5
-#msamples=5
-#nwords=5
+source="natural_concept"
+#nsamples=10
+#msamples=15
+#nwords=None
 #n_other_words=10
-#batch_size=32
+#batch_size=16
 run_path=os.path.join(
     OUT, "run_output/food/gpt2-large/leacefinal/run_leace_food_gpt2-large_2024-05-04-12:04:06_0_3.pkl"
 )
-output_folder = "may10"
+output_folder = "test"
 iteration = 0
+#exist_ok=True
+#p_new_word = False
 
 computer = MIComputer(
     model_name,
@@ -72,9 +74,10 @@ computer = MIComputer(
 )
 
 #%%
-computer.compute_run_eval()
+#computer.compute_run_eval()
 #l0_qxhpars, l1_qxhpars, l0_qxhbots, l1_qxhbots, l0_pxhs, l1_pxhs = distributor.load_all_pxs()
 
+p_x_mid_h, q_x_mid_hpar, q_x_mid_hbot = computer.load_all_pxs()
 
 #%%
 from evals.mi_computer_utils import combine_lemma_contexts, \

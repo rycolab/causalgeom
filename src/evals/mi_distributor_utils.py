@@ -13,7 +13,7 @@ from scipy.special import softmax, log_softmax
 sys.path.append('..')
 
 from data.filter_generations import load_filtered_generations
-from utils.lm_loaders import GPT2_LIST
+from utils.lm_loaders import GPT2_LIST, get_max_cxt_length
 from paths import OUT
 
 #########################################
@@ -55,7 +55,7 @@ def get_mt_eval_directory(run_path, concept, model_name,
 #    p_c = c_counts / np.sum(c_counts)
 #    return p_c
 
-def get_all_hs(l0_gens, l1_gens, other_gens, max_all_hs):
+def get_all_hs(l0_gens, l1_gens, other_gens, max_all_hs, torch_dtype):
     """ Collects hs from filtered generations,
     stacks them and subsamples to max_all_hs samples.
     """
@@ -74,56 +74,74 @@ def get_all_hs(l0_gens, l1_gens, other_gens, max_all_hs):
         np.random.shuffle(idx)
         all_hs = all_hs[idx[:max_all_hs]]
 
-    all_hs = torch.tensor(all_hs, dtype=torch.float32)
+    all_hs = torch.tensor(all_hs, dtype=torch_dtype)
     return all_hs
 
+def sample_cxt_toks(cxt_toks, max_n_cxts):
+    if len(cxt_toks) > max_n_cxts:
+        cxt_toks = random.sample(
+            cxt_toks, max_n_cxts)
+    return cxt_toks
+
 def get_cxt_toks(model_name, l0_gens, l1_gens, other_gens, 
-    cxt_max_length_pct=1):
+    max_n_cxts, cxt_max_length_pct=1):
     l0_cxt_toks = [all_tok[:-len(fact)] for _,fact,_,all_tok in l0_gens]
     l1_cxt_toks = [all_tok[:-len(fact)] for _,fact,_,all_tok in l1_gens]
     other_cxt_toks = [all_tok for _,all_tok in other_gens]
 
-    if model_name in GPT2_LIST:
-        cxt_max_length = 1024
-    elif model_name == "llama2":
-        cxt_max_length = 4096
-    else:
-        raise NotImplementedError(f"Model name {model_name} not supported")
-    cxt_size_limit = cxt_max_length * cxt_max_length_pct
+    max_cxt_length = get_max_cxt_length(model_name)
+    cxt_size_limit = max_cxt_length * cxt_max_length_pct
 
-    lim_l0_cxt_toks = [
-        x for x in l0_cxt_toks if len(x) < cxt_size_limit
+    concept_cxt_toks = [
+        x for x in l0_cxt_toks + l1_cxt_toks if len(x) < cxt_size_limit
     ]
-    lim_l1_cxt_toks = [
-        x for x in l1_cxt_toks if len(x) < cxt_size_limit
-    ]
-    lim_other_cxt_toks = [
+    del l0_cxt_toks
+    del l1_cxt_toks
+    other_cxt_toks = [
         x for x in other_cxt_toks if len(x) < cxt_size_limit
     ]
-    return lim_l0_cxt_toks, lim_l1_cxt_toks, lim_other_cxt_toks
+    all_cxt_toks = concept_cxt_toks + other_cxt_toks
+    del other_cxt_toks
 
-def prep_generated_data(model_name, concept, nucleus, 
-    cxt_max_length_pct=0.9, max_all_hs=500000):
-    """ Loads generated text, filtered into concept and other hs """
+    concept_cxt_toks = sample_cxt_toks(concept_cxt_toks, max_n_cxts)
+    all_cxt_toks = sample_cxt_toks(all_cxt_toks, max_n_cxts)
+    return concept_cxt_toks, all_cxt_toks
+
+def prep_generated_data(model_name, concept, nucleus, torch_dtype,
+    cxt_max_length_pct=0.9, max_n_cxts=100000, max_n_all_hs=300000):
+    """ Loads generated text and outputs:
+    - all_hs: generated hs by the model
+    - concept_cxt_toks: context strings that induced model to generate concept word
+    - all_cxt_toks: generated strings by the model
+
+    Args:
+    - cxt_max_length_pct: keep only cxt strings with cxt_max_length_pct
+        length of model context size
+    - max_n_cxts: max number of context strings to return,
+                  applied to both concept_cxt_toks and all_cxt_toks
+    - max_n_all_hs: max number of all_hs to return
+    """
     l0_gens, l1_gens, other_gens = load_filtered_generations(
         model_name, concept, nucleus=nucleus
     )
 
-    all_hs = get_all_hs(l0_gens, l1_gens, other_gens, max_all_hs)    
+    all_hs = get_all_hs(
+        l0_gens, l1_gens, other_gens, max_n_all_hs, torch_dtype
+    )    
 
-    l0_cxt_toks, l1_cxt_toks, other_cxt_toks = get_cxt_toks(
-        model_name, l0_gens, l1_gens, other_gens, cxt_max_length_pct
+    concept_cxt_toks, all_cxt_toks = get_cxt_toks(
+        model_name, l0_gens, l1_gens, other_gens, max_n_cxts,
+        cxt_max_length_pct
     )
 
     logging.info(
         f"Loaded generated hs: model {model_name}, "
         f"concept {concept}, nucleus {nucleus}: \n"
         f"- all_hs: {all_hs.shape[0]} \n"
-        f"- l0_cxt_toks: {len(l0_cxt_toks)} \n"
-        f"- l1_cxt_toks: {len(l1_cxt_toks)} \n"
-        f"- other_cxt_toks: {len(other_cxt_toks)}"
+        f"- concept_cxt_toks: {len(concept_cxt_toks)} \n"
+        f"- all_cxt_toks: {len(all_cxt_toks)}"
     )
-    return all_hs, l0_cxt_toks, l1_cxt_toks, other_cxt_toks
+    return all_hs, concept_cxt_toks, all_cxt_toks
 
 def pad_cxt_list(cxt_toks, max_nsamples, padding_value=-1):
     """ Input: list of tokenized strings
