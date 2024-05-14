@@ -8,6 +8,7 @@ out/
 results/
 wandb/
 
+src/test_mt_eval.py
 /*.sh
 !init_euler.sh
 /*.err
