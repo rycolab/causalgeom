@@ -259,17 +259,16 @@ def fast_compute_m_p_words(batch_token_list, batch_log_pxh,
 # Single Intervention Functions         #
 #########################################
 def apply_projection(
-    hs, 
-    other_hs, 
-    mode, 
-    P, 
-    I_P
+    hs, other_hs, mode, P, I_P
 ):
+    # hs: (m x n x l x d), other_hs: (m x n x l x d), P: (d x d), I_P: (d x d)
+
     # rank(I-P)=d-1: project to H_bot
     # rank(P)=1: project to H_par
     assert hs.shape == other_hs.shape, "Incorrect inputs"
     if mode == "hbot":
-        newh = hs @ P + other_hs @ I_P # this term is introducing extra information from other_hs
+        # other_hs @ I_P introduces extra information from other_hs
+        newh = hs @ P + other_hs @ I_P
     elif mode == "hpar":
         newh = hs @ I_P + other_hs @ P
     else:
@@ -278,6 +277,8 @@ def apply_projection(
 
 
 def sample_other_hs(other_hs, nwords, msamples, device):
+    # TODO:
+    # Use the sample msamples for each of the n words
     idx = np.random.randint(
         0, other_hs.shape[0], 
         nwords*msamples #nwords x msamples
