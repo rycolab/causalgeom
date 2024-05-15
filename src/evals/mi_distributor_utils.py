@@ -166,19 +166,17 @@ def compute_log_pxh_batch(nntokH, V, gpu_out):
     else:
         return log_pxnewh.cpu()
 
-
-def compute_p_new_word(batch_log_pxh, new_word_tokens, seq_idxs, seq_lens, device):
-    #TODO: log this boy
-    batch_pxh = batch_log_pxh.exp()
-    v = batch_pxh.shape[2]
+def compute_log_p_new_word(batch_log_pxh, new_word_tokens, seq_idxs, seq_lens, device):
+    v = batch_log_pxh.shape[-1]
     v_mask = torch.isin(
         torch.arange(v), 
         torch.tensor(new_word_tokens), 
         assume_unique=True
     ).to(device)
-    p_new = batch_pxh * v_mask
-    p_new_given_x = p_new[seq_idxs, seq_lens].sum(1)
-    return p_new_given_x
+
+    log_p_new = (batch_log_pxh + v_mask.log()).logsumexp(dim=-1)
+    log_p_new_given_x = log_p_new[seq_idxs, seq_lens]
+    return log_p_new_given_x
 
 def fast_compute_p_words(batch_token_list, batch_log_pxh, 
                          pad_token_id, new_word_tokens, device):
@@ -202,25 +200,28 @@ def fast_compute_p_words(batch_token_list, batch_log_pxh,
         log_p_x += tok_pxhs * (i < seq_lens)
     
     if new_word_tokens is not None:
-        p_new_word = compute_p_new_word(
+        log_p_new_word = compute_log_p_new_word(
             batch_log_pxh, new_word_tokens, seq_idxs, seq_lens, device
         )
-        final_log_p_x = log_p_x + p_new_word.log()
+        final_log_p_x = log_p_x + log_p_new_word
         return final_log_p_x.exp().unsqueeze(0).cpu()
     else:
         return log_p_x.exp().unsqueeze(0).cpu()
 
 def compute_m_log_p_new_word(batch_log_pxh, new_word_tokens, seq_idxs, seq_lens, device):
-    v = batch_log_pxh.shape[-1]
+    v = batch_log_pxh.shape[-1] # vocab size
     v_mask = torch.isin(
-        torch.arange(v), 
-        torch.tensor(new_word_tokens), 
+        torch.arange(v),
+        torch.tensor(new_word_tokens),
         assume_unique=True
-    ).to(device)
-
+    ).to(device) # shape: (vocab_size), automatically broadcasts to (m, nwords, Max_n_tokens + 1, vocab_size)
+    
     log_p_new = (batch_log_pxh + v_mask.log()).logsumexp(dim=-1)
-    log_p_new_given_x = log_p_new[seq_idxs, seq_lens]
-    return log_p_new_given_x
+    log_p_new_given_x = log_p_new[:, :, seq_lens]
+    log_p_new_given_x_proj = (log_p_new_given_x * seq_idxs).sum(-2)
+
+    return log_p_new_given_x_proj
+
 
 def fast_compute_m_p_words(batch_token_list, batch_log_pxh, 
                          pad_token_id, new_word_tokens, device):
@@ -258,16 +259,18 @@ def fast_compute_m_p_words(batch_token_list, batch_log_pxh,
 #########################################
 # Single Intervention Functions         #
 #########################################
-def apply_projection(
-    hs, other_hs, mode, P, I_P
-):
-    # hs: (m x n x l x d), other_hs: (m x n x l x d), P: (d x d), I_P: (d x d)
+def apply_projection(hs, other_hs, mode, P, I_P):
+    """ 
+    hs: (m x n x max_ntok + 1 x d)
+    other_hs: (m x n x max_ntok + 1 x d)
+    P: (d x d)
+    I_P: (d x d)
 
     # rank(I-P)=d-1: project to H_bot
     # rank(P)=1: project to H_par
+    """
     assert hs.shape == other_hs.shape, "Incorrect inputs"
     if mode == "hbot":
-        # other_hs @ I_P introduces extra information from other_hs
         newh = hs @ P + other_hs @ I_P
     elif mode == "hpar":
         newh = hs @ I_P + other_hs @ P

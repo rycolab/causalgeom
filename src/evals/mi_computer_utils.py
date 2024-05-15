@@ -11,17 +11,6 @@ import numpy as np
 
 sys.path.append('..')
 
-
-#%%######################################
-# Aggregate over lemma hsamples         #
-#########################################
-#def combine_lemma_contexts(l0_samples, l1_samples):
-#    all_l0_words = np.vstack((l0_samples[0], l1_samples[0]))
-#    all_l1_words = np.vstack((l0_samples[1], l1_samples[1]))
-#    all_na_words = np.vstack((l0_samples[2], l1_samples[2]))
-#    all_contexts = (all_l0_words, all_l1_words, all_na_words)
-#    return all_contexts
-
 #%%######################################
 # Z(h, c, x) distributions             #
 #########################################

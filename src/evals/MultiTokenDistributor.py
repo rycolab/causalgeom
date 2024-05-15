@@ -375,7 +375,7 @@ class MultiTokenDistributor:
 
         return l0_probs, l1_probs, other_probs
 
-    def compute_pxs(self, htype):
+    def compute_pxs(self, htype, cxts):
         """ Computes three possible distributions:
         q(x | hbot), q(x | hpar), p(x | h)
         """
@@ -385,20 +385,21 @@ class MultiTokenDistributor:
         )
         os.makedirs(htype_outdir, exist_ok=self.exist_ok)   
 
-        assert self.nsamples is not None
-        n_cxts = self.sample_filtered_contexts()
-
         if htype == "q_x_mid_hpar": 
-            q_x_mid_hpar = self.compute_lemma_probs(n_cxts, "hbot", htype_outdir)
+            return self.compute_lemma_probs(n_cxts, "hbot", htype_outdir)
         elif htype == "q_x_mid_hbot":
-            q_x_mid_hbot = self.compute_lemma_probs(n_cxts, "hpar", htype_outdir)
+            return self.compute_lemma_probs(n_cxts, "hpar", htype_outdir)
         elif htype == "p_x_mid_h":
-            p_x_mid_h = self.compute_lemma_probs(n_cxts, "h", htype_outdir)
+            return self.compute_lemma_probs(n_cxts, "h", htype_outdir)
         else:
             raise ValueError(f"Incorrect htype: {htype}")
 
     def compute_all_pxs(self):
-        self.compute_pxs("q_x_mid_hpar")
-        self.compute_pxs("q_x_mid_hbot")
-        self.compute_pxs("p_x_mid_h")
+        assert self.nsamples is not None
+        n_cxts = self.sample_filtered_contexts()
+
+        q_x_mid_hpar = self.compute_pxs("q_x_mid_hpar", n_cxts)
+        q_x_mid_hbot = self.compute_pxs("q_x_mid_hbot", n_cxts)
+        p_x_mid_h = self.compute_pxs("p_x_mid_h", n_cxts)
+        return q_x_mid_hpar, q_x_mid_hbot, p_x_mid_h
 
