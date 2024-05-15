@@ -50,8 +50,6 @@ from utils.cuda_loaders import get_device
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
 
-GLOBAL_DTYPE = torch.bfloat16
-
 #%%
 class CustomDataset(Dataset, ABC):
     def __init__(self, token_tensor):
