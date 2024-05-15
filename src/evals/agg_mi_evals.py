@@ -23,7 +23,7 @@ coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
 
 # %% MI RES
-mt_eval_run_name = "big_otherwords_mt_eval"
+mt_eval_run_name = "may14"
 mifolder = os.path.join(RESULTS, f"mis/{mt_eval_run_name}")
 mifiles = os.listdir(mifolder)
 
@@ -166,25 +166,25 @@ entropy_breakdown_grouped.mean().reset_index().to_csv(os.path.join(RESULTS, "lea
 entropy_breakdown_grouped.std().reset_index().to_csv(os.path.join(RESULTS, "leace_entropies_std.csv"), index=False)
 
 #%% 
-ent_break_group = entropy_breakdown.groupby(["source", "concept", "model_name"])
+#ent_break_group = entropy_breakdown.groupby(["source", "concept", "model_name"])
 
-ent_mean = ent_break_group.mean().reset_index()
-ent_mean["index"] = ent_mean["concept"] + "_" + ent_mean["model_name"]
-ent_mean.drop(["source", "concept", "model_name"], axis=1, inplace=True)
-ent_mean = ent_mean[["index"] + entropy_cols]
-ent_mean["metric"] = "mean"
+#ent_mean = ent_break_group.mean().reset_index()
+#ent_mean["index"] = ent_mean["concept"] + "_" + ent_mean["model_name"]
+#ent_mean.drop(["source", "concept", "model_name"], axis=1, inplace=True)
+#ent_mean = ent_mean[["index"] + entropy_cols]
+#ent_mean["metric"] = "mean"
 
-ent_std = ent_break_group.std().reset_index()
-ent_std["index"] = ent_std["concept"] + "_" + ent_std["model_name"]
-ent_std.drop(["source", "concept", "model_name"], axis=1, inplace=True)
-ent_std = ent_std[["index"] + entropy_cols]
-ent_std["metric"] = "std"
-ent_final = pd.concat([ent_mean, ent_std], axis=0)
-ent_final["newindex"] = ent_final["index"] + "_" + ent_final["metric"]
-ent_final = ent_final[["newindex"] + entropy_cols]
+#ent_std = ent_break_group.std().reset_index()
+#ent_std["index"] = ent_std["concept"] + "_" + ent_std["model_name"]
+#ent_std.drop(["source", "concept", "model_name"], axis=1, inplace=True)
+#ent_std = ent_std[["index"] + entropy_cols]
+#ent_std["metric"] = "std"
+#ent_final = pd.concat([ent_mean, ent_std], axis=0)
+#ent_final["newindex"] = ent_final["index"] + "_" + ent_final["metric"]
+#ent_final = ent_final[["newindex"] + entropy_cols]
 
-ent_final.columns = [entcols_name[x] for x in ent_final.columns]
-ent_final.T.to_csv(os.path.join(RESULTS, "leace_entropies.csv"), index=True)
+#ent_final.columns = [entcols_name[x] for x in ent_final.columns]
+#ent_final.T.to_csv(os.path.join(RESULTS, "leace_entropies.csv"), index=True)
 #.reset_index().to_csv(os.path.join(RESULTS, "leace_entropies_std.csv"), index=False)
 
 #.reset_index().to_csv(os.path.join(RESULTS, "leace_entropies_mean.csv"), index=False)

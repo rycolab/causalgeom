@@ -72,7 +72,7 @@ class MultiTokenDistributor:
     def __init__(self, 
                  model_name, # name of AR model 
                  concept, # concept name
-                 source, # ["natural_concept", "gen_ancestral_concept", "gen_nucleus_concept", "gen_ancestral_all", "gen_nucleus_all"]
+                 source, # ["natural_concept", "gen_ancestral_concept", "gen_nucleus_concept", "gen_ancestral_ all", "gen_nucleus_all"]
                  nsamples, # number of test set samples
                  msamples, # number of dev set samples for each q computation
                  nwords, # DEBUG ONLY: number of words to use from token lists
