@@ -386,11 +386,11 @@ class MultiTokenDistributor:
         os.makedirs(htype_outdir, exist_ok=self.exist_ok)   
 
         if htype == "q_x_mid_hpar": 
-            return self.compute_lemma_probs(n_cxts, "hbot", htype_outdir)
+            return self.compute_lemma_probs(cxts, "hbot", htype_outdir)
         elif htype == "q_x_mid_hbot":
-            return self.compute_lemma_probs(n_cxts, "hpar", htype_outdir)
+            return self.compute_lemma_probs(cxts, "hpar", htype_outdir)
         elif htype == "p_x_mid_h":
-            return self.compute_lemma_probs(n_cxts, "h", htype_outdir)
+            return self.compute_lemma_probs(cxts, "h", htype_outdir)
         else:
             raise ValueError(f"Incorrect htype: {htype}")
 

@@ -1,5 +1,6 @@
 # project specific
 auth_token.txt
+OLD_*
 
 .vscode/
 data/
