@@ -9,7 +9,6 @@ import unittest
 import torch
 import numpy as np
 import math
-from mock import patch
 
 #sys.path.append('..')
 sys.path.append('./src/')
