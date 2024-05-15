@@ -33,8 +33,7 @@ from utils.lm_loaders import SUPPORTED_AR_MODELS
 from evals.mi_distributor_utils import prep_generated_data, \
     get_nucleus_arg, get_mt_eval_directory
 #from evals.eval_utils import renormalize
-from evals.mi_computer_utils import combine_lemma_contexts, \
-    compute_all_MIs
+from evals.mi_computer_utils import compute_all_MIs
 
 #from data.filter_generations import load_generated_hs_wff
 #from data.data_utils import filter_hs_w_ys, sample_filtered_hs
@@ -78,6 +77,10 @@ class MIComputer:
     # Data handling                         #
     #########################################
     def load_htype_probs(self, htype):
+        """ Loads word probabilities exported by MultiTokenDistributor
+        pxhs output dim: (n_hs, l0_nwords), (n_hs, l1_nwords), (n_hs, other_nwords)
+        qxhs output dim: (n_hs, msamples, l0_nwords), (n_hs, msamples, l1_nwords), (n_hs, msamples, other_nwords)
+        """
         htype_dir = os.path.join(self.h_distribs_dir, htype)
         htype_files = os.listdir(htype_dir)
         l0_probs, l1_probs, other_probs = [], [], []
@@ -89,12 +92,11 @@ class MIComputer:
             l1_probs.append(sample_l1_probs)
             other_probs.append(sample_other_probs)
 
-        if htype in ["l0_cxt_pxhs", "l1_cxt_pxhs"]:
+        if htype == "p_x_mid_h":
             l0_stacked_probs = np.vstack(l0_probs)
             l1_stacked_probs = np.vstack(l1_probs)
             other_stacked_probs = np.vstack(other_probs)
-        elif htype in ["l0_cxt_qxhs_par", "l1_cxt_qxhs_par", 
-                        "l0_cxt_qxhs_bot", "l1_cxt_qxhs_bot"]:
+        elif htype in ["q_x_mid_hpar", "q_x_mid_hbot"]:
             l0_stacked_probs = np.stack(l0_probs)
             l1_stacked_probs = np.stack(l1_probs)
             other_stacked_probs = np.stack(other_probs)
@@ -103,34 +105,28 @@ class MIComputer:
         return l0_stacked_probs, l1_stacked_probs, other_stacked_probs
         
     def load_all_pxs(self):
-        l0_cxt_qxhs_par = self.load_htype_probs("l0_cxt_qxhs_par")
-        l1_cxt_qxhs_par = self.load_htype_probs("l1_cxt_qxhs_par")
-        l0_cxt_qxhs_bot = self.load_htype_probs("l0_cxt_qxhs_bot")
-        l1_cxt_qxhs_bot = self.load_htype_probs("l1_cxt_qxhs_bot")
-        l0_cxt_pxhs = self.load_htype_probs("l0_cxt_pxhs")
-        l1_cxt_pxhs = self.load_htype_probs("l1_cxt_pxhs")
+        """ Loads word probabilities exported by MultiTokenDistributor
+        p(x | h): (n_hs, l0_nwords), (n_hs, l1_nwords), (n_hs, other_nwords)
+        q(x | hpar): (n_hs, msamples, l0_nwords), (n_hs, msamples, l1_nwords), (n_hs, msamples, other_nwords)
+        q(x | hbot): (n_hs, msamples, l0_nwords), (n_hs, msamples, l1_nwords), (n_hs, msamples, other_nwords)
+        """
+        
+        p_x_mid_h = self.load_htype_probs("p_x_mid_h")
+        q_x_mid_hpar = self.load_htype_probs("q_x_mid_hpar")
+        q_x_mid_hbot = self.load_htype_probs("q_x_mid_hbot")
 
-        assert l0_cxt_qxhs_par[0].shape[0] == l0_cxt_qxhs_bot[0].shape[0], \
+        assert q_x_mid_hpar[0].shape[0] == q_x_mid_hbot[0].shape[0], \
             "Unequal number of samples"
-        assert l1_cxt_qxhs_par[0].shape[0] == l1_cxt_qxhs_bot[0].shape[0], \
-            "Unequal number of samples"
-        assert l0_cxt_qxhs_par[0].shape[0] == l0_cxt_pxhs[0].shape[0], \
-            "Unequal number of samples"
-        assert l1_cxt_qxhs_par[0].shape[0] == l1_cxt_pxhs[0].shape[0], \
+        assert q_x_mid_hpar[0].shape[0] == p_x_mid_h[0].shape[0], \
             "Unequal number of samples"
         
-        return l0_cxt_qxhs_par, l1_cxt_qxhs_par, l0_cxt_qxhs_bot, \
-            l1_cxt_qxhs_bot, l0_cxt_pxhs, l1_cxt_pxhs
+        return p_x_mid_h, q_x_mid_hpar, q_x_mid_hbot
 
     #########################################
     # Containment and Stability             #
     #########################################
     def compute_run_eval(self):
-        l0_qxhpars, l1_qxhpars, l0_qxhbots, l1_qxhbots, l0_pxhs, l1_pxhs = self.load_all_pxs()
-
-        all_pxhs = combine_lemma_contexts(l0_pxhs, l1_pxhs)
-        all_qxhpars = combine_lemma_contexts(l0_qxhpars, l1_qxhpars)
-        all_qxhbots = combine_lemma_contexts(l0_qxhbots, l1_qxhbots)
+        all_pxhs, all_qxhpars, all_qxhbots = self.load_all_pxs()
 
         MIs = compute_all_MIs(all_pxhs, all_qxhbots, all_qxhpars)
         return MIs

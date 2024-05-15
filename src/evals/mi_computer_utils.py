@@ -17,12 +17,12 @@ from evals.eval_utils import renormalize
 #%%######################################
 # Aggregate over lemma hsamples         #
 #########################################
-def combine_lemma_contexts(l0_samples, l1_samples):
-    all_l0_words = np.vstack((l0_samples[0], l1_samples[0]))
-    all_l1_words = np.vstack((l0_samples[1], l1_samples[1]))
-    all_na_words = np.vstack((l0_samples[2], l1_samples[2]))
-    all_contexts = (all_l0_words, all_l1_words, all_na_words)
-    return all_contexts
+#def combine_lemma_contexts(l0_samples, l1_samples):
+#    all_l0_words = np.vstack((l0_samples[0], l1_samples[0]))
+#    all_l1_words = np.vstack((l0_samples[1], l1_samples[1]))
+#    all_na_words = np.vstack((l0_samples[2], l1_samples[2]))
+#    all_contexts = (all_l0_words, all_l1_words, all_na_words)
+#    return all_contexts
 
 #%%######################################
 # Z(h, c, x) distributions             #
@@ -106,7 +106,8 @@ def stack_p_x_mid_h_c(p_x_mid_h_c0, p_x_mid_h_c1, p_x_mid_h_na):
     p_x_mid_h_c[1, :, n_c0_words:c1_end_index] = p_x_mid_h_c1
     p_x_mid_h_c[2, :, c1_end_index:] = p_x_mid_h_na
 
-    return p_x_mid_h_c.reshape(p_x_mid_h_c.shape[1], p_x_mid_h_c.shape[0], -1)
+    #return p_x_mid_h_c.reshape(p_x_mid_h_c.shape[1], p_x_mid_h_c.shape[0], -1)
+    return np.transpose(p_x_mid_h_c, (1, 0, 2))
 
 def compute_p_x_mid_h_c(pxhs):
     """ z distribution only

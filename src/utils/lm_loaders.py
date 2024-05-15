@@ -24,6 +24,13 @@ BERT_LIST = ["bert-base-uncased", "camembert-base"]
 SUPPORTED_AR_MODELS = GPT2_LIST + ["llama2"]
 
 #%%
+def get_max_cxt_length(model_name):
+    if model_name in GPT2_LIST:
+        return 1024
+    elif model_name == "llama2":
+        return 4096
+    else:
+        raise NotImplementedError(f"Model name {model_name} not supported")
 
 def get_tokenizer(model_name, token=None):
     if model_name in ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl"]:
