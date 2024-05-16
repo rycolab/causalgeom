@@ -38,7 +38,8 @@ from evals.mi_distributor_utils import prep_generated_data, \
     get_nucleus_arg, get_mt_eval_directory,\
         intervene_hs, compute_log_pxh_batch,\
             fast_compute_m_p_words, fast_compute_p_words,\
-                duplicate_pkv, pad_cxt_list
+                duplicate_pkv, pad_cxt_list,\
+                    intervene_and_compute_m_p_words
 from utils.lm_loaders import SUPPORTED_AR_MODELS, GPT2_LIST
 from evals.eval_utils import load_run_Ps, load_run_output, renormalize
 from data.spacy_wordlists.embedder import load_concept_token_lists
@@ -234,16 +235,9 @@ class MultiTokenDistributor:
     def compute_pxh_batch_handler(self, method, batch_tok_ids, 
         batch_hidden_states, gpu_out):
         if method in ["hbot", "hpar"]:
-            hs_int = intervene_hs(
-                batch_hidden_states, method, 
-                self.msamples, self.gen_all_hs, # [500000, d]
-                self.P, self.I_P, self.device
-            )
-            batch_log_qxhs = compute_log_pxh_batch(
-                hs_int, self.V, gpu_out
-            )
-            batch_word_probs = fast_compute_m_p_words(
-                batch_tok_ids, batch_log_qxhs, self.tokenizer.pad_token_id, 
+            batch_word_probs = intervene_and_compute_m_p_words(
+                batch_hidden_states, method, self.msamples, self.gen_all_hs,
+                self.P, self.I_P, self.V, batch_tok_ids, self.tokenizer.pad_token_id,
                 self.new_word_tokens, self.device
             )
         elif method == "h":
@@ -321,7 +315,6 @@ class MultiTokenDistributor:
 
     def compute_cxt_pkv_h(self, cxt):
         cxt_tok = cxt.to(self.device)
-        #with torch.no_grad():
         cxt_output = self.model(
             input_ids=cxt_tok, 
             #attention_mask=attention_mask, 

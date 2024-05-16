@@ -214,13 +214,81 @@ def compute_m_log_p_new_word(batch_log_pxh, new_word_tokens, seq_idxs, seq_lens,
         torch.arange(v),
         torch.tensor(new_word_tokens),
         assume_unique=True
-    ).to(device) # shape: (vocab_size), automatically broadcasts to (m, nwords, Max_n_tokens + 1, vocab_size)
-    
-    log_p_new = (batch_log_pxh + v_mask.log()).logsumexp(dim=-1)
-    log_p_new_given_x = log_p_new[:, :, seq_lens]
-    log_p_new_given_x_proj = (log_p_new_given_x * seq_idxs).sum(-2)
+    ).to(device) # shape: (vocab_size), automatically broadcasts to (m, nwords, max_n_tokens + 1, vocab_size)
+
+    bs_range = torch.arange(seq_lens.shape[0]).to(device)
+    batch_log_pxh = batch_log_pxh[:, bs_range, seq_lens]
+    log_p_new_given_x_proj = (batch_log_pxh + v_mask.log()).logsumexp(dim=-1)
 
     return log_p_new_given_x_proj
+
+
+def intervene_and_compute_m_p_words(
+    n_ntok_H, method, msamples, gen_all_hs,
+    P, I_P, V,
+    batch_token_list, pad_token_id, 
+    new_word_tokens, device
+):
+    """ input dimensions:
+    - n_ntok_H: nwords x (max_ntokens + 1) x d
+    - batch_token_list: bs x max_n_tokens 
+    - new_word_tokens: list of new word tokens for the model
+
+    output: list of word probabilities
+    - final_log_p_x: msamples x bs
+    """
+    # shape: msamples x nwords x d
+    first_hs = n_ntok_H[None, :, 0, :].repeat(msamples, 1, 1)
+    # shape: nwords x max_ntokens x d
+    next_hs = n_ntok_H[:, 1:, :]
+
+    # sampling other hs
+    sampled_hs = sample_other_hs(
+       gen_all_hs, msamples, device
+    )
+
+    # intervention on first hs
+    first_hs_int = apply_projection(
+        first_hs, sampled_hs, method, P, I_P
+    )
+
+    # shape: msamples x nwords x V
+    first_logits = first_hs_int @ V.T
+    first_log_pxh = torch.nn.functional.log_softmax(first_logits, dim=-1)
+    # shape: nwords x max_ntokens x V
+    next_logits = next_hs @ V.T
+    next_log_pxh = torch.nn.functional.log_softmax(next_logits, dim=-1)
+    
+
+    seq_lens = (batch_token_list != pad_token_id).sum(1)
+    n = batch_token_list.shape[0]
+    max_len = max(seq_lens)
+    seq_idxs = torch.eye(n).to(device)
+    bs_range = torch.arange(n).to(device)
+    log_p_x = first_log_pxh[:, bs_range, batch_token_list[:, 0]]
+    for i in range(1, max_len):
+        tok_idxs = batch_token_list[:, i]
+        next_pxhs = next_log_pxh[bs_range, i-1, tok_idxs]
+        log_p_x += (next_pxhs * (i < seq_lens)).unsqueeze(0)
+
+    if new_word_tokens is not None:
+        
+        v_mask = torch.isin(
+            torch.arange(V.shape[0]),
+            torch.tensor(new_word_tokens),
+            assume_unique=True
+        ).to(device) # shape: (vocab_size), automatically broadcasts to (nwords, max_n_tokens + 1, vocab_size)
+
+        bs_range = torch.arange(seq_lens.shape[0]).to(device)
+        batch_log_pxh = next_log_pxh[bs_range, seq_lens-1] # (nwords, vocab_size)
+        log_p_new_given_x_proj = (batch_log_pxh + v_mask.log()).logsumexp(dim=-1)
+
+        final_log_p_x = log_p_x + log_p_new_given_x_proj
+        return final_log_p_x.exp()
+    else:
+        return log_p_x.exp()
+        
+
 
 
 def fast_compute_m_p_words(batch_token_list, batch_log_pxh, 
@@ -262,14 +330,13 @@ def fast_compute_m_p_words(batch_token_list, batch_log_pxh,
 def apply_projection(hs, other_hs, mode, P, I_P):
     """ 
     hs: (m x n x max_ntok + 1 x d)
-    other_hs: (m x n x max_ntok + 1 x d)
+    other_hs: (m x 1 x max_ntok + 1 x d)
     P: (d x d)
     I_P: (d x d)
 
     # rank(I-P)=d-1: project to H_bot
     # rank(P)=1: project to H_par
     """
-    assert hs.shape == other_hs.shape, "Incorrect inputs"
     if mode == "hbot":
         newh = hs @ P + other_hs @ I_P
     elif mode == "hpar":
@@ -279,17 +346,15 @@ def apply_projection(hs, other_hs, mode, P, I_P):
     return newh
 
 
-def sample_other_hs(other_hs, nwords, msamples, device):
-    # TODO:
-    # Use the sample msamples for each of the n words
+def sample_other_hs(other_hs, msamples, device):
     idx = np.random.randint(
         0, other_hs.shape[0], 
-        nwords*msamples #nwords x msamples
+        msamples # msamples
     )
     other_hs_sample = other_hs[idx].to(device)
-    # msamples x nwords x d
+    # msamples x d
     other_hs_view = other_hs_sample.view(
-        msamples, nwords, other_hs.shape[1]
+        msamples, 1, other_hs.shape[1]
     )
     return other_hs_view
 
@@ -310,7 +375,7 @@ def intervene_hs(n_ntok_H, method, msamples, gen_all_hs, P, I_P, device):
 
     # sampling other hs
     sampled_hs = sample_other_hs(
-       gen_all_hs, n_ntok_H.shape[0], msamples, device
+       gen_all_hs, msamples, device
     )
 
     # intervention on first hs
