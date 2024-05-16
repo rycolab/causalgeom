@@ -23,7 +23,7 @@ coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
 
 # %% MI RES
-mt_eval_run_name = "may14"
+mt_eval_run_name = "may15"
 mifolder = os.path.join(RESULTS, f"mis/{mt_eval_run_name}")
 mifiles = os.listdir(mifolder)
 
