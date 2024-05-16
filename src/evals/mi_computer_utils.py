@@ -208,6 +208,7 @@ def compute_all_z_distributions(all_pxhs):
     z_c_mid_h = compute_p_c_mid_h(all_pxhs)
     z_x_mid_c = compute_p_x_mid_c(all_pxhs)
     z_x_mid_h_c = compute_p_x_mid_h_c(all_pxhs)
+
     return z_c, z_h, z_h_c, z_c_mid_h, z_x_mid_c, z_x_mid_h_c
 
 def compute_all_q_distributions(all_qxhs):
@@ -216,10 +217,8 @@ def compute_all_q_distributions(all_qxhs):
     all_qxhs = [x.sum(1) for x in all_qxhs]
 
     q_c = compute_p_c(all_qxhs)
-    q_h = compute_p_h(all_qxhs)
-    
+    q_h = compute_p_h(all_qxhs)    
     q_h_c = compute_p_h_c(all_qxhs)
-
     q_c_mid_h = compute_p_c_mid_h(all_qxhs)
     q_x_mid_c = compute_p_x_mid_c(all_qxhs)
     q_x_mid_h_c = compute_p_x_mid_h_c(all_qxhs)
