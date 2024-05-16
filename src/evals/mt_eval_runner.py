@@ -142,19 +142,19 @@ if __name__=="__main__":
     nruns = 3
     exist_ok=False
     
-    #model_name = "gpt2-large"
+    #model_name = "llama2"
     #concept = "food"
-    #source = "gen_ancestral_all"
+    #source = "gen_nucleus_concept"
     #nsamples=10
     #msamples=3
     #nwords=None
     #n_other_words=10
     #output_folder = "test"
-    #run_path="out/run_output/food/gpt2-large/leace26032024/run_leace_food_gpt2-large_2024-03-26-14:40:56_0_3.pkl"
+    #run_path="out/run_output/food/llama2/leace27032024/run_leace_food_llama2_2024-03-27-14:58:45_0_3.pkl"
     #batch_size = 8
     #nruns = 1    
     #exist_ok=True
-    #torch_dtype = torch.float32
+    #torch_dtype = torch.float16
 
     for i in range(nruns):
         logging.info(f"Computing eval number {i}")
@@ -171,7 +171,8 @@ if __name__=="__main__":
             output_folder,
             i,
             batch_size,
-            torch_dtype=torch_dtype
+            torch_dtype=torch_dtype,
+            exist_ok=exist_ok
         )
         run_eval_output = evaluator.compute_all_pxs()
         torch.cuda.empty_cache()
