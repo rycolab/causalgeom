@@ -227,12 +227,13 @@ def intervene_first_hs(n_ntok_H, method, msamples, gen_all_hs, P, I_P, device):
     # shape: msamples x nwords x d
     first_hs = n_ntok_H[None, :, 0, :].repeat(msamples, 1, 1)
 
-    # sampling other hs
+    # sampling other hs, shape (msamples x 1 x d)
     sampled_hs = sample_other_hs(
        gen_all_hs, msamples, device
     )
 
     # intervention on first hs
+    # first_hs_int: shape (msamples x nwords x d)
     first_hs_int = apply_projection(
         first_hs, sampled_hs, method, P, I_P
     )
@@ -330,8 +331,10 @@ def fast_compute_m_p_words(batch_token_list, batch_log_pxh,
 #########################################
 def apply_projection(hs, other_hs, mode, P, I_P):
     """ 
-    hs: (m x n x max_ntok + 1 x d)
-    other_hs: (m x 1 x max_ntok + 1 x d)
+    hs: (m x n x max_ntok + 1 x d) OR
+        (m x n x d)
+    other_hs: (m x 1 x max_ntok + 1 x d) OR
+        (m x 1 x d)
     P: (d x d)
     I_P: (d x d)
 
@@ -353,7 +356,7 @@ def sample_other_hs(other_hs, msamples, device):
         msamples # msamples
     )
     other_hs_sample = other_hs[idx].to(device)
-    # msamples x d
+    # other_hs_view: shape (msamples x 1 x d)
     other_hs_view = other_hs_sample.view(
         msamples, 1, other_hs.shape[1]
     )
