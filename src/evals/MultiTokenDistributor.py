@@ -36,9 +36,10 @@ from paths import DATASETS, OUT, RESULTS, MODELS
 
 from evals.mi_distributor_utils import prep_generated_data, \
     get_nucleus_arg, get_mt_eval_directory,\
-        intervene_hs, compute_log_pxh_batch,\
-            fast_compute_m_p_words, fast_compute_p_words,\
-                duplicate_pkv, pad_cxt_list
+        duplicate_pkv, pad_cxt_list, \
+        intervene_first_h, compute_log_pxh_batch, compute_m_p_words,\
+            compute_p_words
+
 from utils.lm_loaders import SUPPORTED_AR_MODELS, GPT2_LIST
 from evals.eval_utils import load_run_Ps, load_run_output, renormalize
 from data.spacy_wordlists.embedder import load_concept_token_lists
@@ -231,28 +232,79 @@ class MultiTokenDistributor:
     #########################################
     # Probability computations              #
     #########################################
-    def compute_pxh_batch_handler(self, method, batch_tok_ids, 
-        batch_hidden_states, gpu_out):
+    def compute_qxhs(self,
+        cxt_hidden_state, n_ntok_H, method, batch_tokens):
+        """ input dimensions:
+        - cxt_hidden_state: 1 x d 
+        - n_ntok_H: bs x max_ntokens x d
+        - batch_tokens: bs x max_n_tokens 
+        - new_word_tokens: list of new word tokens for the model
+
+        output: tensor word probabilities
+        - batch_word_probs: msamples x bs
+        """
+        # intervention on first hs
+        # shape: (msamples x d)
+        first_hs_int = intervene_first_h(
+            cxt_hidden_state, method, self.msamples, 
+            self.gen_all_hs, self.P, self.I_P, self.device
+        )
+        
+        # shape: msamples x V
+        first_log_pxh = compute_log_pxh_batch(first_hs_int, self.V)
+        # shape: bs x max_ntokens x V
+        next_log_pxh = compute_log_pxh_batch(n_ntok_H, self.V)
+
+        # batch_word_probs: msamples x bs
+        batch_word_probs = compute_m_p_words(
+            batch_tokens, first_log_pxh, next_log_pxh,
+            self.tokenizer.pad_token_id, 
+            self.new_word_tokens, self.device
+        )
+        return batch_word_probs
+    
+    def compute_pxhs(self, cxt_hidden_state, batch_hidden_states, batch_tokens):
+        """ In:
+        - batch_tokens: bs x max_ntok
+        - cxt_hidden_state: 1 x d
+        - batch_hidden_states: bs x max_ntok x d
+
+        Out: word probabilities dim (1, bs)
+        """
+        # batch_cxt_hidden_state: bs x 1 x d
+        batch_cxt_hidden_state = cxt_hidden_state[None, :, :].repeat(
+            batch_tokens.shape[0], 1, 1
+        )
+        # batch_hidden_states: bs x (max_ntok + 1) x d
+        concat_batch_hidden_states = torch.cat(
+            (batch_cxt_hidden_state, batch_hidden_states), 1
+        ).type(self.torch_dtype)
+        # bs x (max_ntok + 1) x |V|
+        batch_log_pxhs = compute_log_pxh_batch(
+            concat_batch_hidden_states, self.V
+        )
+        # (1, bs)
+        batch_word_probs = compute_p_words(
+            batch_tokens, batch_log_pxhs, self.tokenizer.pad_token_id, 
+            self.new_word_tokens, self.device
+        )
+        return batch_word_probs
+
+    def compute_pxh_batch_handler(self, method, batch_tokens, 
+        cxt_hidden_state, batch_hidden_states):
+        """ In:
+        - batch_tokens: bs x max_ntok
+        - cxt_hidden_state: 1 x d
+        - batch_hidden_states: bs x max_ntok x d
+        """
         if method in ["hbot", "hpar"]:
-            hs_int = intervene_hs(
-                batch_hidden_states, method, 
-                self.msamples, self.gen_all_hs, # [500000, d]
-                self.P, self.I_P, self.device
-            )
-            batch_log_qxhs = compute_log_pxh_batch(
-                hs_int, self.V, gpu_out
-            )
-            batch_word_probs = fast_compute_m_p_words(
-                batch_tok_ids, batch_log_qxhs, self.tokenizer.pad_token_id, 
-                self.new_word_tokens, self.device
+            batch_word_probs = self.compute_qxhs(
+                cxt_hidden_state, batch_hidden_states, method, 
+                batch_tokens
             )
         elif method == "h":
-            batch_log_pxhs = compute_log_pxh_batch(
-                batch_hidden_states, self.V, gpu_out
-            )
-            batch_word_probs = fast_compute_p_words(
-                batch_tok_ids, batch_log_pxhs, self.tokenizer.pad_token_id, 
-                self.new_word_tokens, self.device
+            batch_word_probs = self.compute_pxhs(
+                cxt_hidden_state, batch_hidden_states, batch_tokens
             )
         else:
             raise ValueError(f"Incorrect method arg")
@@ -283,14 +335,8 @@ class MultiTokenDistributor:
         )
 
         pkv_batch_hs = pkv_output["hidden_states"][-1]
-        batch_cxt_hidden_state = cxt_hidden_state[None, :, :].repeat(
-            batch_tokens.shape[0], 1, 1
-        )
-        batch_hidden_states = torch.cat(
-            (batch_cxt_hidden_state, pkv_batch_hs), 1
-        ).type(self.torch_dtype)
         batch_word_probs = self.compute_pxh_batch_handler(
-            method, batch_tokens, batch_hidden_states, gpu_out=True
+            method, batch_tokens, cxt_hidden_state, pkv_batch_hs
         )
         return batch_word_probs
 
@@ -321,7 +367,6 @@ class MultiTokenDistributor:
 
     def compute_cxt_pkv_h(self, cxt):
         cxt_tok = cxt.to(self.device)
-        #with torch.no_grad():
         cxt_output = self.model(
             input_ids=cxt_tok, 
             #attention_mask=attention_mask, 
