@@ -44,7 +44,7 @@ from evals.eval_utils import load_run_Ps, load_run_output, renormalize
 from data.spacy_wordlists.embedder import load_concept_token_lists
 #from data.filter_generations import load_generated_hs_wff
 #from data.data_utils import filter_hs_w_ys, sample_filtered_hs
-from utils.lm_loaders import get_model, get_tokenizer, get_V
+from utils.lm_loaders import get_model, get_tokenizer, get_V, GPT2_LIST
 from utils.cuda_loaders import get_device
 
 coloredlogs.install(level=logging.INFO)
@@ -92,6 +92,7 @@ class MultiTokenDistributor:
                  torch_dtype=torch.float32, # torch data type to use for eval
                 ):
 
+        self.model_name = model_name
         self.nsamples = nsamples
         self.msamples = msamples
         self.nwords = nwords
@@ -324,9 +325,33 @@ class MultiTokenDistributor:
         
         return torch.hstack(tl_word_probs).cpu().numpy()
 
+    @staticmethod
+    def get_cxt_hidden_state(model_name, output_hidden_states):
+        """ Process last cxt hidden state depending on model
+        - Output dims: (1, d)
+        """
+        if model_name == "llama2":
+            return output_hidden_states[-1][:, -1, :]
+        elif model_name in GPT2_LIST:
+            return output_hidden_states[-1][-1].unsqueeze(0)
+        else: 
+            raise NotImplementedError(
+                f"Model name {model_name} not implemented"
+            )
+
     def compute_cxt_pkv_h(self, cxt):
+        """ Takes a context string and outputs past key values
+        and the hidden state corresponding to last token of 
+        context string.
+        Outputs: 
+        - cxt_pkv: nlayers tuple, (([1, d1, d2, d3], []), )
+        - cxt_hidden_state: (1, d)
+        """
         cxt_tok = cxt.to(self.device)
-        #with torch.no_grad():
+        
+        if self.model_name == "llama2":
+            cxt_tok = cxt_tok.unsqueeze(0)
+        
         cxt_output = self.model(
             input_ids=cxt_tok, 
             #attention_mask=attention_mask, 
@@ -335,7 +360,10 @@ class MultiTokenDistributor:
             #past_key_values= cxt_pkv
         )
         cxt_pkv = cxt_output.past_key_values
-        cxt_hidden_state = cxt_output["hidden_states"][-1][-1].unsqueeze(0)
+
+        cxt_hidden_state = self.get_cxt_hidden_state(
+            self.model_name, cxt_output["hidden_states"]
+        )
         return cxt_pkv, cxt_hidden_state
 
     def compute_lemma_probs(self, lemma_samples, method, outdir, pad_token=-1):
