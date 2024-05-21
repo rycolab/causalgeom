@@ -105,14 +105,14 @@ class TestMIDistributorUtils(unittest.TestCase):
             [2, -1],
             [0, 1]
         ])
+        assert batch_tokens.shape == (2,2)
         # first_log_pxh: (msamples x |V|)
         first_log_pxh = torch.tensor([
-            [
-                [math.log(1/5),math.log(2/5),math.log(2/5)],
-                [math.log(1/3),math.log(1/3),math.log(1/3)],
-                [math.log(1/2),math.log(1/4),math.log(1/4)],
-            ]
+            [math.log(1/5),math.log(2/5),math.log(2/5)],
+            [math.log(1/3),math.log(1/3),math.log(1/3)],
+            [math.log(1/2),math.log(1/4),math.log(1/4)],
         ])
+        assert first_log_pxh.shape == (3,3)
         # next_log_pxh: (bs x max_ntok x |V|)
         next_log_pxh = torch.tensor([
             [
@@ -124,6 +124,7 @@ class TestMIDistributorUtils(unittest.TestCase):
                 [math.log(3/5),math.log(1/5),math.log(1/5)],
             ]
         ])
+        assert next_log_pxh.shape == (2, 2, 3)
         pad_token_id = -1
         new_word_tokens = [0, 2]
         device = "cpu"
@@ -154,14 +155,14 @@ class TestMIDistributorUtils(unittest.TestCase):
             [2, -1],
             [0, 1]
         ])
+        assert batch_tokens.shape == (2,2)
         # first_log_pxh: (msamples x |V|)
         first_log_pxh = torch.tensor([
-            [
-                [math.log(1/5),math.log(2/5),math.log(2/5)],
-                [math.log(1/3),math.log(1/3),math.log(1/3)],
-                [math.log(1/2),math.log(1/4),math.log(1/4)],
-            ]
+            [math.log(1/5),math.log(2/5),math.log(2/5)],
+            [math.log(1/3),math.log(1/3),math.log(1/3)],
+            [math.log(1/2),math.log(1/4),math.log(1/4)],
         ])
+        assert first_log_pxh.shape == (3,3)
         # next_log_pxh: (bs x max_ntok x |V|)
         next_log_pxh = torch.tensor([
             [
@@ -173,6 +174,7 @@ class TestMIDistributorUtils(unittest.TestCase):
                 [math.log(3/5),math.log(1/5),math.log(1/5)],
             ]
         ])
+        assert next_log_pxh.shape == (2, 2, 3)
         pad_token_id = -1
         new_word_tokens = None
         device = "cpu"

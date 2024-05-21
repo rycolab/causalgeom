@@ -239,7 +239,7 @@ def compute_m_p_words(
     seq_idxs = torch.eye(n).to(device)
     bs_range = torch.arange(n).to(device)
     # m x bs
-    log_p_x = first_log_pxh[:, batch_tokens[:, 0]][0].T
+    log_p_x = first_log_pxh[:, batch_tokens[:, 0]]
 
     for i in range(1, max_len):
         tok_idxs = batch_tokens[:, i]
@@ -286,9 +286,6 @@ def sample_other_hs(other_hs, msamples, device):
         msamples 
     )
     other_hs_sample = other_hs[idx].to(device)
-    #other_hs_view = other_hs_sample.view(
-    #    msamples, 1, other_hs.shape[1]
-    #)
     return other_hs_sample
 
 def intervene_first_h(cxt_hidden_state, method, msamples, gen_all_hs, P, I_P, device):
