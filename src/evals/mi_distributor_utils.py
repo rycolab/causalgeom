@@ -169,7 +169,15 @@ def pad_cxt_list(cxt_toks, max_nsamples, padding_value=-1):
 # Past Key Values Handling              #
 #########################################
 def duplicate_pkv(pkv, num_repeats):
-    return tuple(tuple(torch.cat([tensor] * num_repeats, dim=0) for tensor in layer) for layer in pkv)
+    pkv_dim = pkv[0][0].shape[0]
+    if num_repeats > pkv_dim:
+        return tuple(
+            tuple(
+                torch.cat([tensor] * num_repeats, dim=0) for tensor in layer
+            ) for layer in pkv
+        )
+    else:
+        return pkv
 
 #########################################
 # Distribution Computation              #
