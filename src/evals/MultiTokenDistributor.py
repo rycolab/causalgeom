@@ -304,8 +304,7 @@ class MultiTokenDistributor:
             )
         elif method == "h":
             batch_word_probs = self.compute_pxhs(
-                cxt_hidden_state, batch_hidden_states, method, 
-                batch_tokens
+                cxt_hidden_state, batch_hidden_states, batch_tokens
             )
         else:
             raise ValueError(f"Incorrect method arg")
