@@ -37,7 +37,7 @@ from paths import DATASETS, OUT, RESULTS, MODELS
 from evals.mi_distributor_utils import prep_generated_data, \
     get_nucleus_arg, get_mt_eval_directory,\
         duplicate_pkv, pad_cxt_list, \
-        intervene_first_hs, compute_log_pxh_batch, compute_m_p_words,\
+        intervene_first_h, compute_log_pxh_batch, compute_m_p_words,\
             compute_p_words
 
 from utils.lm_loaders import SUPPORTED_AR_MODELS, GPT2_LIST

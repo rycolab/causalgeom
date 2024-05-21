@@ -291,11 +291,10 @@ def sample_other_hs(other_hs, msamples, device):
     #)
     return other_hs_sample
 
-def intervene_first_hs(cxt_hidden_state, method, msamples, gen_all_hs, P, I_P, device):
+def intervene_first_h(cxt_hidden_state, method, msamples, gen_all_hs, P, I_P, device):
     # n_ntok_h: 1 x d
     # first_hs: msamples x d
     first_hs = cxt_hidden_state.repeat(msamples, 1)
-    assert first_hs.shape == [msamples, cxt_hidden_state.shape[1]]
 
     # sampling other hs, shape (msamples x d)
     sampled_hs = sample_other_hs(
