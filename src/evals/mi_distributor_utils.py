@@ -158,13 +158,10 @@ def duplicate_pkv(pkv, num_repeats):
 #########################################
 # Distribution Computation              #
 #########################################
-def compute_log_pxh_batch(nntokH, V, gpu_out):
+def compute_log_pxh_batch(nntokH, V):
     logits = nntokH @ V.T
     log_pxnewh = torch.nn.functional.log_softmax(logits, dim=-1)
-    if gpu_out:
-        return log_pxnewh
-    else:
-        return log_pxnewh.cpu()
+    return log_pxnewh
 
 def compute_log_p_new_word(batch_log_pxh, new_word_tokens, seq_idxs, seq_lens, device):
     v = batch_log_pxh.shape[-1]
@@ -219,79 +216,7 @@ def compute_m_log_p_new_word(batch_log_pxh, new_word_tokens, seq_lens, device):
     bs_range = torch.arange(seq_lens.shape[0]).to(device)
     batch_log_pxh = batch_log_pxh[:, bs_range, seq_lens]
     log_p_new_given_x_proj = (batch_log_pxh + v_mask.log()).logsumexp(dim=-1)
-
     return log_p_new_given_x_proj
-
-
-def intervene_first_hs(n_ntok_H, method, msamples, gen_all_hs, P, I_P, device):
-    # shape: msamples x nwords x d
-    first_hs = n_ntok_H[None, :, 0, :].repeat(msamples, 1, 1)
-
-    # sampling other hs, shape (msamples x 1 x d)
-    sampled_hs = sample_other_hs(
-       gen_all_hs, msamples, device
-    )
-
-    # intervention on first hs
-    # first_hs_int: shape (msamples x nwords x d)
-    first_hs_int = apply_projection(
-        first_hs, sampled_hs, method, P, I_P
-    )
-
-    return first_hs_int
-
-
-
-def intervene_and_compute_m_p_words(
-    n_ntok_H, method, msamples, gen_all_hs,
-    P, I_P, V,
-    batch_token_list, pad_token_id, 
-    new_word_tokens, device
-):
-    """ input dimensions:
-    - n_ntok_H: nwords x (max_ntokens + 1) x d
-    - batch_token_list: bs x max_n_tokens 
-    - new_word_tokens: list of new word tokens for the model
-
-    output: list of word probabilities
-    - final_log_p_x: msamples x bs
-    """
-    # intervention on first hs
-    first_hs_int = intervene_first_hs(n_ntok_H, method, msamples, gen_all_hs, P, I_P, device)
-
-    # shape: nwords x max_ntokens x d
-    next_hs = n_ntok_H[:, 1:, :]
-    # shape: msamples x nwords x V
-    first_logits = first_hs_int @ V.T
-    first_log_pxh = torch.nn.functional.log_softmax(first_logits, dim=-1)
-    # shape: nwords x max_ntokens x V
-    next_logits = next_hs @ V.T
-    next_log_pxh = torch.nn.functional.log_softmax(next_logits, dim=-1)
-    
-
-    seq_lens = (batch_token_list != pad_token_id).sum(1)
-    n = batch_token_list.shape[0]
-    max_len = max(seq_lens)
-    seq_idxs = torch.eye(n).to(device)
-    bs_range = torch.arange(n).to(device)
-    log_p_x = first_log_pxh[:, bs_range, batch_token_list[:, 0]]
-
-    for i in range(1, max_len):
-        tok_idxs = batch_token_list[:, i]
-        next_pxhs = next_log_pxh[bs_range, i-1, tok_idxs]
-        log_p_x += (next_pxhs * (i < seq_lens)).unsqueeze(0)
-
-    if new_word_tokens is not None:
-        log_p_new_given_x_proj = compute_m_log_p_new_word(
-            next_log_pxh.unsqueeze(0), new_word_tokens, seq_lens-1, device
-        )
-        final_log_p_x = log_p_x + log_p_new_given_x_proj
-        return final_log_p_x.exp()
-    else:
-        return log_p_x.exp()
-        
-
-
 
 def fast_compute_m_p_words(batch_token_list, batch_log_pxh, 
                          pad_token_id, new_word_tokens, device):
@@ -326,6 +251,42 @@ def fast_compute_m_p_words(batch_token_list, batch_log_pxh,
     else:
         return log_p_x.exp()
 
+def new_compute_m_p_words(
+    batch_tokens, first_log_pxh, next_log_pxh,
+    pad_token_id, new_word_tokens, device
+):
+    """ 
+    expected dimensions:
+    - batch_tokens: bs x max_n_tokens
+    - first_log_pxh: msamples x bs x V
+    - next_log_pxh: bs x max_ntokens x V
+    - pad_token_id: id of padding token in batch_tokens
+    - new_word_tokens: list of new word tokens for the model
+
+    output: list of word probabilities
+    - final_log_p_x: msamples x bs
+    """
+    seq_lens = (batch_tokens != pad_token_id).sum(1)
+    n = batch_tokens.shape[0]
+    max_len = max(seq_lens)
+    seq_idxs = torch.eye(n).to(device)
+    bs_range = torch.arange(n).to(device)
+    log_p_x = first_log_pxh[:, bs_range, batch_tokens[:, 0]]
+
+    for i in range(1, max_len):
+        tok_idxs = batch_tokens[:, i]
+        next_pxhs = next_log_pxh[bs_range, i-1, tok_idxs]
+        log_p_x += (next_pxhs * (i < seq_lens)).unsqueeze(0)
+
+    if new_word_tokens is not None:
+        log_p_new_given_x_proj = compute_m_log_p_new_word(
+            next_log_pxh.unsqueeze(0), new_word_tokens, seq_lens-1, device
+        )
+        final_log_p_x = log_p_x + log_p_new_given_x_proj
+        return final_log_p_x.exp()
+    else:
+        return log_p_x.exp()
+
 #########################################
 # Single Intervention Functions         #
 #########################################
@@ -349,45 +310,66 @@ def apply_projection(hs, other_hs, mode, P, I_P):
         raise ValueError(f"Incorrect mode {mode}")
     return newh
 
+def intervene_first_hs(n_ntok_H, method, msamples, gen_all_hs, P, I_P, device):
+    # n_ntok_h: nwords x (max_ntokens + 1) x d
+    # first_hs: msamples x nwords x d
+    first_hs = n_ntok_H[None, :, 0, :].repeat(msamples, 1, 1)
 
-def sample_other_hs(other_hs, msamples, device):
-    idx = np.random.randint(
-        0, other_hs.shape[0], 
-        msamples # msamples
-    )
-    other_hs_sample = other_hs[idx].to(device)
-    # other_hs_view: shape (msamples x 1 x d)
-    other_hs_view = other_hs_sample.view(
-        msamples, 1, other_hs.shape[1]
-    )
-    return other_hs_view
-
-
-def intervene_hs(n_ntok_H, method, msamples, gen_all_hs, P, I_P, device):
-    """ input dimensions:
-    - n_ntok_H: nwords x (max_ntokens + 1) x d
-    output: msamples x nwords x (max_ntokens + 1) x d
-    where the first of max_ntokens+1 hs has been intervened upon
-    according to method
-    return:
-    - hs_int: msamples x bs x (max_ntokens + 1) x d
-    """
-    # repeating and splitting batch hs
-    m_n_ntok_H = n_ntok_H[None, :, :, :].repeat(msamples, 1, 1, 1)
-    first_hs = m_n_ntok_H[:, :, 0, :]
-    next_hs = m_n_ntok_H[:, :, 1:, :]
-
-    # sampling other hs
+    # sampling other hs, shape (msamples x 1 x d)
     sampled_hs = sample_other_hs(
        gen_all_hs, msamples, device
     )
 
     # intervention on first hs
+    # first_hs_int: shape (msamples x nwords x d)
     first_hs_int = apply_projection(
         first_hs, sampled_hs, method, P, I_P
     )
-    first_hs_int_view = first_hs_int[:, :, None, :]
+    return first_hs_int
 
-    # combine first and next hs after intervention
-    hs_int = torch.cat((first_hs_int_view, next_hs), dim=2)
-    return hs_int
+def sample_other_hs(other_hs, msamples, device):
+    """ Samples msamples from other_hs with replacement.
+    Output: other_hs_view (msamples x 1 x d)
+    """
+    idx = np.random.randint(
+        0, other_hs.shape[0], 
+        msamples 
+    )
+    other_hs_sample = other_hs[idx].to(device)
+    other_hs_view = other_hs_sample.view(
+        msamples, 1, other_hs.shape[1]
+    )
+    return other_hs_view
+
+def intervene_and_compute_m_p_words(
+    n_ntok_H, method, msamples, gen_all_hs,
+    P, I_P, V,
+    batch_tokens, pad_token_id, 
+    new_word_tokens, device):
+    """ input dimensions:
+    - n_ntok_H: nwords x (max_ntokens + 1) x d
+    - batch_tokens: bs x max_n_tokens 
+    - new_word_tokens: list of new word tokens for the model
+
+    output: list of word probabilities
+    - batch_word_probs: msamples x bs
+    """
+    # intervention on first hs
+    # shape: (msamples x nwords x d)
+    first_hs_int = intervene_first_hs(
+        n_ntok_H, method, msamples, gen_all_hs, P, I_P, device
+    )
+    # shape: nwords x max_ntokens x d
+    next_hs = n_ntok_H[:, 1:, :]
+
+    # shape: msamples x nwords x V
+    first_log_pxh = compute_log_pxh_batch(first_hs_int, V)
+    # shape: nwords x max_ntokens x V
+    next_log_pxh = compute_log_pxh_batch(next_hs, V)
+
+    # batch_word_probs
+    batch_word_probs = new_compute_m_p_words(
+        batch_tokens, first_log_pxh, next_log_pxh,
+        pad_token_id, new_word_tokens, device
+    )
+    return batch_word_probs

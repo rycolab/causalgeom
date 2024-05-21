@@ -233,7 +233,7 @@ class MultiTokenDistributor:
     # Probability computations              #
     #########################################
     def compute_pxh_batch_handler(self, method, batch_tok_ids, 
-        batch_hidden_states, gpu_out):
+        batch_hidden_states):
         if method in ["hbot", "hpar"]:
             batch_word_probs = intervene_and_compute_m_p_words(
                 batch_hidden_states, method, self.msamples, self.gen_all_hs,
@@ -242,7 +242,7 @@ class MultiTokenDistributor:
             )
         elif method == "h":
             batch_log_pxhs = compute_log_pxh_batch(
-                batch_hidden_states, self.V, gpu_out
+                batch_hidden_states, self.V
             )
             batch_word_probs = fast_compute_p_words(
                 batch_tok_ids, batch_log_pxhs, self.tokenizer.pad_token_id, 
@@ -284,7 +284,7 @@ class MultiTokenDistributor:
             (batch_cxt_hidden_state, pkv_batch_hs), 1
         ).type(self.torch_dtype)
         batch_word_probs = self.compute_pxh_batch_handler(
-            method, batch_tokens, batch_hidden_states, gpu_out=True
+            method, batch_tokens, batch_hidden_states
         )
         return batch_word_probs
 
