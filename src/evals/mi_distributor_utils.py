@@ -175,8 +175,8 @@ def compute_log_p_new_word(batch_log_pxh, new_word_tokens, seq_idxs, seq_lens, d
     log_p_new_given_x = log_p_new[seq_idxs, seq_lens]
     return log_p_new_given_x
 
-def fast_compute_p_words(batch_token_list, batch_log_pxh, 
-                         pad_token_id, new_word_tokens, device):
+def compute_p_words(batch_token_list, batch_log_pxh, 
+                    pad_token_id, new_word_tokens, device):
     """ 
     expected dimensions:
     - batch_token_list: bs x max_n_tokens
@@ -218,47 +218,14 @@ def compute_m_log_p_new_word(batch_log_pxh, new_word_tokens, seq_lens, device):
     log_p_new_given_x_proj = (batch_log_pxh + v_mask.log()).logsumexp(dim=-1)
     return log_p_new_given_x_proj
 
-def fast_compute_m_p_words(batch_token_list, batch_log_pxh, 
-                         pad_token_id, new_word_tokens, device):
-    """ 
-    expected dimensions:
-    - batch_token_list: bs x max_n_tokens
-    - batch_log_pxh: msamples x bs x (max_n_tokens + 1) x |vocabulary|
-    - new_word_tokens: list of new word tokens for the model
-
-    output: list of word probabilities
-    - final_log_p_x: msamples x bs
-    """
-
-    seq_lens = (batch_token_list != pad_token_id).sum(1)
-    n = len(batch_token_list)
-    m = batch_log_pxh.shape[0]
-    max_len = max(seq_lens)
-    seq_idxs = torch.eye(batch_log_pxh.shape[1]).to(device)
-    log_p_x = torch.zeros((m, n)).to(device)
-    for i in range(max_len): # Could be vectorized further too if a bottleneck
-        tok_idxs = batch_token_list[:, i]
-        tok_pxhs = batch_log_pxh[:, :, i, tok_idxs]
-        next_pxhs = (tok_pxhs * seq_idxs).sum(-2)
-        log_p_x += next_pxhs * (i < seq_lens)
-
-    if new_word_tokens is not None:
-        log_p_new_word = compute_m_log_p_new_word(
-            batch_log_pxh, new_word_tokens, seq_lens, device
-        )
-        final_log_p_x = log_p_x + log_p_new_word
-        return final_log_p_x.exp()
-    else:
-        return log_p_x.exp()
-
-def new_compute_m_p_words(
-    batch_tokens, first_log_pxh, next_log_pxh,
-    pad_token_id, new_word_tokens, device
-):
+def compute_m_p_words(
+    batch_tokens: torch.tensor, first_log_pxh:torch.tensor, 
+    next_log_pxh: torch.tensor, pad_token_id: int, 
+    new_word_tokens: list[int], device: str) -> torch.tensor:
     """ 
     expected dimensions:
     - batch_tokens: bs x max_n_tokens
-    - first_log_pxh: msamples x bs x V
+    - first_log_pxh: msamples x V
     - next_log_pxh: bs x max_ntokens x V
     - pad_token_id: id of padding token in batch_tokens
     - new_word_tokens: list of new word tokens for the model
@@ -271,7 +238,8 @@ def new_compute_m_p_words(
     max_len = max(seq_lens)
     seq_idxs = torch.eye(n).to(device)
     bs_range = torch.arange(n).to(device)
-    log_p_x = first_log_pxh[:, bs_range, batch_tokens[:, 0]]
+    # m x bs
+    log_p_x = first_log_pxh[:, batch_tokens[:, 0]][0].T
 
     for i in range(1, max_len):
         tok_idxs = batch_tokens[:, i]
@@ -292,10 +260,9 @@ def new_compute_m_p_words(
 #########################################
 def apply_projection(hs, other_hs, mode, P, I_P):
     """ 
-    hs: (m x n x max_ntok + 1 x d) OR
-        (m x n x d)
-    other_hs: (m x 1 x max_ntok + 1 x d) OR
-        (m x 1 x d)
+    hs: (m x d) 
+    other_hs: (m x d)
+
     P: (d x d)
     I_P: (d x d)
 
@@ -310,66 +277,36 @@ def apply_projection(hs, other_hs, mode, P, I_P):
         raise ValueError(f"Incorrect mode {mode}")
     return newh
 
-def intervene_first_hs(n_ntok_H, method, msamples, gen_all_hs, P, I_P, device):
-    # n_ntok_h: nwords x (max_ntokens + 1) x d
-    # first_hs: msamples x nwords x d
-    first_hs = n_ntok_H[None, :, 0, :].repeat(msamples, 1, 1)
-
-    # sampling other hs, shape (msamples x 1 x d)
-    sampled_hs = sample_other_hs(
-       gen_all_hs, msamples, device
-    )
-
-    # intervention on first hs
-    # first_hs_int: shape (msamples x nwords x d)
-    first_hs_int = apply_projection(
-        first_hs, sampled_hs, method, P, I_P
-    )
-    return first_hs_int
-
 def sample_other_hs(other_hs, msamples, device):
     """ Samples msamples from other_hs with replacement.
-    Output: other_hs_view (msamples x 1 x d)
+    Output: other_hs_sample (msamples x d)
     """
     idx = np.random.randint(
         0, other_hs.shape[0], 
         msamples 
     )
     other_hs_sample = other_hs[idx].to(device)
-    other_hs_view = other_hs_sample.view(
-        msamples, 1, other_hs.shape[1]
+    #other_hs_view = other_hs_sample.view(
+    #    msamples, 1, other_hs.shape[1]
+    #)
+    return other_hs_sample
+
+def intervene_first_hs(cxt_hidden_state, method, msamples, gen_all_hs, P, I_P, device):
+    # n_ntok_h: 1 x d
+    # first_hs: msamples x d
+    first_hs = cxt_hidden_state.repeat(msamples, 1)
+    assert first_hs.shape == [msamples, cxt_hidden_state.shape[1]]
+
+    # sampling other hs, shape (msamples x d)
+    sampled_hs = sample_other_hs(
+       gen_all_hs, msamples, device
     )
-    return other_hs_view
 
-def intervene_and_compute_m_p_words(
-    n_ntok_H, method, msamples, gen_all_hs,
-    P, I_P, V,
-    batch_tokens, pad_token_id, 
-    new_word_tokens, device):
-    """ input dimensions:
-    - n_ntok_H: nwords x (max_ntokens + 1) x d
-    - batch_tokens: bs x max_n_tokens 
-    - new_word_tokens: list of new word tokens for the model
-
-    output: list of word probabilities
-    - batch_word_probs: msamples x bs
-    """
     # intervention on first hs
-    # shape: (msamples x nwords x d)
-    first_hs_int = intervene_first_hs(
-        n_ntok_H, method, msamples, gen_all_hs, P, I_P, device
+    # first_hs_int: shape (msamples x d)
+    first_hs_int = apply_projection(
+        first_hs, sampled_hs, method, P, I_P
     )
-    # shape: nwords x max_ntokens x d
-    next_hs = n_ntok_H[:, 1:, :]
+    return first_hs_int
 
-    # shape: msamples x nwords x V
-    first_log_pxh = compute_log_pxh_batch(first_hs_int, V)
-    # shape: nwords x max_ntokens x V
-    next_log_pxh = compute_log_pxh_batch(next_hs, V)
 
-    # batch_word_probs
-    batch_word_probs = new_compute_m_p_words(
-        batch_tokens, first_log_pxh, next_log_pxh,
-        pad_token_id, new_word_tokens, device
-    )
-    return batch_word_probs
