@@ -151,7 +151,6 @@ class MultiTokenDistributor:
             self.l1_tl = self.l1_tl[random_start:random_start+self.nwords]
 
         # Load generated samples
-        
         self.gen_all_hs, self.gen_cxt_toks = prep_generated_data(
             model_name, concept, nucleus, source, self.torch_dtype,
             CXT_MAX_LENGTH_PCT, MAX_N_CXTS, MAX_N_ALL_HS
