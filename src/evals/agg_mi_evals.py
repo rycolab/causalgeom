@@ -23,15 +23,21 @@ coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
 
 # %% MI RES
-mt_eval_run_name = "may14"
-mifolder = os.path.join(RESULTS, f"mis/{mt_eval_run_name}")
-mifiles = os.listdir(mifolder)
+
+def get_mi_file_paths(mt_eval_run_name):
+    mifolder = os.path.join(RESULTS, f"mis/{mt_eval_run_name}")
+    mifiles = os.listdir(mifolder)
+    mifilepaths = [os.path.join(mifolder, x) for x in mifiles]
+    return mifilepaths
+
+mifilepaths_1 = get_mi_file_paths("may21")
+mifilepaths_2 = get_mi_file_paths("may22")
+mifilepaths = mifilepaths_1 + mifilepaths_2
 
 #%%
 res_records = []
-for mifile in mifiles:
-    mifilepath = os.path.join(mifolder, mifile)
-    with open(mifilepath, 'rb') as f:      
+for mifile in mifilepaths:
+    with open(mifile, 'rb') as f:      
         mires = pickle.load(f)
     res_records.append(mires)
 
@@ -111,13 +117,11 @@ mi_renames = {
     "new_ratio_stability": "Stability Ratio",
 }
 
-table_df.sort_values(by = ["source", "concept", "model_name"], inplace=True)
+table_df.sort_values(by = ["concept", "model_name", "source"], inplace=True)
 table_df.columns = [mi_renames[x] for x in table_df.columns]
-table_df_grouped = table_df.groupby(["Sample Source", "Concept", "Model"])
+table_df_grouped = table_df.groupby(["Concept", "Model", "Sample Source"])
 table_df_grouped.mean().reset_index().to_csv(os.path.join(RESULTS, "leace_mis_mean.csv"), index=False)
 table_df_grouped.std().reset_index().to_csv(os.path.join(RESULTS, "leace_mis_std.csv"), index=False)
-# %%
-logging.info("Done")
 
 #%%
 entropy_cols = [
@@ -159,9 +163,9 @@ entcols_name = {
 }
 
 
-entropy_breakdown.sort_values(by = ["source", "concept", "model_name"], inplace=True)
+entropy_breakdown.sort_values(by = ["concept", "model_name", "source"], inplace=True)
 entropy_breakdown.columns = [entcols_name[x] for x in entropy_breakdown.columns]
-entropy_breakdown_grouped = entropy_breakdown.groupby(["Sample Source", "Concept", "Model"])
+entropy_breakdown_grouped = entropy_breakdown.groupby(["Concept", "Model", "Sample Source"])
 entropy_breakdown_grouped.mean().reset_index().to_csv(os.path.join(RESULTS, "leace_entropies_mean.csv"), index=False)
 entropy_breakdown_grouped.std().reset_index().to_csv(os.path.join(RESULTS, "leace_entropies_std.csv"), index=False)
 

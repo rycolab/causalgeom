@@ -45,11 +45,17 @@ from evals.eval_utils import load_run_Ps, load_run_output, renormalize
 from data.spacy_wordlists.embedder import load_concept_token_lists
 #from data.filter_generations import load_generated_hs_wff
 #from data.data_utils import filter_hs_w_ys, sample_filtered_hs
-from utils.lm_loaders import get_model, get_tokenizer, get_V
+from utils.lm_loaders import get_model, get_tokenizer, get_V, GPT2_LIST
 from utils.cuda_loaders import get_device
 
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
+
+#%%
+# Default args not worth putting into command line args
+CXT_MAX_LENGTH_PCT = 0.9 # keep only context strings of length less than % of context window
+MAX_N_CXTS = 100000 # max number of context strings to store in memory for eval
+MAX_N_ALL_HS = 300000 # max number of generated hs to store in memory for eval
 
 #%%
 class CustomDataset(Dataset, ABC):
@@ -145,8 +151,9 @@ class MultiTokenDistributor:
             self.l1_tl = self.l1_tl[random_start:random_start+self.nwords]
 
         # Load generated samples
-        self.gen_all_hs, self.gen_concept_cxt_toks, self.gen_all_cxt_toks = prep_generated_data(
-            model_name, concept, nucleus, self.torch_dtype
+        self.gen_all_hs, self.gen_cxt_toks = prep_generated_data(
+            model_name, concept, nucleus, source, self.torch_dtype,
+            CXT_MAX_LENGTH_PCT, MAX_N_CXTS, MAX_N_ALL_HS
         )
 
         # Load test set samples
@@ -156,8 +163,7 @@ class MultiTokenDistributor:
         self.cxt_toks = self.get_eval_contexts(source)
 
         # Delete cxts for memory
-        self.gen_concept_cxt_toks = None
-        self.gen_all_cxt_toks = None
+        self.gen_cxt_toks = None
         self.cxt_toks_test = None
 
     #########################################
@@ -212,12 +218,10 @@ class MultiTokenDistributor:
     #########################################
     # Data handling                         #
     #########################################
-    def get_eval_contexts(self, source, max_nsamples=100000):
-        if source in ["gen_ancestral_concept", "gen_nucleus_concept"]:
-            padded_cxt_toks = pad_cxt_list(self.gen_concept_cxt_toks, max_nsamples)
-            return padded_cxt_toks
-        elif source in ["gen_ancestral_all", "gen_nucleus_all"]:
-            padded_cxt_toks = pad_cxt_list(self.gen_all_cxt_toks, max_nsamples)
+    def get_eval_contexts(self, source, max_nsamples=MAX_N_CXTS):
+        if source in ["gen_ancestral_concept", "gen_nucleus_concept", 
+                      "gen_ancestral_all", "gen_nucleus_all"]:
+            padded_cxt_toks = pad_cxt_list(self.gen_cxt_toks, max_nsamples)
             return padded_cxt_toks
         elif source == "natural_concept":
             return torch.from_numpy(self.cxt_toks_test)
@@ -366,7 +370,15 @@ class MultiTokenDistributor:
         return torch.hstack(tl_word_probs).cpu().numpy()
 
     def compute_cxt_pkv_h(self, cxt):
-        cxt_tok = cxt.to(self.device)
+        """ Takes a context string and outputs past key values
+        and the hidden state corresponding to last token of 
+        context string.
+        Outputs: 
+        - cxt_pkv: nlayers tuple, (([1, d1, d2, d3], []), )
+        - cxt_hidden_state: (1, d)
+        """
+        cxt_tok = cxt.unsqueeze(0).to(self.device)
+    
         cxt_output = self.model(
             input_ids=cxt_tok, 
             #attention_mask=attention_mask, 
@@ -375,7 +387,9 @@ class MultiTokenDistributor:
             #past_key_values= cxt_pkv
         )
         cxt_pkv = cxt_output.past_key_values
-        cxt_hidden_state = cxt_output["hidden_states"][-1][-1].unsqueeze(0)
+
+        # (1 , d)
+        cxt_hidden_state = cxt_output["hidden_states"][-1][:, -1, :]
         return cxt_pkv, cxt_hidden_state
 
     def compute_lemma_probs(self, lemma_samples, method, outdir, pad_token=-1):

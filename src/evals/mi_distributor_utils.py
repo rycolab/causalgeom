@@ -78,11 +78,12 @@ def sample_cxt_toks(cxt_toks, max_n_cxts):
             cxt_toks, max_n_cxts)
     return cxt_toks
 
-def get_cxt_toks(model_name, l0_gens, l1_gens, other_gens, 
+def get_cxt_toks(model_name, source, l0_gens, l1_gens, other_gens, 
     max_n_cxts, cxt_max_length_pct=1):
+    """ Process and filters generated context strings
+    """
     l0_cxt_toks = [all_tok[:-len(fact)] for _,fact,_,all_tok in l0_gens]
     l1_cxt_toks = [all_tok[:-len(fact)] for _,fact,_,all_tok in l1_gens]
-    other_cxt_toks = [all_tok for _,all_tok in other_gens]
 
     max_cxt_length = get_max_cxt_length(model_name)
     cxt_size_limit = max_cxt_length * cxt_max_length_pct
@@ -92,23 +93,33 @@ def get_cxt_toks(model_name, l0_gens, l1_gens, other_gens,
     ]
     del l0_cxt_toks
     del l1_cxt_toks
-    other_cxt_toks = [
-        x for x in other_cxt_toks if len(x) < cxt_size_limit
-    ]
-    all_cxt_toks = concept_cxt_toks + other_cxt_toks
-    del other_cxt_toks
+    if source in ["gen_ancestral_concept", "gen_nucleus_concept"]:
+        concept_cxt_toks = sample_cxt_toks(concept_cxt_toks, max_n_cxts)
+        return concept_cxt_toks
+    elif source in ["gen_ancestral_all", "gen_nucleus_all"]:
+        # process other cxt toks
+        other_cxt_toks = [all_tok for _,all_tok in other_gens]
+        other_cxt_toks = [
+            x for x in other_cxt_toks if len(x) < cxt_size_limit
+        ]
 
-    concept_cxt_toks = sample_cxt_toks(concept_cxt_toks, max_n_cxts)
-    all_cxt_toks = sample_cxt_toks(all_cxt_toks, max_n_cxts)
-    return concept_cxt_toks, all_cxt_toks
+        # combine concept and other
+        all_cxt_toks = concept_cxt_toks + other_cxt_toks
+        del other_cxt_toks
 
-def prep_generated_data(model_name, concept, nucleus, torch_dtype,
-    cxt_max_length_pct=0.9, max_n_cxts=100000, max_n_all_hs=300000):
+        all_cxt_toks = sample_cxt_toks(all_cxt_toks, max_n_cxts)
+        return all_cxt_toks
+    else:
+        raise NotImplementedError(
+            f"Source {source} context tokens not implemented"
+        )
+
+def prep_generated_data(model_name, concept, nucleus, source, torch_dtype,
+    cxt_max_length_pct, max_n_cxts, max_n_all_hs):
     """ Loads generated text and outputs:
     - all_hs: generated hs by the model
-    - concept_cxt_toks: context strings that induced model to generate concept word
-    - all_cxt_toks: generated strings by the model
-
+    - cxt_toks: either concept or all context tokens, depending on source arg
+    
     Args:
     - cxt_max_length_pct: keep only cxt strings with cxt_max_length_pct
         length of model context size
@@ -124,19 +135,24 @@ def prep_generated_data(model_name, concept, nucleus, torch_dtype,
         l0_gens, l1_gens, other_gens, max_n_all_hs, torch_dtype
     )    
 
-    concept_cxt_toks, all_cxt_toks = get_cxt_toks(
-        model_name, l0_gens, l1_gens, other_gens, max_n_cxts,
-        cxt_max_length_pct
-    )
+    if source == "natural_concept":
+        cxt_toks = None
+        len_cxt_toks = 0
+    else:
+        cxt_toks = get_cxt_toks(
+            model_name, source, l0_gens, l1_gens, other_gens, max_n_cxts,
+            cxt_max_length_pct
+        )
+        len_cxt_toks = len(cxt_toks)
 
     logging.info(
         f"Loaded generated hs: model {model_name}, "
-        f"concept {concept}, nucleus {nucleus}: \n"
+        f"concept {concept}, nucleus {nucleus}, "
+        f"source {source}: \n"
         f"- all_hs: {all_hs.shape[0]} \n"
-        f"- concept_cxt_toks: {len(concept_cxt_toks)} \n"
-        f"- all_cxt_toks: {len(all_cxt_toks)}"
+        f"- cxt_toks: {len_cxt_toks}"
     )
-    return all_hs, concept_cxt_toks, all_cxt_toks
+    return all_hs, cxt_toks
 
 def pad_cxt_list(cxt_toks, max_nsamples, padding_value=-1):
     """ Input: list of tokenized strings
@@ -153,7 +169,15 @@ def pad_cxt_list(cxt_toks, max_nsamples, padding_value=-1):
 # Past Key Values Handling              #
 #########################################
 def duplicate_pkv(pkv, num_repeats):
-    return tuple(tuple(torch.cat([tensor] * num_repeats, dim=0) for tensor in layer) for layer in pkv)
+    pkv_dim = pkv[0][0].shape[0]
+    if num_repeats > pkv_dim:
+        return tuple(
+            tuple(
+                torch.cat([tensor] * num_repeats, dim=0) for tensor in layer
+            ) for layer in pkv
+        )
+    else:
+        return pkv
 
 #########################################
 # Distribution Computation              #
