@@ -10,14 +10,19 @@ from itertools import zip_longest
 #sys.path.append('..')
 sys.path.append('./src/')
 
-from data.embed_wordlists.embedder import get_emb_outfile_paths, get_token_list_outfile_paths
+from data.spacy_wordlists.embedder import get_emb_outfile_paths, \
+    get_token_list_outfile_paths
 from utils.lm_loaders import GPT2_LIST, BERT_LIST, SUPPORTED_AR_MODELS
 from paths import DATASETS, FR_DATASETS, HF_CACHE
 
-LINZEN_PREPROCESSED = os.path.join(DATASETS, "preprocessed/linzen_preprocessed.tsv")
-UD_FRENCH_GSD_PREPROCESSED = os.path.join(DATASETS, "preprocessed/ud_fr_gsd")
-UD_FRENCH_ParTUT_PREPROCESSED = os.path.join(DATASETS, "preprocessed/ud_fr_partut")
-UD_FRENCH_Rhapsodie_PREPROCESSED = os.path.join(DATASETS, "preprocessed/ud_fr_rhapsodie")
+LINZEN_PREPROCESSED = os.path.join(
+    DATASETS, "preprocessed/linzen_preprocessed.tsv")
+UD_FRENCH_GSD_PREPROCESSED = os.path.join(
+    DATASETS, "preprocessed/ud_fr_gsd")
+UD_FRENCH_ParTUT_PREPROCESSED = os.path.join(
+    DATASETS, "preprocessed/ud_fr_partut")
+UD_FRENCH_Rhapsodie_PREPROCESSED = os.path.join(
+    DATASETS, "preprocessed/ud_fr_rhapsodie")
 
 #%%##############################
 # Loading HuggingFace datasets  #
@@ -122,10 +127,11 @@ def get_udfr_dataset_folder(dataset_name):
         raise ValueError(f"Dataset name not supported: {dataset_name}")
 
 #%% CEBaB
-def load_CEBaB(concept, split):
+def load_CEBaB(concept, split, binary):
     fpath = os.path.join(
         DATASETS, 
-        f"preprocessed/CEBaB/{concept}/CEBaB_{concept}_{split}.pkl"
+        f"preprocessed/CEBaB/bin_{binary}/{concept}/"
+        f"CEBaB_{concept}_bin_{binary}_{split}.pkl"
     )
     with open(fpath, "rb") as f:
         df = pickle.load(f).to_dict("records")
@@ -142,8 +148,9 @@ def get_model_type(model_name):
     else: 
         raise ValueError(f"Model {model_name} not supported")
 
-def load_preprocessed_dataset(dataset_name, model_name, concept=None, split=None):
-    """ Dataset name: ["linzen", "ud_fr_gsd"]
+def load_preprocessed_dataset(dataset_name, model_name, 
+    concept=None, split=None):
+    """ Dataset name: ["linzen", "CEBaB", "CEBaB_binary"] + FR_DATASETS
     Model name: GPT2 + BERT models + llama2
     Split: ["train", "dev", "test"]
     """
@@ -161,7 +168,12 @@ def load_preprocessed_dataset(dataset_name, model_name, concept=None, split=None
         assert split in ["train", "dev", "test"], "Must specify split"
         assert concept in ["food", "ambiance", "service", "noise"], \
             "Must specify CEBaB concept"
-        return load_CEBaB(concept, split)
+        return load_CEBaB(concept, split, binary=False)
+    elif dataset_name == "CEBaB_binary":
+        assert split in ["train", "dev", "test"], "Must specify split"
+        assert concept in ["food", "ambiance", "service", "noise"], \
+            "Must specify CEBaB concept"
+        return load_CEBaB(concept, split, binary=True)
     else:
         raise ValueError("invalid dataset name")
 
