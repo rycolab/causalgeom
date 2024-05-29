@@ -27,6 +27,9 @@ def get_nucleus_arg(source):
         nucleus = True
     elif source in ["gen_ancestral_concept", "gen_ancestral_all"]:
         nucleus = False
+    elif source in ["natural_all", "natural_concept"]:
+        #TODO: THIS SHOULDNT BE IN HERE ITS A SHORTCUT FOR CEBAB
+        nucleus = False 
     else:
         raise ValueError(f"Incorrect {source} argument")
     return nucleus
