@@ -37,7 +37,8 @@ def define_target(tgt_label):
     elif (tgt_label == "VBP" or tgt_label == "Fem"):
         return 1
     if ((tgt_label == torch.tensor(1)).all().item() or 
-        (tgt_label == torch.tensor(0)).all().item()):
+        (tgt_label == torch.tensor(0)).all().item() or
+        (tgt_label == torch.tensor(2)).all().item()):
         return tgt_label.item()
     else:
         raise ValueError(f"Incorrect tgt label {tgt_label}")
@@ -83,8 +84,8 @@ def format_sample_ar(concept, sample):
     if concept in ["number", "gender"] and tgt_label in [0,1]:
         #u = foil_emb.flatten() - fact_emb.flatten()
         return (hs, None, tgt_label, fact, foil, cxt_tok)
-    elif concept in ["food", "ambiance", "service", "noise"] and tgt_label in [0,1]\
-         and max_tokens == 0: # CEBaB concepts
+    elif concept in ["food", "ambiance", "service", "noise"]\
+        and max_tokens == 0: # CEBaB concepts
         return (hs, None, tgt_label, fact, foil, cxt_tok)
     else: # max_tokens > 1
         return None

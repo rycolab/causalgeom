@@ -30,7 +30,7 @@ def get_mi_file_paths(mt_eval_run_name):
     mifilepaths = [os.path.join(mifolder, x) for x in mifiles]
     return mifilepaths
 
-mifilepaths_1 = get_mi_file_paths("may24")
+mifilepaths_1 = get_mi_file_paths("may27")
 #mifilepaths_2 = get_mi_file_paths("may22")
 mifilepaths = mifilepaths_1# + mifilepaths_2
 

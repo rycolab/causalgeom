@@ -226,6 +226,13 @@ class ProjectionTrainer:
             return self.load_generated_data()
         elif self.source in ["natural_concept", "natural_all"]:
             logging.info(f"Loading natural samples, source: {self.source}")
+            logging.warn(f"No distinction made between source = "
+                         "natural_concept and natural_all at the moment")
+            # TODO: currently depends on the preprocess steps used, 
+            # should have some kind of flag in the processed data handling
+            # for whether to load _concept or _all
+            # NOTE: CEBaB is 3-class dataset by default now, i.e., "natural_all"
+            # NOTE: whereas number and gender are binary datasets
             return self.load_natural_data()
         else:
             raise ValueError(f"Incorrect source parameter: {self.source}")
@@ -244,6 +251,9 @@ class ProjectionTrainer:
         cxt_toks_train, cxt_toks_val, cxt_toks_test = \
             run_data["cxt_toks_train"], run_data["cxt_toks_val"], run_data["cxt_toks_test"]
 
+        logging.info("Training LEACE with concept labels: "
+                     f"{np.unique(y_train)}")
+
         P, I_P, bias = self.compute_leace_affine(X_train, y_train)
         output = {
             "bias": bias,
@@ -251,6 +261,7 @@ class ProjectionTrainer:
             "I_P": I_P
         }
         full_results = dict(
+            proj_data_source=self.source,
             output=output,
             nobs_train = X_train.shape[0],
             nobs_val = X_val.shape[0],
@@ -258,6 +269,11 @@ class ProjectionTrainer:
             #maj_acc_train=get_majority_acc(y_train),
             #maj_acc_val=get_majority_acc(y_val),
             #maj_acc_test=get_majority_acc(y_test),
+            #X_train=X_train,
+            y_train=y_train,
+            #foils_train=foils_train,
+            #facts_train=facts_train,
+            cxt_toks_train = cxt_toks_train,
             X_val=X_val,
             y_val=y_val,
             foils_val=foils_val,

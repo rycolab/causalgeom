@@ -30,15 +30,8 @@ from paths import DATASETS, OUT, RESULTS, MODELS
 
 
 from utils.lm_loaders import SUPPORTED_AR_MODELS
-from evals.mi_distributor_utils import prep_generated_data, \
-    get_nucleus_arg, get_mt_eval_directory
-#from evals.eval_utils import renormalize
+from evals.mi_distributor_utils import get_mt_eval_directory
 from evals.mi_computer_utils import compute_all_MIs
-
-#from data.filter_generations import load_generated_hs_wff
-#from data.data_utils import filter_hs_w_ys, sample_filtered_hs
-#from utils.lm_loaders import get_model, get_tokenizer
-#from utils.cuda_loaders import get_device
 
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
@@ -65,13 +58,6 @@ class MIComputer:
         )
         assert os.path.exists(self.h_distribs_dir), "H distribs dir doesn't exist"
 
-        nucleus = get_nucleus_arg(source)
-        #self.nsamples = nsamples
-        #self.msamples = msamples
-        #self.nwords = nwords
-        #_, _, _, _ = prep_generated_data(
-        #    model_name, concept, nucleus
-        #)
         
     #########################################
     # Data handling                         #
