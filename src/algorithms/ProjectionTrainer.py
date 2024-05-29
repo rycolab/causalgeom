@@ -37,7 +37,10 @@ class ProjectionTrainer:
         self.model_name = model_name
         self.concept = concept
         self.source = source
-        self.nucleus = get_nucleus_arg(source)
+        if source in ["natural_all", "natural_concept"]:
+            self.nucleus = None #not needed
+        else:
+            self.nucleus = get_nucleus_arg(source)
         self.train_nsamples = train_nsamples
         self.val_nsamples = val_nsamples
         self.test_nsamples = test_nsamples
