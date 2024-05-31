@@ -32,6 +32,7 @@ from paths import DATASETS, OUT, RESULTS, MODELS
 from utils.lm_loaders import SUPPORTED_AR_MODELS
 from evals.mi_distributor_utils import get_mt_eval_directory
 from evals.mi_computer_utils import compute_all_MIs
+from evals.eval_utils import load_run_output
 
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
@@ -57,6 +58,11 @@ class MIComputer:
             outdir, "h_distribs"
         )
         assert os.path.exists(self.h_distribs_dir), "H distribs dir doesn't exist"
+
+        # Run train source
+        #TODO: maybe figure out a better way to track this
+        run = load_run_output(run_path)
+        self.proj_data_source = run["proj_data_source"]
 
         
     #########################################
@@ -134,7 +140,8 @@ def compute_mis(model_name, concept, run_path,
     run_metadata = {
         "model_name": model_name,
         "concept": concept,
-        "source": source,
+        "eval_source": source,
+        "proj_source": micomputer.proj_data_source,
         #"nsamples": nsamples,
         #"msamples": msamples,
         "eval_name": output_folder,

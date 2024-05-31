@@ -57,9 +57,9 @@ class ProjectionTrainer:
         )
 
         # (h, fact, foil, cxt_tok, y)
-        l0_gens = [(h, fact, foil, cxt_tok, 0) for 
+        l0_gens = [(h, fact, foil, cxt_tok[:-len(fact)], 0) for 
                         h, fact, foil, cxt_tok in l0_gens]
-        l1_gens = [(h, fact, foil, cxt_tok, 1) for 
+        l1_gens = [(h, fact, foil, cxt_tok[:-len(fact)], 1) for 
                         h, fact, foil, cxt_tok in l1_gens]
         other_gens = [(h, [], [], cxt_tok, 2) for 
                         h, cxt_tok in other_gens]
