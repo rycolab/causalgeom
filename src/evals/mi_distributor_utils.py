@@ -12,7 +12,7 @@ from scipy.special import softmax, log_softmax
 
 sys.path.append('..')
 
-from data.filter_generations import load_filtered_generations
+from data.GenerationsFilter import load_filtered_generations
 from utils.lm_loaders import GPT2_LIST, get_max_cxt_length
 from paths import OUT
 

@@ -14,7 +14,7 @@ from concept_erasure import LeaceEraser
 
 sys.path.append('..')
 
-from data.filter_generations import load_filtered_generations
+from data.GenerationsFilter import load_filtered_generations
 from utils.dataset_loaders import load_processed_data
 from evals.mi_distributor_utils import get_nucleus_arg
 
