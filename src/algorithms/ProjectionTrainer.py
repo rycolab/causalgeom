@@ -27,7 +27,7 @@ class ProjectionTrainer:
     def __init__(self, 
                  model_name, # name of AR model 
                  concept, # concept name
-                 source, # ["gen_ancestral_all", "gen_nucleus_all"]
+                 proj_source, # data source for train/val/test datasets
                  train_nsamples, # number of train samples
                  val_nsamples, # number of val samples
                  test_nsamples, # number of test samples
@@ -36,11 +36,11 @@ class ProjectionTrainer:
         ):
         self.model_name = model_name
         self.concept = concept
-        self.source = source
-        if source in ["natural_all", "natural_concept"]:
+        self.proj_source = proj_source
+        if proj_source in ["natural_all", "natural_concept"]:
             self.nucleus = None #not needed
         else:
-            self.nucleus = get_nucleus_arg(source)
+            self.nucleus = get_nucleus_arg(proj_source)
         self.train_nsamples = train_nsamples
         self.val_nsamples = val_nsamples
         self.test_nsamples = test_nsamples
@@ -57,9 +57,9 @@ class ProjectionTrainer:
         )
 
         # (h, fact, foil, cxt_tok, y)
-        l0_gens = [(h, fact, foil, cxt_tok[:-len(fact)], 0) for 
+        l0_gens = [(h, fact, foil, cxt_tok, 0) for 
                         h, fact, foil, cxt_tok in l0_gens]
-        l1_gens = [(h, fact, foil, cxt_tok[:-len(fact)], 1) for 
+        l1_gens = [(h, fact, foil, cxt_tok, 1) for 
                         h, fact, foil, cxt_tok in l1_gens]
         other_gens = [(h, [], [], cxt_tok, 2) for 
                         h, cxt_tok in other_gens]
@@ -224,12 +224,16 @@ class ProjectionTrainer:
     # Main Training function                 # 
     ##########################################
     def load_run_data(self):
-        if self.source in ["gen_ancestral_all", "gen_nucleus_all"]:
-            logging.info(f"Loading generated samples, source: {self.source}")
+        if self.proj_source in ["gen_ancestral_all", "gen_nucleus_all"]:
+            logging.info(
+                f"Loading generated samples, proj_source: {self.proj_source}"
+            )
             return self.load_generated_data()
-        elif self.source in ["natural_concept", "natural_all"]:
-            logging.info(f"Loading natural samples, source: {self.source}")
-            logging.warn(f"No distinction made between source = "
+        elif self.proj_source in ["natural_concept", "natural_all"]:
+            logging.info(
+                f"Loading natural samples, proj_source: {self.proj_source}"
+            )
+            logging.warn(f"No distinction made between proj_source = "
                          "natural_concept and natural_all at the moment")
             # TODO: currently depends on the preprocess steps used, 
             # should have some kind of flag in the processed data handling
@@ -238,7 +242,7 @@ class ProjectionTrainer:
             # NOTE: whereas number and gender are binary datasets
             return self.load_natural_data()
         else:
-            raise ValueError(f"Incorrect source parameter: {self.source}")
+            raise ValueError(f"Incorrect proj_source parameter: {self.proj_source}")
             
     def train_and_format(self):
         run_data = self.load_run_data()
@@ -264,8 +268,8 @@ class ProjectionTrainer:
             "I_P": I_P
         }
         full_results = dict(
-            proj_data_source=self.source,
             output=output,
+            proj_source=self.proj_source,
             nobs_train = X_train.shape[0],
             nobs_val = X_val.shape[0],
             nobs_test = X_test.shape[0],

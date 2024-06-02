@@ -34,9 +34,10 @@ if __name__ == '__main__':
 
     # Output directory creation
     OUTPUT_DIR = os.path.join(OUT, 
-        f"run_output/{cfg['concept']}/{cfg['model_name']}/"
-        f"{cfg['out_folder']}/")
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
+        f"run_output/{cfg['out_folder']}/{cfg['concept']}/"
+        f"{cfg['model_name']}/{cfg['proj_source']}"
+    )
+    os.makedirs(OUTPUT_DIR, exist_ok=False)
     
     # Set seed
     np.random.seed(cfg['seed'])
@@ -62,7 +63,7 @@ if __name__ == '__main__':
 
     for i in trange(cfg['nruns']):
         trainer = ProjectionTrainer(
-            cfg['model_name'], cfg['concept'], cfg['source'], 
+            cfg['model_name'], cfg['concept'], cfg['proj_source'], 
             cfg['train_nsamples'], cfg['val_nsamples'], cfg['test_nsamples']
         )
         run_output = trainer.train_and_format()

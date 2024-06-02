@@ -69,7 +69,7 @@ def get_args():
         help="Models to create embedding files for"
     )
     argparser.add_argument(
-        "-source",
+        "-eval_source",
         type=str,
         choices=["train_all", "train_concept", "test_all", "test_concept", 
                  "gen_ancestral_concept", "gen_nucleus_concept", 
@@ -121,7 +121,7 @@ def get_args():
         type=str,
         choices=["bfloat16", "float16", "float32"],
         help="Data type to cast all tensors to during evaluation",
-        default="float32"
+        default="float16"
     )
     return argparser.parse_args()
 
@@ -131,7 +131,7 @@ if __name__=="__main__":
 
     model_name = args.model
     concept = args.concept
-    source = args.source
+    eval_source = args.eval_source
     nsamples= args.nsamples
     msamples= args.msamples
     nwords = None
@@ -145,7 +145,7 @@ if __name__=="__main__":
     
     #model_name = "llama2"
     #concept = "food"
-    #source = "gen_nucleus_concept"
+    #eval_source = "gen_nucleus_concept"
     #nsamples=10
     #msamples=3
     #nwords=None
@@ -163,7 +163,7 @@ if __name__=="__main__":
         evaluator = MultiTokenDistributor(
             model_name, 
             concept, 
-            source, # source 
+            eval_source, # eval_source 
             nsamples, #nsamples
             msamples, #msamples
             nwords, #nwords
@@ -180,7 +180,7 @@ if __name__=="__main__":
         logging.info(f"Eval iteration {i} distributions computed")
 
         compute_mis(
-            model_name, concept, run_path, source, output_folder, i
+            model_name, concept, run_path, eval_source, output_folder, i
         )
         logging.info(f"Eval iteration {i} MIs computed")
     logging.info("Finished running all iterations.")

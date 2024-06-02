@@ -79,7 +79,7 @@ class MultiTokenDistributor:
     def __init__(self, 
                  model_name, # name of AR model 
                  concept, # concept name
-                 source, # ["train_all", "train_concept", "test_all", "test_concept", "gen_ancestral_concept", "gen_nucleus_concept", "gen_ancestral_all", "gen_nucleus_all"]
+                 eval_source, # ["train_all", "train_concept", "test_all", "test_concept", "gen_ancestral_concept", "gen_nucleus_concept", "gen_ancestral_all", "gen_nucleus_all"]
                  nsamples, # number of test set samples
                  msamples, # number of dev set samples for each q computation
                  nwords, # DEBUG ONLY: number of words to use from token lists
@@ -105,14 +105,18 @@ class MultiTokenDistributor:
         if self.exist_ok:
             logging.warn("DEBUG ONLY: RUNNING WITH EXIST_OK=TRUE")
 
-        # directory handling
-        self.outdir = get_mt_eval_directory(run_path, concept, model_name, 
-            output_folder_name, source, iteration)
-        os.makedirs(self.outdir, exist_ok=self.exist_ok)
-        logging.info(f"Created outdir: {self.outdir}")
-        
         # Load run data
         run = load_run_output(run_path)
+        self.proj_source = run["proj_source"]
+        assert run["config"]['model_name'] == model_name, "Run model doesn't match"
+        assert run["config"]['concept'] == concept, "Run concept doesn't match"
+
+        # directory handling
+        self.outdir = get_mt_eval_directory(
+            run_path, concept, model_name, self.proj_source,
+            output_folder_name, eval_source, iteration)
+        os.makedirs(self.outdir, exist_ok=self.exist_ok)
+        logging.info(f"Created outdir: {self.outdir}")
 
         # Load model
         self.device = get_device()
@@ -150,15 +154,14 @@ class MultiTokenDistributor:
 
         # Load generated samples
         #TODO: this is a bit messy, figure it out
-        if source in ["train_all", "train_concept", "test_all", "test_concept"]:
-            run_source = run["proj_data_source"]
-            nucleus = get_nucleus_arg(run_source)
-        elif source in ["gen_ancestral_all", "gen_ancestral_concept", "gen_nucleus_all", "gen_nucleus_concept"]:
-            nucleus = get_nucleus_arg(source)
+        if eval_source in ["train_all", "train_concept", "test_all", "test_concept"]:
+            nucleus = get_nucleus_arg(self.proj_source)
+        elif eval_source in ["gen_ancestral_all", "gen_ancestral_concept", "gen_nucleus_all", "gen_nucleus_concept"]:
+            nucleus = get_nucleus_arg(eval_source)
         else:
-            raise NotImplementedError(f"source {source} not supported")
+            raise NotImplementedError(f"eval_source {eval_source} not supported")
         self.gen_all_hs, self.gen_cxt_toks = prep_generated_data(
-            model_name, concept, nucleus, source, self.torch_dtype,
+            model_name, concept, nucleus, eval_source, self.torch_dtype,
             CXT_MAX_LENGTH_PCT, MAX_N_CXTS, MAX_N_ALL_HS
         )
 
@@ -166,8 +169,8 @@ class MultiTokenDistributor:
         self.cxt_toks_train, self.y_train = run["cxt_toks_train"], run["y_train"]
         self.cxt_toks_test, self.y_test = run["cxt_toks_test"], run["y_test"]
 
-        # Select samples to use to compute distributions based on source
-        self.cxt_toks = self.get_eval_contexts(model_name, source)
+        # Select samples to use to compute distributions based on eval_source
+        self.cxt_toks = self.get_eval_contexts(model_name, eval_source)
 
         # Delete cxts for memory
         self.gen_cxt_toks = None
@@ -228,30 +231,30 @@ class MultiTokenDistributor:
     #########################################
     # Data handling                         #
     #########################################
-    def get_eval_contexts(self, model_name, source, max_nsamples=MAX_N_CXTS):
-        if source in ["gen_ancestral_concept", "gen_nucleus_concept", 
+    def get_eval_contexts(self, model_name, eval_source, max_nsamples=MAX_N_CXTS):
+        if eval_source in ["gen_ancestral_concept", "gen_nucleus_concept", 
                       "gen_ancestral_all", "gen_nucleus_all"]:
             padded_cxt_toks = pad_cxt_list(self.gen_cxt_toks, max_nsamples)
-        elif source == "train_all":
+        elif eval_source == "train_all":
             sub_cxt_toks_train = filter_cxt_toks_by_length(
                 model_name, self.cxt_toks_train, 
                 cxt_max_length_pct=CXT_MAX_LENGTH_PCT
             )
             padded_cxt_toks = torch.from_numpy(sub_cxt_toks_train)
-        elif source == "test_all":
+        elif eval_source == "test_all":
             sub_cxt_toks_test = filter_cxt_toks_by_length(
                 model_name, self.cxt_toks_test, 
                 cxt_max_length_pct=CXT_MAX_LENGTH_PCT
             )
             padded_cxt_toks = torch.from_numpy(sub_cxt_toks_test)
-        elif source == "train_concept":
+        elif eval_source == "train_concept":
             concept_cxt_toks = self.cxt_toks_train[np.isin(self.y_train, [0,1])]
             sub_concept_cxt_toks = filter_cxt_toks_by_length(
                 model_name, concept_cxt_toks, 
                 cxt_max_length_pct=CXT_MAX_LENGTH_PCT
             )
             padded_cxt_toks = torch.from_numpy(sub_concept_cxt_toks)
-        elif source == "test_concept":
+        elif eval_source == "test_concept":
             concept_cxt_toks = self.cxt_toks_test[np.isin(self.y_test, [0,1])]
             sub_concept_cxt_toks = filter_cxt_toks_by_length(
                 model_name, concept_cxt_toks, 
@@ -259,7 +262,7 @@ class MultiTokenDistributor:
             )
             padded_cxt_toks = torch.from_numpy(sub_concept_cxt_toks)
         else: 
-            raise ValueError(f"Evaluation context source {source} invalid")
+            raise ValueError(f"Evaluation context eval_source {eval_source} invalid")
         logging.info(
             f"Total contexts to sample from: {padded_cxt_toks.shape[0]}"
         )

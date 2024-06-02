@@ -30,7 +30,7 @@ from paths import DATASETS, OUT, RESULTS, MODELS
 
 
 from utils.lm_loaders import SUPPORTED_AR_MODELS
-from evals.mi_distributor_utils import get_mt_eval_directory
+from evals.mi_distributor_utils import get_mt_eval_directory, get_run_path_info
 from evals.mi_computer_utils import compute_all_MIs
 from evals.eval_utils import load_run_output
 
@@ -43,7 +43,7 @@ class MIComputer:
     def __init__(self, 
                  model_name, # name of AR model 
                  concept, # concept name
-                 source, # whether to use samples generated with nucleus sampling
+                 eval_source, # whether to use samples generated with nucleus sampling
                  run_path, # path of LEACE training run output
                  output_folder_name, # directory for exporting individual distributions
                  iteration, # iteration of the eval for this run
@@ -52,17 +52,17 @@ class MIComputer:
                  #nwords, # number of words to use from token lists -- GET RID OF THIS
                 ):
 
-        outdir = get_mt_eval_directory(run_path, concept, model_name, 
-            output_folder_name, source, iteration)
+        run = load_run_output(run_path)
+        self.proj_source = run["proj_source"]
+
+        outdir = get_mt_eval_directory(
+            run_path, concept, model_name, self.proj_source,
+            output_folder_name, eval_source, iteration
+        )
         self.h_distribs_dir = os.path.join(
             outdir, "h_distribs"
         )
         assert os.path.exists(self.h_distribs_dir), "H distribs dir doesn't exist"
-
-        # Run train source
-        #TODO: maybe figure out a better way to track this
-        run = load_run_output(run_path)
-        self.proj_data_source = run["proj_data_source"]
 
         
     #########################################
@@ -125,12 +125,12 @@ class MIComputer:
 
 # %%
 def compute_mis(model_name, concept, run_path, 
-    source, output_folder, iteration):
+    eval_source, output_folder, iteration):
 
     micomputer = MIComputer(
         model_name, 
         concept, 
-        source,
+        eval_source,
         run_path,
         output_folder,
         iteration
@@ -140,8 +140,8 @@ def compute_mis(model_name, concept, run_path,
     run_metadata = {
         "model_name": model_name,
         "concept": concept,
-        "eval_source": source,
-        "proj_source": micomputer.proj_data_source,
+        "eval_source": eval_source,
+        "proj_source": micomputer.proj_source,
         #"nsamples": nsamples,
         #"msamples": msamples,
         "eval_name": output_folder,
@@ -150,16 +150,18 @@ def compute_mis(model_name, concept, run_path,
     }
     full_run_output = run_metadata | run_eval_output
     
-    
     # run info
-    rundir = os.path.dirname(run_path)
-    rundir_name = os.path.basename(rundir)
-    run_id = run_path[-27:-4]
+    run_output_dir, run_id = get_run_path_info(run_path)
 
     # export
     actual_outdir = os.path.join(RESULTS, f"mis/{output_folder}")
     os.makedirs(actual_outdir, exist_ok=True)
-    outpath = os.path.join(actual_outdir, f"mis_{model_name}_{concept}_{rundir_name}_{output_folder}_run_{run_id}_source_{source}_evaliter_{iteration}.pkl")
+    outpath = os.path.join(
+        actual_outdir, 
+        f"mis_{model_name}_{concept}_{micomputer.proj_source}_"
+        f"{run_output_dir}_{output_folder}_run_{run_id}_"
+        f"{eval_source}_evaliter_{iteration}.pkl"
+    )
     with open(outpath, "wb") as f:
         pickle.dump(full_run_output, f, protocol=pickle.HIGHEST_PROTOCOL)
     logging.info(f"Run eval exported: {outpath}")
