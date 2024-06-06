@@ -103,13 +103,20 @@ def get_args():
         choices=["food", "ambiance", "service", "noise"],
         help="Which concept to create dataset for"
     )
+    argparser.add_argument(
+        '-binary', 
+        action='store_true',
+        help="Whether to drop n/a samples"
+    )
     return argparser.parse_args()
 
 args = get_args()
 logging.info(args)
 
-#CONCEPT = "ambiance"   
+#CONCEPT = "ambiance"
+#BINARY = False
 CONCEPT = args.concept
+BINARY = args.binary
 CONCEPT_PROMPTS = load_suffixes(CONCEPT)
 #logging.warn("CONCEPT SET FOR TESTING")
 
@@ -154,10 +161,22 @@ def preprocess_df(df):
     formatted_df["foil_text"] = formatted_df["pre_tgt_text"] + formatted_df["foil"]
     return formatted_df
 
-def create_concept_df(df, concept):
+def create_concept_df(df, concept, binary=False):
     formatted_df = preprocess_df(df)
-    concept_df = formatted_df[formatted_df[f"{CONCEPT}_sentiment"].isin([POSITIVE, NEGATIVE])]
-    concept_df["tgt_label"] = np.where(concept_df[f"{CONCEPT}_sentiment"] == POSITIVE, 1, 0)
+    if binary:
+        concept_df = formatted_df[formatted_df[f"{CONCEPT}_sentiment"].isin([POSITIVE, NEGATIVE])]
+        concept_df["tgt_label"] = np.where(concept_df[f"{CONCEPT}_sentiment"] == POSITIVE, 1, 0)
+    else:
+        concept_df = formatted_df[
+            formatted_df[f"{CONCEPT}_sentiment"].isin([POSITIVE, NEGATIVE, UNKNOWN])
+        ]
+        concept_df["tgt_label"] = np.where(
+            concept_df[f"{CONCEPT}_sentiment"] == POSITIVE, 1, 
+            np.where(concept_df[f"{CONCEPT}_sentiment"] == NEGATIVE, 0, 2)
+        )
+
+    logging.info(f"Concept distribution: \n"
+                f"{concept_df['tgt_label'].value_counts()}")
 
     concept_df["prompt"] = np.random.choice(CONCEPT_PROMPTS, concept_df.shape[0])
     concept_df["text_w_prompt"] = concept_df.apply(
@@ -170,16 +189,18 @@ def create_concept_df(df, concept):
 
 
 #%%
-final_train, final_dev, final_test = create_concept_df(train, CONCEPT), create_concept_df(dev, CONCEPT), create_concept_df(test, CONCEPT)
+final_train = create_concept_df(train, CONCEPT, BINARY)
+final_dev = create_concept_df(dev, CONCEPT, BINARY)
+final_test = create_concept_df(test, CONCEPT, BINARY)
 
 #%%
-CEBaB_PATH = os.path.join(DATASETS, f"preprocessed/CEBaB/{CONCEPT}")
+CEBaB_PATH = os.path.join(DATASETS, f"preprocessed/CEBaB/bin_{BINARY}/{CONCEPT}")
 os.makedirs(CEBaB_PATH, exist_ok=True)
 splits = [(final_train, "train"),(final_dev, "dev"),(final_test, "test")]
 for data, split in splits:
     logging.info(f"{split} set label distribution: \n "
                 f"{data['tgt_label'].value_counts()}")
-    fpath = os.path.join(CEBaB_PATH, f"CEBaB_{CONCEPT}_{split}.pkl")
+    fpath = os.path.join(CEBaB_PATH, f"CEBaB_{CONCEPT}_bin_{BINARY}_{split}.pkl")
     with open(fpath, "wb") as f:
         pickle.dump(data, f)
 

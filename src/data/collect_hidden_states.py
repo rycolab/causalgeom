@@ -365,7 +365,7 @@ def get_args():
     argparser.add_argument(
         "-dataset", 
         type=str,
-        choices=["linzen", "CEBaB"] + FR_DATASETS,
+        choices=["linzen", "CEBaB", "CEBaB_binary"] + FR_DATASETS,
         default="linzen",
         help="Dataset to collect hidden states for"
     )
@@ -407,9 +407,9 @@ if __name__=="__main__":
     concept = args.concept
     split = args.split
     batch_size = args.batch_size
-    #dataset_name = "ud_fr_gsd"
-    #model_name = "gpt2-base-french"
-    #concept = None
+    #dataset_name = "CEBaB"
+    #model_name = "gpt2-large"
+    #concept = "food"
     #split = "train"
     #batch_size = 64
 
@@ -424,7 +424,7 @@ if __name__=="__main__":
     # load data
     data = load_preprocessed_dataset(dataset_name, model_name, concept, split)
     ds = CustomDataset(data)
-    dl = DataLoader(dataset = ds, batch_size=batch_size)
+    dl = DataLoader(dataset=ds, batch_size=batch_size)
 
     # Output dir
     output_dir = os.path.join(OUT, f"hidden_states/{dataset_name}/{model_name}")

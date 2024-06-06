@@ -5,7 +5,10 @@ import sys
 import coloredlogs
 
 sys.path.append('./src/')
-from evals.mi_computer_utils import (pxhs_to_p_x_c_h, qxhs_to_q_x_c_h, compute_p_h_c, compute_p_c_mid_h, compute_p_x_mid_h_c)
+from evals.mi_computer_utils import (
+    pxhs_to_p_x_c_h, qxhs_to_q_x_c_h, compute_p_h_c, 
+    compute_p_c_mid_h, compute_p_x_mid_h_c
+)
 
 import unittest
 import torch
@@ -234,6 +237,4 @@ class TestMIComputerUtils(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    logging.basicConfig( stream=sys.stderr )
-    logging.getLogger( "SomeTest.testSomething" ).setLevel(logging.DEBUG)
     unittest.main()
