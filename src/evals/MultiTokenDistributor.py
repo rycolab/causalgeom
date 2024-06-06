@@ -350,6 +350,12 @@ class MultiTokenDistributor:
             batch_word_probs = self.compute_pxhs(
                 cxt_hidden_state, batch_hidden_states, batch_tokens
             )
+        elif method == "corr":
+            # correlational distribution i.e. using only hbot, no avg over hpar
+            cxt_hbot = cxt_hidden_state.T @ self.I_P
+            batch_word_probs = self.compute_pxhs(
+                cxt_hbot, batch_hidden_states, batch_tokens
+            )
         else:
             raise ValueError(f"Incorrect method arg")
         return batch_word_probs
@@ -473,8 +479,8 @@ class MultiTokenDistributor:
         return l0_probs, l1_probs, other_probs
 
     def compute_pxs(self, htype, cxts):
-        """ Computes three possible distributions:
-        q(x | hbot), q(x | hpar), p(x | h)
+        """ Computes four possible distributions:
+        q(x | hbot), q(x | hpar), p(x | h), p(x | hbot)
         """
         htype_outdir = os.path.join(
             self.outdir, 
@@ -488,6 +494,8 @@ class MultiTokenDistributor:
             return self.compute_lemma_probs(cxts, "hpar", htype_outdir)
         elif htype == "p_x_mid_h":
             return self.compute_lemma_probs(cxts, "h", htype_outdir)
+        elif htype == "p_x_mid_hbot":
+            return self.compute_lemma_probs(cxts, "corr", htype_outdir)
         else:
             raise ValueError(f"Incorrect htype: {htype}")
 
@@ -499,4 +507,11 @@ class MultiTokenDistributor:
         q_x_mid_hbot = self.compute_pxs("q_x_mid_hbot", n_cxts)
         p_x_mid_h = self.compute_pxs("p_x_mid_h", n_cxts)
         return q_x_mid_hpar, q_x_mid_hbot, p_x_mid_h
+    
+    def compute_corr_phs(self):
+        assert self.nsamples is not None
+        n_cxts = self.sample_filtered_contexts()
+        p_x_mid_hbot = self.compute_pxs("p_x_mid_hbot", n_cxts)
+        return p_x_mid_hbot
+
 
