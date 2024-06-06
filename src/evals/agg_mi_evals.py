@@ -14,8 +14,8 @@ import pandas as pd
 import pickle
 import random 
 
-sys.path.append('..')
-#sys.path.append('./src/')
+#sys.path.append('..')
+sys.path.append('./src/')
 
 from paths import DATASETS, OUT, RESULTS, MODELS
 
@@ -30,7 +30,7 @@ def get_mi_file_paths(mt_eval_run_name):
     mifilepaths = [os.path.join(mifolder, x) for x in mifiles]
     return mifilepaths
 
-mifilepaths_1 = get_mi_file_paths("may29")
+mifilepaths_1 = get_mi_file_paths("june2")
 #mifilepaths_2 = get_mi_file_paths("may22")
 mifilepaths = mifilepaths_1# + mifilepaths_2
 
@@ -53,6 +53,11 @@ df = pd.DataFrame(res_records)
 #df["perc_reconstructed"] = df["reconstructed"] / df["MIz_c_h"]
 
 #%%
+df.groupby(["concept", "model_name", "proj_source", "eval_source"]).count().to_csv(
+    os.path.join(RESULTS, "counts.csv")
+)
+
+#%%
 df["reconstructed"] = df["MIqbot_c_hbot"] + df["MIqpar_c_hpar"]
 df["new_ratio_erasure"] = 1 - (df["MIqbot_c_hbot"] / df["MIz_c_h"])
 df["new_ratio_encapsulation"] = df["MIqpar_c_hpar"] / df["MIz_c_h"]
@@ -64,7 +69,7 @@ df["new_ratio_stability"] = df["MIqbot_x_hbot_mid_c"]/df["MIz_x_h_mid_c"]
 #logging.info(f"Exported agg output to: {outfilepath}")
 # %%
 #df["sampling_method"] = df["nucleus"].apply(lambda x: np.where(x, "Nucleus", "Ancestral"))
-table_df = df[['model_name', 'concept', 'source', 
+table_df = df[['model_name', 'concept', 'proj_source', 'eval_source', 
     #'mi_c_h', 'mi_c_hbot', 'mi_c_hpar', 
     #'reconstructed', 'encapsulation',
     #'perc_mi_c_hbot', 'perc_mi_c_hpar',
@@ -96,7 +101,8 @@ table_df = df[['model_name', 'concept', 'source',
 mi_renames = {
     "model_name": "Model",
     "concept": "Concept",
-    "source": "Sample Source",
+    "proj_source": "Train Source",
+    "eval_source": "Test Source",
     'cont_mi': "Contaiment",
     'stab_mi': "Stability",
     'ent_pxc': "H(X|C)",
@@ -117,9 +123,9 @@ mi_renames = {
     "new_ratio_stability": "Stability Ratio",
 }
 
-table_df.sort_values(by = ["concept", "model_name", "source"], inplace=True)
+table_df.sort_values(by = ["concept", "model_name", "proj_source", "eval_source"], inplace=True)
 table_df.columns = [mi_renames[x] for x in table_df.columns]
-table_df_grouped = table_df.groupby(["Concept", "Model", "Sample Source"])
+table_df_grouped = table_df.groupby(["Concept", "Model", "Train Source", "Test Source"])
 table_df_grouped.mean().reset_index().to_csv(os.path.join(RESULTS, "leace_mis_mean.csv"), index=False)
 table_df_grouped.std().reset_index().to_csv(os.path.join(RESULTS, "leace_mis_std.csv"), index=False)
 
@@ -133,12 +139,13 @@ entropy_cols = [
     'Hqpar_x_c',
     'Hqpar_x_mid_hpar_c', 'MIqpar_x_hpar_mid_c'
 ]
-entropy_breakdown = df[['model_name', 'concept', 'source'] + entropy_cols]
+entropy_breakdown = df[['model_name', 'concept', 'proj_source', 'eval_source'] + entropy_cols]
 
 entcols_name = {
     "model_name": "Model",
     "concept": "Concept",
-    "source": "Sample Source",
+    "proj_source": "Train Source",
+    "eval_source": "Test Source",
     #"index": "Concept + Model",
     #"newindex": "Concept + Model + Metric",
     "metric": "Metric",
@@ -163,9 +170,9 @@ entcols_name = {
 }
 
 
-entropy_breakdown.sort_values(by = ["concept", "model_name", "source"], inplace=True)
+#entropy_breakdown.sort_values(by = ["concept", "model_name", "source"], inplace=True)
 entropy_breakdown.columns = [entcols_name[x] for x in entropy_breakdown.columns]
-entropy_breakdown_grouped = entropy_breakdown.groupby(["Concept", "Model", "Sample Source"])
+entropy_breakdown_grouped = entropy_breakdown.groupby(["Concept", "Model", "Train Source", "Test Source"])
 entropy_breakdown_grouped.mean().reset_index().to_csv(os.path.join(RESULTS, "leace_entropies_mean.csv"), index=False)
 entropy_breakdown_grouped.std().reset_index().to_csv(os.path.join(RESULTS, "leace_entropies_std.csv"), index=False)
 

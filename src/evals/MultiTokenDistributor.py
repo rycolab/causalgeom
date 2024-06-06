@@ -352,7 +352,7 @@ class MultiTokenDistributor:
             )
         elif method == "corr":
             # correlational distribution i.e. using only hbot, no avg over hpar
-            cxt_hbot = cxt_hidden_state.T @ self.I_P
+            cxt_hbot = cxt_hidden_state @ self.I_P
             batch_word_probs = self.compute_pxhs(
                 cxt_hbot, batch_hidden_states, batch_tokens
             )
@@ -508,7 +508,7 @@ class MultiTokenDistributor:
         p_x_mid_h = self.compute_pxs("p_x_mid_h", n_cxts)
         return q_x_mid_hpar, q_x_mid_hbot, p_x_mid_h
     
-    def compute_corr_phs(self):
+    def compute_corr_pxhbots(self):
         assert self.nsamples is not None
         n_cxts = self.sample_filtered_contexts()
         p_x_mid_hbot = self.compute_pxs("p_x_mid_hbot", n_cxts)
