@@ -65,6 +65,22 @@ df["new_ratio_reconstructed"] = df["reconstructed"] / df["MIz_c_h"]
 df["new_ratio_containment"] = 1 - (df["MIqpar_x_hpar_mid_c"]/df["MIz_x_h_mid_c"])
 df["new_ratio_stability"] = df["MIqbot_x_hbot_mid_c"]/df["MIz_x_h_mid_c"]
 
+#%%
+proj_source_renames = {
+    "natural_all": "CEBaB",
+    "gen_ancestral_all": "Gen (Ancestral)",
+    "gen_nucleus_all": "Gen (Nucleus)",
+}
+df["proj_source"] = df["proj_source"].apply(lambda x: proj_source_renames[x])
+
+eval_source_renames = {
+    "train_all": "Train (All)",
+    "train_concept": "Train (Concept)",
+    "test_all": "Test (All)",
+    "test_concept": "Test (Concept)",
+}
+df["eval_source"] = df["eval_source"].apply(lambda x: eval_source_renames[x])
+
 #df.to_csv(outfilepath)
 #logging.info(f"Exported agg output to: {outfilepath}")
 # %%
