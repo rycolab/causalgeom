@@ -276,30 +276,30 @@ if __name__=="__main__":
     args = get_args()
     logging.info(args)
 
-    #model_name = args.model
-    #concept = args.concept
-    #nsamples= args.nsamples
-    #run_path = args.run_path
-    #output_folder_name = args.out_folder
-    #batch_size = args.batch_size
-    #nruns = 3
-    #p_new_word = True
-    #exist_ok = False
-    #torch_dtype = get_data_type(args.torch_dtype)
+    model_name = args.model
+    concept = args.concept
+    nsamples= args.nsamples
+    run_path = args.run_path
+    output_folder_name = args.out_folder
+    batch_size = args.batch_size
+    nruns = 3
+    p_new_word = True
+    exist_ok = False
+    torch_dtype = get_data_type(args.torch_dtype)
 
-    model_name = "gpt2-large"
-    concept = "number"
-    nsamples= 5
-    run_path = os.path.join(
-        OUT,
-        "run_output/june2/number/gpt2-large/gen_ancestral_all/run_leace_number_gpt2-large_gen_ancestral_all_2024-06-02-15:54:03_0_3.pkl"
-    )
-    output_folder_name = "corr_test"
-    batch_size = 64
-    nruns=1
-    p_new_word=True
-    exist_ok=False
-    torch_dtype=torch.float16
+    #model_name = "gpt2-large"
+    #concept = "number"
+    #nsamples= 5
+    #run_path = os.path.join(
+    #    OUT,
+    #    "run_output/june2/number/gpt2-large/gen_ancestral_all/run_leace_number_gpt2-large_gen_ancestral_all_2024-06-02-15:54:03_0_3.pkl"
+    #)
+    #output_folder_name = "corr_test"
+    #batch_size = 64
+    #nruns=1
+    #p_new_word=True
+    #exist_ok=False
+    #torch_dtype=torch.float16
 
     for i in range(nruns):
         logging.info(f"Computing corr eval number {i}")
