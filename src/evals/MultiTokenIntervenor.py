@@ -49,15 +49,12 @@ from utils.cuda_loaders import get_device
 from utils.dataset_loaders import load_processed_data
 
 
-
-
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
 
 #%%
 # Default args not worth putting into command line args
 CXT_MAX_LENGTH_PCT = 0.90 # keep only context strings of length less than % of context window
-MAX_N_CXTS = 1000 # max number of context strings to store in memory for eval
 MAX_N_ALL_HS = 400000 # max number of generated hs to store in memory for eval
 
 #%%
@@ -263,6 +260,7 @@ class MultiTokenIntervenor:
         ]
         
         # dev hs
+        #TODO: add a max here 
         hs_val = X[idx[self.nsamples:]]
         ys_val = y[idx[self.nsamples:]]
         l0_hs = torch.tensor(hs_val[ys_val == 0], dtype=self.torch_dtype)
