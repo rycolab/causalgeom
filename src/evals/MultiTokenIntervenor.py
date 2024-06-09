@@ -35,13 +35,12 @@ from paths import DATASETS, OUT, RESULTS, MODELS
 
 
 from evals.mi_distributor_utils import get_nucleus_arg, \
-    get_eval_directory,\
-        duplicate_pkv, pad_cxt_list, \
+    get_eval_directory, duplicate_pkv, pad_cxt_list, \
         intervene_first_h, compute_log_pxh_batch, compute_m_p_words,\
-            compute_p_words
+            compute_p_words, filter_cxt_toks_by_length
 
 from utils.lm_loaders import SUPPORTED_AR_MODELS, GPT2_LIST
-from evals.mi_intervenor_utils import prep_int_generated_data 
+from evals.mi_intervenor_utils import prep_int_generated_data
 from evals.eval_utils import load_run_Ps, load_run_output, renormalize
 from data.spacy_wordlists.embedder import load_concept_token_lists
 from utils.lm_loaders import get_model, get_tokenizer, get_V, GPT2_LIST
@@ -52,9 +51,9 @@ warnings.filterwarnings("ignore")
 
 #%%
 # Default args not worth putting into command line args
-CXT_MAX_LENGTH_PCT = 0.9 # keep only context strings of length less than % of context window
-MAX_N_CXTS = 100000 # max number of context strings to store in memory for eval
-MAX_N_ALL_HS = 300000 # max number of generated hs to store in memory for eval
+CXT_MAX_LENGTH_PCT = 0.90 # keep only context strings of length less than % of context window
+MAX_N_CXTS = 1000 # max number of context strings to store in memory for eval
+MAX_N_ALL_HS = 400000 # max number of generated hs to store in memory for eval
 
 #%%
 class CustomDataset(Dataset, ABC):
@@ -78,7 +77,7 @@ class MultiTokenIntervenor:
     def __init__(self, 
                  model_name, # name of AR model 
                  concept, # concept name
-                 source, # ["natural_concept", "gen_ancestral_concept", "gen_nucleus_concept", "gen_ancestral_all", "gen_nucleus_all"]
+                 int_source, # ["train_all", "train_concept", "test_all", "test_concept", "gen_ancestral_concept", "gen_nucleus_concept", "gen_ancestral_all", "gen_nucleus_all"]
                  nsamples, # number of test set samples
                  msamples, # number of dev set samples for each q computation
                  nwords, # DEBUG ONLY: number of words to use from token lists
@@ -104,16 +103,20 @@ class MultiTokenIntervenor:
         if self.exist_ok:
             logging.warn("DEBUG ONLY: RUNNING WITH EXIST_OK=TRUE")
 
-        nucleus = get_nucleus_arg(source)
-
-        # directory handling
-        self.outdir = get_eval_directory(run_path, concept, model_name, 
-            output_folder_name, source, iteration, "int_eval")
-        os.makedirs(self.outdir, exist_ok=self.exist_ok)
-        logging.info(f"Created outdir: {self.outdir}")
-        
         # Load run data
         run = load_run_output(run_path)
+        self.proj_source = run["proj_source"]
+        assert run["config"]['model_name'] == model_name, "Run model doesn't match"
+        assert run["config"]['concept'] == concept, "Run concept doesn't match"
+
+        # directory handling
+        self.outdir = get_eval_directory(
+            "int_eval", run_path, concept, model_name, 
+            self.proj_source, output_folder_name, 
+            int_source, iteration
+        )
+        os.makedirs(self.outdir, exist_ok=self.exist_ok)
+        logging.info(f"Created outdir: {self.outdir}")
 
         # Load model
         self.device = get_device()
@@ -150,27 +153,42 @@ class MultiTokenIntervenor:
             self.l1_tl = self.l1_tl[random_start:random_start+self.nwords]
 
         # Load generated samples
+        #TODO: this is a bit messy, figure it out
+        if int_source in ["train_all", "train_concept", "test_all", "test_concept"]:
+            nucleus = get_nucleus_arg(self.proj_source)
+        elif int_source in ["gen_ancestral_all", "gen_ancestral_concept", "gen_nucleus_all", "gen_nucleus_concept"]:
+            nucleus = get_nucleus_arg(int_source)
+        else:
+            raise NotImplementedError(f"int_source {int_source} not supported")
         self.gen_all_hs = prep_int_generated_data(
-            model_name, concept, nucleus, source, self.torch_dtype,
+            model_name, concept, nucleus, int_source, self.torch_dtype,
             CXT_MAX_LENGTH_PCT, MAX_N_CXTS, MAX_N_ALL_HS
         )
 
         # Load test set samples
-        self.cxt_toks_test = run["cxt_toks_test"]
-        self.y_test = run["y_test"]
+        #self.cxt_toks_train, self.y_train = run["cxt_toks_train"], run["y_train"]
+        self.cxt_toks_test, self.y_test = run["cxt_toks_test"], run["y_test"]
         self.facts_test, self.foils_test = run["facts_test"], run["foils_test"]
-        self.hs_dev, self.y_dev = run["X_val"], run["y_val"]
-        
-        # Select samples to use to compute distributions based on source
-        #self.cxt_toks = self.get_eval_contexts(source)
+
+        # Load val set hs
+        hs_val, y_val = run["X_val"], run["y_val"]
+        self.l0_hs = torch.tensor(hs_val[y_val == 0], dtype=self.torch_dtype)
+        self.l1_hs = torch.tensor(hs_val[y_val == 1], dtype=self.torch_dtype)
+
+        # Select samples to use to compute distributions based on eval_source
+        #self.cxt_toks = self.get_eval_contexts(model_name, eval_source)
 
         # Delete cxts for memory
         #self.gen_cxt_toks = None
+        #self.cxt_toks_train = None
         #self.cxt_toks_test = None
+        #self.y_train = None
+        #self.y_test = None
 
     #########################################
     # Tokenizer specific new word tokens    #
     #########################################
+    #TODO: ALL OF THIS SHOULD BE MOVED TO UTILS SAME AS MT DISTRIB
     def get_gpt2_new_word_tokens(self):
         pattern = re.compile("^[\W][^a-zA-Z]*")
 
@@ -220,15 +238,42 @@ class MultiTokenIntervenor:
     #########################################
     # Data handling                         #
     #########################################
-    def get_eval_contexts(self, source, max_nsamples=MAX_N_CXTS):
-        if source in ["gen_ancestral_concept", "gen_nucleus_concept", 
+    def get_eval_contexts(self, model_name, eval_source, max_nsamples=MAX_N_CXTS):
+        if eval_source in ["gen_ancestral_concept", "gen_nucleus_concept", 
                       "gen_ancestral_all", "gen_nucleus_all"]:
             padded_cxt_toks = pad_cxt_list(self.gen_cxt_toks, max_nsamples)
-            return padded_cxt_toks
-        elif source == "natural_concept":
-            return torch.from_numpy(self.cxt_toks_test)
+        elif eval_source == "train_all":
+            sub_cxt_toks_train = filter_cxt_toks_by_length(
+                model_name, self.cxt_toks_train, 
+                cxt_max_length_pct=CXT_MAX_LENGTH_PCT
+            )
+            padded_cxt_toks = torch.from_numpy(sub_cxt_toks_train)
+        elif eval_source == "test_all":
+            sub_cxt_toks_test = filter_cxt_toks_by_length(
+                model_name, self.cxt_toks_test, 
+                cxt_max_length_pct=CXT_MAX_LENGTH_PCT
+            )
+            padded_cxt_toks = torch.from_numpy(sub_cxt_toks_test)
+        elif eval_source == "train_concept":
+            concept_cxt_toks = self.cxt_toks_train[np.isin(self.y_train, [0,1])]
+            sub_concept_cxt_toks = filter_cxt_toks_by_length(
+                model_name, concept_cxt_toks, 
+                cxt_max_length_pct=CXT_MAX_LENGTH_PCT
+            )
+            padded_cxt_toks = torch.from_numpy(sub_concept_cxt_toks)
+        elif eval_source == "test_concept":
+            concept_cxt_toks = self.cxt_toks_test[np.isin(self.y_test, [0,1])]
+            sub_concept_cxt_toks = filter_cxt_toks_by_length(
+                model_name, concept_cxt_toks, 
+                cxt_max_length_pct=CXT_MAX_LENGTH_PCT
+            )
+            padded_cxt_toks = torch.from_numpy(sub_concept_cxt_toks)
         else: 
-            raise ValueError(f"Evaluation context source {source} invalid")
+            raise ValueError(f"Evaluation context eval_source {eval_source} invalid")
+        logging.info(
+            f"Total contexts to sample from: {padded_cxt_toks.shape[0]}"
+        )
+        return padded_cxt_toks
 
     def sample_filtered_contexts(self):
         idx = torch.randperm(self.cxt_toks.shape[0])
@@ -238,6 +283,45 @@ class MultiTokenIntervenor:
     #########################################
     # Probability computations              #
     #########################################
+    def compute_do_qxhs(self,
+        do_type, cxt_hidden_state, n_ntok_H, batch_tokens):
+        """ input dimensions:
+        - do_type: ["c=0", "c=1"]
+        - cxt_hidden_state: 1 x d 
+        - n_ntok_H: bs x max_ntokens x d
+        - batch_tokens: bs x max_n_tokens 
+
+        output: tensor word probabilities
+        - batch_word_probs: msamples x bs
+        """
+        if do_type == "c=0":
+            hpars = self.l0_hs
+        elif do_type == "c=1":
+            hpars = self.l1_hs
+        else:
+            raise ValueError(f"Incorrect do_type: {do_type}")
+
+        # intervention on first hs
+        # shape: (msamples x d)
+        first_hs_int = intervene_first_h(
+            cxt_hidden_state, "hpar", self.msamples, 
+            hpars, self.P, self.I_P, self.device
+        )
+
+        # shape: msamples x V
+        first_log_pxh = compute_log_pxh_batch(first_hs_int, self.V)
+        # shape: bs x max_ntokens x V
+        next_log_pxh = compute_log_pxh_batch(n_ntok_H, self.V)
+
+        # batch_word_probs: msamples x bs
+        batch_word_probs = compute_m_p_words(
+            batch_tokens, first_log_pxh, next_log_pxh,
+            self.tokenizer.pad_token_id, 
+            self.new_word_tokens, self.device
+        )
+        return batch_word_probs
+
+    #TODO: SAME AS IN DISTRIBUTOR, SHOULD MOVE TO SHARED UTILS
     def compute_qxhs(self,
         cxt_hidden_state, n_ntok_H, method, batch_tokens):
         """ input dimensions:
@@ -269,6 +353,7 @@ class MultiTokenIntervenor:
         )
         return batch_word_probs
     
+    #TODO: SAME AS IN DISTRIBUTOR, SHOULD MOVE TO SHARED UTILS
     def compute_pxhs(self, cxt_hidden_state, batch_hidden_states, batch_tokens):
         """ In:
         - batch_tokens: bs x max_ntok
@@ -296,81 +381,92 @@ class MultiTokenIntervenor:
         )
         return batch_word_probs
 
-    def compute_pxh_batch_handler(self, method, batch_tokens, 
-        cxt_hidden_state, batch_hidden_states):
-        """ In:
-        - batch_tokens: bs x max_ntok
-        - cxt_hidden_state: 1 x d
-        - batch_hidden_states: bs x max_ntok x d
+    def compute_all_intervention_distribs(
+        self, cxt_hidden_state, pkv_batch_hs, batch_tokens
+    ):
+        """ Computes all interventional distributions and 
+        outputs each in a 2-dimensional tensor
         """
-        if method in ["hbot", "hpar"]:
-            batch_word_probs = self.compute_qxhs(
-                cxt_hidden_state, batch_hidden_states, method, 
-                batch_tokens
-            )
-        elif method == "h":
-            batch_word_probs = self.compute_pxhs(
-                cxt_hidden_state, batch_hidden_states, batch_tokens
-            )
-        else:
-            raise ValueError(f"Incorrect method arg")
-        return batch_word_probs
+        # original p(x|h): 1 x 2
+        p_x_mid_h = self.compute_pxhs(
+            cxt_hidden_state, pkv_batch_hs, batch_tokens
+        )
+        # qbot(x|hbot): msamples x 2
+        q_x_mid_hbot = self.compute_qxhs(
+            cxt_hidden_state, pkv_batch_hs, "hpar", 
+            batch_tokens
+        )
+        # p(x | hbot, do(C=0)): msamples x 2
+        do_c0_word_probs = self.compute_do_qxhs(
+            "c=0", cxt_hidden_state, pkv_batch_hs, batch_tokens
+        )
+        # p(x | hbot, do(C=1)): msamples x 2 
+        do_c1_word_probs = self.compute_do_qxhs(
+            "c=1", cxt_hidden_state, pkv_batch_hs, batch_tokens
+        )
+        return (
+            p_x_mid_h.squeeze(0),
+            q_x_mid_hbot.mean(0),
+            do_c0_word_probs.mean(0),
+            do_c1_word_probs.mean(0)
+        )
             
-    def create_batch_pkv(self, batch_nwords, cxt_pkv, batch_size_pkv):
-        if (batch_nwords < self.batch_size or 
-            batch_size_pkv is None):
-            return duplicate_pkv(cxt_pkv, batch_nwords)
+    @staticmethod
+    def score_interventions(y: int, 
+        orig: torch.tensor, erased: torch.tensor, 
+        do_c0: torch.tensor, do_c1: torch.tensor
+    ) -> dict:
+        """ Scores word probabilities. 
+        orig, erased, do_c0 and d0_c1 have shape (2)
+        where position 0 is the probability of the fact word
+        and position 1 is the probability of the foil word
+        """
+        # fact > foil
+        base_correct = orig[0] > orig[1]
+        # fact > foil
+        erased_correct = erased[0] > erased[1]
+        if y == 0:
+            # fact is c=0, foil is c=1
+            do_c0_correct = do_c0[0] > do_c0[1] # c=0 > c=1
+            do_c1_correct = do_c0[1] > do_c0[0] # c=1 > c=0
+        elif y == 1:
+            # fact is c=1, foil is c=0
+            do_c0_correct = do_c0[1] > do_c0[0] # c=0 > c=1
+            do_c1_correct = do_c0[0] > do_c0[1] # c=1 > c=0
         else:
-            return batch_size_pkv
-
-    def compute_batch_p_words(self, batch_tokens, cxt_pkv, 
-        batch_size_pkv, cxt_hidden_state, method): 
-        batch_tokens = batch_tokens.to(self.device)
-        
-        dup_pkv = self.create_batch_pkv(
-            batch_tokens.shape[0], cxt_pkv, batch_size_pkv
+            raise ValueError(f"Incorrect label y: {y}")
+        return dict(
+            y = y,
+            base_correct = base_correct.item(),
+            erased_correct = erased_correct.item(),
+            do_c0_correct = do_c0_correct.item(),
+            do_c1_correct = do_c1_correct.item()
         )
 
-        #with torch.no_grad():
+    def intervene_and_score(self, y, fact, foil, cxt_hidden_state, cxt_pkv):
+        batch_tokens = torch.tensor(
+            list(zip_longest(*[fact, foil], 
+                fillvalue=self.tokenizer.pad_token_id))
+        ).T.to(self.device)
+
+        batch_size_pkv = duplicate_pkv(cxt_pkv, batch_tokens.shape[0])
+
         pkv_output = self.model(
             input_ids=batch_tokens, 
             #attention_mask=attention_mask, 
             labels=batch_tokens,
             output_hidden_states=True,
-            past_key_values=dup_pkv
+            past_key_values=batch_size_pkv
         )
 
         pkv_batch_hs = pkv_output["hidden_states"][-1]
-        batch_word_probs = self.compute_pxh_batch_handler(
-            method, batch_tokens, cxt_hidden_state, pkv_batch_hs
+        orig, erased, do_c0, do_c1 = self.compute_all_intervention_distribs(
+            cxt_hidden_state, pkv_batch_hs, batch_tokens
         )
-        return batch_word_probs
+        scores = self.score_interventions(y, orig, erased, do_c0, do_c1)
+        return scores
 
-    def compute_token_list_word_probs(self, token_list, cxt_hidden_state, 
-        cxt_pkv, method):
-        tl_batched = torch.tensor(
-            list(zip_longest(*token_list, fillvalue=self.tokenizer.pad_token_id))
-        ).T
-
-        ds = CustomDataset(tl_batched)
-        dl = DataLoader(dataset=ds, batch_size=self.batch_size)
-
-        if tl_batched.shape[0] > self.batch_size:
-            batch_size_pkv = duplicate_pkv(cxt_pkv, self.batch_size)
-        else:
-            batch_size_pkv = None
-
-        tl_word_probs = []
-        for i, batch_tokens in enumerate(dl):
-
-            batch_word_probs = self.compute_batch_p_words(
-                batch_tokens, cxt_pkv, batch_size_pkv, 
-                cxt_hidden_state, method
-            )
-            tl_word_probs.append(batch_word_probs)
-        
-        return torch.hstack(tl_word_probs).cpu().numpy()
-
+    #TODO: SAME AS MultiTokenDistribor move to utils
     def compute_cxt_pkv_h(self, cxt):
         """ Takes a context string and outputs past key values
         and the hidden state corresponding to last token of 
@@ -394,70 +490,29 @@ class MultiTokenIntervenor:
         cxt_hidden_state = cxt_output["hidden_states"][-1][:, -1, :]
         return cxt_pkv, cxt_hidden_state
 
-    def compute_lemma_probs(self, lemma_samples, method, outdir, pad_token=-1):
-        l0_probs, l1_probs, other_probs = [], [], []
-        for i, cxt_pad in enumerate(tqdm(lemma_samples)):
+    def compute_intervention_eval(self, samples, pad_token=-1):
+        #TODO: add application of nsamples
+        scores = []
+        for i, (cxt_pad, y, fact, foil) in enumerate(tqdm(samples)):
+
             cxt = cxt_pad[cxt_pad != pad_token]
 
-            logging.info(f"---New eval context: {self.tokenizer.decode(cxt)}---")
+            logging.info(
+                f"---New eval context: {self.tokenizer.decode(cxt)}---"
+            )
 
-            #start = time.time()
             with torch.no_grad():
-                with torch.autocast(device_type="cuda", dtype=self.torch_dtype, enabled=True):
+                with torch.autocast(
+                    device_type="cuda", dtype=self.torch_dtype, enabled=True
+                ):
                     cxt_pkv, cxt_hidden_state = self.compute_cxt_pkv_h(cxt)
 
-                    l0_word_probs = self.compute_token_list_word_probs(self.l0_tl, 
-                        cxt_hidden_state, cxt_pkv, method)
+                    sample_score = self.intervene_and_score(
+                        y, fact, foil, cxt_hidden_state, cxt_pkv
+                    )
                     torch.cuda.empty_cache()
-                    l1_word_probs = self.compute_token_list_word_probs(self.l1_tl, 
-                        cxt_hidden_state, cxt_pkv, method)
-                    torch.cuda.empty_cache()
-                    other_word_probs = self.compute_token_list_word_probs(self.other_tl, 
-                        cxt_hidden_state, cxt_pkv, method)
-                    torch.cuda.empty_cache()
-            #end = time.time()
-            #pkv_time = end - start
+                    
+            scores.append(sample_score)
 
-            export_path = os.path.join(
-                outdir, 
-                f"word_probs_sample_{i}.pkl"
-            )            
-            with open(export_path, 'wb') as f:
-                pickle.dump(
-                    (l0_word_probs, l1_word_probs, other_word_probs), f, 
-                    protocol=pickle.HIGHEST_PROTOCOL
-                )
-                        
-            l0_probs.append(l0_word_probs)
-            l1_probs.append(l1_word_probs)
-            other_probs.append(other_word_probs)
+        return scores
 
-        return l0_probs, l1_probs, other_probs
-
-    def compute_pxs(self, htype, cxts):
-        """ Computes three possible distributions:
-        q(x | hbot), q(x | hpar), p(x | h)
-        """
-        htype_outdir = os.path.join(
-            self.outdir, 
-            f"h_distribs/{htype}"
-        )
-        os.makedirs(htype_outdir, exist_ok=self.exist_ok)   
-
-        if htype == "q_x_mid_hpar": 
-            return self.compute_lemma_probs(cxts, "hbot", htype_outdir)
-        elif htype == "q_x_mid_hbot":
-            return self.compute_lemma_probs(cxts, "hpar", htype_outdir)
-        elif htype == "p_x_mid_h":
-            return self.compute_lemma_probs(cxts, "h", htype_outdir)
-        else:
-            raise ValueError(f"Incorrect htype: {htype}")
-
-    def compute_all_pxs(self):
-        assert self.nsamples is not None
-        n_cxts = self.sample_filtered_contexts()
-
-        q_x_mid_hpar = self.compute_pxs("q_x_mid_hpar", n_cxts)
-        q_x_mid_hbot = self.compute_pxs("q_x_mid_hbot", n_cxts)
-        p_x_mid_h = self.compute_pxs("p_x_mid_h", n_cxts)
-        return q_x_mid_hpar, q_x_mid_hbot, p_x_mid_h

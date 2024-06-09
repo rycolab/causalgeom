@@ -44,14 +44,14 @@ def get_run_path_info(run_path):
     run_id = run_path_parts[-1][-27:-4]
     return run_output_dir, run_id
 
-def get_mt_eval_directory(run_path, concept, model_name, proj_source,
-    output_folder, eval_source, iteration):
+def get_eval_directory(eval_type, run_path, concept, model_name, 
+    proj_source, output_folder, eval_source, iteration):
     
     run_output_dir, run_id = get_run_path_info(run_path)
 
     outdir = os.path.join(
         OUT, 
-        f"mt_eval/{output_folder}/{concept}/{model_name}/"
+        f"{eval_type}/{output_folder}/{concept}/{model_name}/"
         f"rundir_{run_output_dir}/proj_source_{proj_source}/"
         f"run_{run_id}/eval_source_{eval_source}/"
         f"evaliter_{iteration}"

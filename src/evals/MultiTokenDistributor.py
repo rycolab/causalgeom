@@ -110,9 +110,11 @@ class MultiTokenDistributor:
         assert run["config"]['concept'] == concept, "Run concept doesn't match"
 
         # directory handling
-        self.outdir = get_mt_eval_directory(
-            run_path, concept, model_name, self.proj_source,
-            output_folder_name, eval_source, iteration)
+        self.outdir = get_eval_directory(
+            "mt_eval", run_path, concept, model_name, 
+            self.proj_source, output_folder_name, 
+            eval_source, iteration
+        )
         os.makedirs(self.outdir, exist_ok=self.exist_ok)
         logging.info(f"Created outdir: {self.outdir}")
 
