@@ -39,12 +39,17 @@ from evals.mi_distributor_utils import get_nucleus_arg, \
         intervene_first_h, compute_log_pxh_batch, compute_m_p_words,\
             compute_p_words, filter_cxt_toks_by_length
 
-from utils.lm_loaders import SUPPORTED_AR_MODELS, GPT2_LIST
+from utils.lm_loaders import SUPPORTED_AR_MODELS, GPT2_LIST,\
+    get_max_cxt_length
 from evals.mi_intervenor_utils import prep_int_generated_data
 from evals.eval_utils import load_run_Ps, load_run_output, renormalize
 from data.spacy_wordlists.embedder import load_concept_token_lists
 from utils.lm_loaders import get_model, get_tokenizer, get_V, GPT2_LIST
 from utils.cuda_loaders import get_device
+from utils.dataset_loaders import load_processed_data
+
+
+
 
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
@@ -91,6 +96,8 @@ class MultiTokenIntervenor:
                  torch_dtype=torch.float32, # torch data type to use for eval
                 ):
 
+        self.model_name = model_name
+        self.concept = concept
         self.nsamples = nsamples
         self.msamples = msamples
         self.nwords = nwords
@@ -110,13 +117,13 @@ class MultiTokenIntervenor:
         assert run["config"]['concept'] == concept, "Run concept doesn't match"
 
         # directory handling
-        self.outdir = get_eval_directory(
-            "int_eval", run_path, concept, model_name, 
-            self.proj_source, output_folder_name, 
-            int_source, iteration
-        )
-        os.makedirs(self.outdir, exist_ok=self.exist_ok)
-        logging.info(f"Created outdir: {self.outdir}")
+        #self.outdir = get_eval_directory(
+        #    "int_eval", run_path, concept, model_name, 
+        #    self.proj_source, output_folder_name, 
+        #    int_source, iteration
+        #)
+        #os.makedirs(self.outdir, exist_ok=self.exist_ok)
+        #logging.info(f"Created outdir: {self.outdir}")
 
         # Load model
         self.device = get_device()
@@ -138,52 +145,30 @@ class MultiTokenIntervenor:
         self.V = get_V(
             model_name, model=self.model, numpy_cpu=False
         ).clone().type(self.torch_dtype).to(self.device)
-        self.l0_tl, self.l1_tl, other_tl_full = load_concept_token_lists(
-            concept, model_name, single_token=False
-        )
-
-        # subsample other words
-        random.shuffle(other_tl_full)
-        self.other_tl = other_tl_full[:self.n_other_words]
-
-        if self.nwords is not None:
-            logging.warn(f"Applied nwords={self.nwords}, intended for DEBUGGING ONLY")
-            random_start = random.randint(0, len(self.l0_tl)-self.nwords)
-            self.l0_tl = self.l0_tl[random_start:random_start+self.nwords]
-            self.l1_tl = self.l1_tl[random_start:random_start+self.nwords]
 
         # Load generated samples
-        #TODO: this is a bit messy, figure it out
-        if int_source in ["train_all", "train_concept", "test_all", "test_concept"]:
-            nucleus = get_nucleus_arg(self.proj_source)
-        elif int_source in ["gen_ancestral_all", "gen_ancestral_concept", "gen_nucleus_all", "gen_nucleus_concept"]:
-            nucleus = get_nucleus_arg(int_source)
-        else:
-            raise NotImplementedError(f"int_source {int_source} not supported")
+        nucleus = get_nucleus_arg(self.proj_source)
         self.gen_all_hs = prep_int_generated_data(
-            model_name, concept, nucleus, int_source, self.torch_dtype,
-            CXT_MAX_LENGTH_PCT, MAX_N_CXTS, MAX_N_ALL_HS
+            model_name, concept, nucleus, self.torch_dtype,
+            MAX_N_ALL_HS
         )
 
         # Load test set samples
         #self.cxt_toks_train, self.y_train = run["cxt_toks_train"], run["y_train"]
-        self.cxt_toks_test, self.y_test = run["cxt_toks_test"], run["y_test"]
+        self.cxt_toks_test, self.ys_test = run["cxt_toks_test"], run["y_test"]
         self.facts_test, self.foils_test = run["facts_test"], run["foils_test"]
+        self.hs_val, self.y_val = run["X_val"], run["y_val"]
 
-        # Load val set hs
-        hs_val, y_val = run["X_val"], run["y_val"]
-        self.l0_hs = torch.tensor(hs_val[y_val == 0], dtype=self.torch_dtype)
-        self.l1_hs = torch.tensor(hs_val[y_val == 1], dtype=self.torch_dtype)
-
-        # Select samples to use to compute distributions based on eval_source
-        #self.cxt_toks = self.get_eval_contexts(model_name, eval_source)
+        # Select samples to use 
+        self.test_samples, self.l0_hs, self.l1_hs = self.load_intervention_data(
+            int_source
+        )
 
         # Delete cxts for memory
-        #self.gen_cxt_toks = None
-        #self.cxt_toks_train = None
-        #self.cxt_toks_test = None
-        #self.y_train = None
-        #self.y_test = None
+        self.cxt_toks_test, self.ys_test = None, None
+        self.facts_test, self.foils_test = None, None
+        self.hs_val, self.y_val = None, None
+        
 
     #########################################
     # Tokenizer specific new word tokens    #
@@ -238,48 +223,108 @@ class MultiTokenIntervenor:
     #########################################
     # Data handling                         #
     #########################################
-    def get_eval_contexts(self, model_name, eval_source, max_nsamples=MAX_N_CXTS):
-        if eval_source in ["gen_ancestral_concept", "gen_nucleus_concept", 
-                      "gen_ancestral_all", "gen_nucleus_all"]:
-            padded_cxt_toks = pad_cxt_list(self.gen_cxt_toks, max_nsamples)
-        elif eval_source == "train_all":
-            sub_cxt_toks_train = filter_cxt_toks_by_length(
-                model_name, self.cxt_toks_train, 
-                cxt_max_length_pct=CXT_MAX_LENGTH_PCT
+    def load_intervention_data(self, int_source):
+        logging.info(f"Loading data with int_source: {int_source}")
+        if int_source == "test":
+            test_samples = self.process_gen_test_samples()
+            l0_hs = torch.tensor(
+                self.hs_val[self.y_val == 0], dtype=self.torch_dtype
             )
-            padded_cxt_toks = torch.from_numpy(sub_cxt_toks_train)
-        elif eval_source == "test_all":
-            sub_cxt_toks_test = filter_cxt_toks_by_length(
-                model_name, self.cxt_toks_test, 
-                cxt_max_length_pct=CXT_MAX_LENGTH_PCT
+            l1_hs = torch.tensor(
+                self.hs_val[self.y_val == 1], dtype=self.torch_dtype
             )
-            padded_cxt_toks = torch.from_numpy(sub_cxt_toks_test)
-        elif eval_source == "train_concept":
-            concept_cxt_toks = self.cxt_toks_train[np.isin(self.y_train, [0,1])]
-            sub_concept_cxt_toks = filter_cxt_toks_by_length(
-                model_name, concept_cxt_toks, 
-                cxt_max_length_pct=CXT_MAX_LENGTH_PCT
+        elif int_source == "natural":
+            test_samples, l0_hs, l1_hs = self.load_and_prep_natural_data(
+                self.model_name, self.concept
             )
-            padded_cxt_toks = torch.from_numpy(sub_concept_cxt_toks)
-        elif eval_source == "test_concept":
-            concept_cxt_toks = self.cxt_toks_test[np.isin(self.y_test, [0,1])]
-            sub_concept_cxt_toks = filter_cxt_toks_by_length(
-                model_name, concept_cxt_toks, 
-                cxt_max_length_pct=CXT_MAX_LENGTH_PCT
-            )
-            padded_cxt_toks = torch.from_numpy(sub_concept_cxt_toks)
-        else: 
-            raise ValueError(f"Evaluation context eval_source {eval_source} invalid")
-        logging.info(
-            f"Total contexts to sample from: {padded_cxt_toks.shape[0]}"
+        else:
+            raise NotImplementedError(f"int_source: {int_source} not supported")
+        return test_samples, l0_hs, l1_hs
+
+    #########################################
+    # Natural Data Processing               #
+    #########################################
+    def load_and_prep_natural_data(self, model_name, concept):
+        X, U, y, facts, foils, cxt_toks = load_processed_data(
+            concept, model_name
         )
-        return padded_cxt_toks
 
-    def sample_filtered_contexts(self):
-        idx = torch.randperm(self.cxt_toks.shape[0])
-        sample_cxt_toks = self.cxt_toks[idx[:self.nsamples]]
-        return sample_cxt_toks
+        nobs = X.shape[0]
+        idx = np.arange(0, nobs)
+        np.random.shuffle(idx)
 
+        # test set samples
+        y_test = y[idx[:self.nsamples]]
+        facts_test = facts[idx[:self.nsamples]]
+        foils_test = foils[idx[:self.nsamples]]
+        cxt_toks_test = torch.from_numpy(cxt_toks[idx[:self.nsamples]])
+        test_samples = [
+            x for x in zip(cxt_toks_test, y_test, facts_test, foils_test)
+        ]
+        
+        # dev hs
+        hs_val = X[idx[self.nsamples:]]
+        ys_val = y[idx[self.nsamples:]]
+        l0_hs = torch.tensor(hs_val[ys_val == 0], dtype=self.torch_dtype)
+        l1_hs = torch.tensor(hs_val[ys_val == 1], dtype=self.torch_dtype)
+        return test_samples, l0_hs, l1_hs
+
+    #########################################
+    # Generated Data Processing             #
+    #########################################
+    @staticmethod
+    def filter_gens_by_concept(cxt_toks, facts, foils, ys):
+        """ filters samples with y in [0,1,2] to y in [0,1] 
+        """
+        concept_filter = np.isin(ys, [0,1])
+        c_cxt_toks = cxt_toks[concept_filter]
+        c_facts = facts[concept_filter]
+        c_foils = foils[concept_filter]
+        c_ys = ys[concept_filter]
+        return c_cxt_toks, c_facts, c_foils, c_ys
+
+    @staticmethod
+    def filter_gens_by_length(cxt_toks, facts, foils, ys, 
+        model_name, cxt_max_length_pct):
+        max_cxt_length = get_max_cxt_length(model_name)
+        cxt_size_limit = int(max_cxt_length * cxt_max_length_pct)
+        cxt_toks_notpad_count = (cxt_toks != -1).sum(1)
+        cxt_toks_notpad_filter = cxt_toks_notpad_count < cxt_size_limit
+        cxt_toks_sub = cxt_toks[cxt_toks_notpad_filter]
+        facts_sub = facts[cxt_toks_notpad_filter]
+        foils_sub = foils[cxt_toks_notpad_filter]
+        ys_sub = ys[cxt_toks_notpad_filter]
+        return cxt_toks_sub, facts_sub, foils_sub, ys_sub
+
+    @staticmethod
+    def subsample_gens(cxt_toks, facts, foils, ys, nsamples):
+        idx = np.arange(ys.shape[0])
+        np.random.shuffle(idx)
+        n_cxt_toks_test = torch.from_numpy(cxt_toks[idx[:nsamples]])
+        n_y_test = ys[idx[:nsamples]]
+        n_facts_test = facts[idx[:nsamples]]
+        n_foils_test = foils[idx[:nsamples]]
+
+        test_nsamples = [
+            x for x in zip(n_cxt_toks_test, n_y_test, n_facts_test, n_foils_test)
+        ]
+        return test_nsamples
+        
+    def process_gen_test_samples(self):
+        cxt_toks, facts, foils, ys = self.filter_gens_by_concept(
+            self.cxt_toks_test, self.facts_test, 
+            self.foils_test, self.ys_test
+        )
+        cxt_toks, facts, foils, ys = self.filter_gens_by_length(
+            cxt_toks, facts, foils, ys, 
+            self.model_name, CXT_MAX_LENGTH_PCT
+        )
+        test_samples = self.subsample_gens(
+            cxt_toks, facts, foils, ys, 
+            self.nsamples
+        )
+        return test_samples
+    
     #########################################
     # Probability computations              #
     #########################################
@@ -490,10 +535,9 @@ class MultiTokenIntervenor:
         cxt_hidden_state = cxt_output["hidden_states"][-1][:, -1, :]
         return cxt_pkv, cxt_hidden_state
 
-    def compute_intervention_eval(self, samples, pad_token=-1):
-        #TODO: add application of nsamples
+    def compute_intervention_eval(self, pad_token=-1):
         scores = []
-        for i, (cxt_pad, y, fact, foil) in enumerate(tqdm(samples)):
+        for i, (cxt_pad, y, fact, foil) in enumerate(tqdm(self.test_samples)):
 
             cxt = cxt_pad[cxt_pad != pad_token]
 

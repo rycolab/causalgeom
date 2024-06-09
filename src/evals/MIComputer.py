@@ -30,7 +30,7 @@ from paths import DATASETS, OUT, RESULTS, MODELS
 
 
 from utils.lm_loaders import SUPPORTED_AR_MODELS
-from evals.mi_distributor_utils import get_mt_eval_directory, get_run_path_info
+from evals.mi_distributor_utils import get_eval_directory, get_run_path_info
 from evals.mi_computer_utils import compute_all_MIs
 from evals.eval_utils import load_run_output
 
@@ -55,8 +55,8 @@ class MIComputer:
         run = load_run_output(run_path)
         self.proj_source = run["proj_source"]
 
-        outdir = get_mt_eval_directory(
-            run_path, concept, model_name, self.proj_source,
+        outdir = get_eval_directory(
+            "mt_eval", run_path, concept, model_name, self.proj_source,
             output_folder_name, eval_source, iteration
         )
         self.h_distribs_dir = os.path.join(
