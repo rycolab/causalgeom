@@ -14,8 +14,8 @@ import pandas as pd
 import pickle
 import random 
 
-#sys.path.append('..')
-sys.path.append('./src/')
+sys.path.append('..')
+#sys.path.append('./src/')
 
 from paths import DATASETS, OUT, RESULTS, MODELS
 
