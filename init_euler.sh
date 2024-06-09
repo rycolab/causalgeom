@@ -1,6 +1,6 @@
 #!/bin/bash
 
-module load eth_proxy gcc/8.2.0 python_gpu/3.11.2
+#module load eth_proxy gcc/8.2.0 python_gpu/3.11.2
 #eval "$(micromamba shell hook --shell )"
 #micromamba activate env2
 
