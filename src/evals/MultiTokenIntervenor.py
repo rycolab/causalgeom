@@ -241,7 +241,7 @@ class MultiTokenIntervenor:
     #########################################
     # Natural Data Processing               #
     #########################################
-    def load_and_prep_natural_data(self, model_name, concept):
+    def load_and_prep_natural_data(self, model_name, concept, pad_token=-1):
         X, U, y, facts, foils, cxt_toks = load_processed_data(
             concept, model_name
         )
@@ -252,17 +252,18 @@ class MultiTokenIntervenor:
 
         # test set samples
         y_test = y[idx[:self.nsamples]]
-        facts_test = facts[idx[:self.nsamples]]
-        foils_test = foils[idx[:self.nsamples]]
+        facts_test_pad = facts[idx[:self.nsamples]]
+        facts_test = [x[x!=pad_token] for x in facts_test_pad]
+        foils_test_pad = foils[idx[:self.nsamples]]
+        foils_test = [x[x!=pad_token] for x in foils_test_pad]
         cxt_toks_test = torch.from_numpy(cxt_toks[idx[:self.nsamples]])
         test_samples = [
             x for x in zip(cxt_toks_test, y_test, facts_test, foils_test)
         ]
         
         # dev hs
-        #TODO: add a max here 
-        hs_val = X[idx[self.nsamples:]]
-        ys_val = y[idx[self.nsamples:]]
+        hs_val = X[idx[self.nsamples:self.nsamples + MAX_N_ALL_HS]]
+        ys_val = y[idx[self.nsamples:self.nsamples + MAX_N_ALL_HS]]
         l0_hs = torch.tensor(hs_val[ys_val == 0], dtype=self.torch_dtype)
         l1_hs = torch.tensor(hs_val[ys_val == 1], dtype=self.torch_dtype)
         return test_samples, l0_hs, l1_hs
@@ -295,13 +296,15 @@ class MultiTokenIntervenor:
         return cxt_toks_sub, facts_sub, foils_sub, ys_sub
 
     @staticmethod
-    def subsample_gens(cxt_toks, facts, foils, ys, nsamples):
+    def subsample_gens(cxt_toks, facts, foils, ys, nsamples, pad_token=-1):
         idx = np.arange(ys.shape[0])
         np.random.shuffle(idx)
         n_cxt_toks_test = torch.from_numpy(cxt_toks[idx[:nsamples]])
         n_y_test = ys[idx[:nsamples]]
-        n_facts_test = facts[idx[:nsamples]]
-        n_foils_test = foils[idx[:nsamples]]
+        n_facts_test_pad = facts[idx[:nsamples]]
+        n_facts_test = [x[x!=pad_token] for x in n_facts_test_pad]
+        n_foils_test_pad = foils[idx[:nsamples]]
+        n_foils_test = [x[x!=pad_token] for x in n_foils_test_pad]
 
         test_nsamples = [
             x for x in zip(n_cxt_toks_test, n_y_test, n_facts_test, n_foils_test)
@@ -434,30 +437,37 @@ class MultiTokenIntervenor:
         p_x_mid_h = self.compute_pxhs(
             cxt_hidden_state, pkv_batch_hs, batch_tokens
         )
+        # corr erased p(x|hbot): 1x2
+        cxt_hbot = cxt_hidden_state @ self.I_P
+        p_x_mid_hbot = self.compute_pxhs(
+            cxt_hbot, pkv_batch_hs, batch_tokens
+        )
         # qbot(x|hbot): msamples x 2
         q_x_mid_hbot = self.compute_qxhs(
             cxt_hidden_state, pkv_batch_hs, "hpar", 
             batch_tokens
         )
         # p(x | hbot, do(C=0)): msamples x 2
-        do_c0_word_probs = self.compute_do_qxhs(
+        p_x_mid_do0 = self.compute_do_qxhs(
             "c=0", cxt_hidden_state, pkv_batch_hs, batch_tokens
         )
         # p(x | hbot, do(C=1)): msamples x 2 
-        do_c1_word_probs = self.compute_do_qxhs(
+        p_x_mid_do1 = self.compute_do_qxhs(
             "c=1", cxt_hidden_state, pkv_batch_hs, batch_tokens
         )
         return (
             p_x_mid_h.squeeze(0),
+            p_x_mid_hbot.squeeze(0),
             q_x_mid_hbot.mean(0),
-            do_c0_word_probs.mean(0),
-            do_c1_word_probs.mean(0)
+            p_x_mid_do0.mean(0),
+            p_x_mid_do1.mean(0)
         )
             
     @staticmethod
     def score_interventions(y: int, 
-        orig: torch.tensor, erased: torch.tensor, 
-        do_c0: torch.tensor, do_c1: torch.tensor
+        p_x_mid_h: torch.tensor, p_x_mid_hbot: torch.tensor,
+        q_x_mid_hbot: torch.tensor, p_x_mid_do0: torch.tensor, 
+        p_x_mid_do1: torch.tensor
     ) -> dict:
         """ Scores word probabilities. 
         orig, erased, do_c0 and d0_c1 have shape (2)
@@ -465,22 +475,25 @@ class MultiTokenIntervenor:
         and position 1 is the probability of the foil word
         """
         # fact > foil
-        base_correct = orig[0] > orig[1]
+        base_correct = p_x_mid_h[0] > p_x_mid_h[1]
         # fact > foil
-        erased_correct = erased[0] > erased[1]
+        corr_erased_correct = p_x_mid_hbot[0] > p_x_mid_hbot[1]
+        # fact > foil
+        erased_correct = q_x_mid_hbot[0] > q_x_mid_hbot[1]
         if y == 0:
             # fact is c=0, foil is c=1
-            do_c0_correct = do_c0[0] > do_c0[1] # c=0 > c=1
-            do_c1_correct = do_c0[1] > do_c0[0] # c=1 > c=0
+            do_c0_correct = p_x_mid_do0[0] > p_x_mid_do0[1] # c=0 > c=1
+            do_c1_correct = p_x_mid_do1[1] > p_x_mid_do1[0] # c=1 > c=0
         elif y == 1:
             # fact is c=1, foil is c=0
-            do_c0_correct = do_c0[1] > do_c0[0] # c=0 > c=1
-            do_c1_correct = do_c0[0] > do_c0[1] # c=1 > c=0
+            do_c0_correct = p_x_mid_do0[1] > p_x_mid_do0[0] # c=0 > c=1
+            do_c1_correct = p_x_mid_do1[0] > p_x_mid_do1[1] # c=1 > c=0
         else:
             raise ValueError(f"Incorrect label y: {y}")
         return dict(
             y = y,
             base_correct = base_correct.item(),
+            corr_erased_correct = corr_erased_correct.item(),
             erased_correct = erased_correct.item(),
             do_c0_correct = do_c0_correct.item(),
             do_c1_correct = do_c1_correct.item()
@@ -503,10 +516,13 @@ class MultiTokenIntervenor:
         )
 
         pkv_batch_hs = pkv_output["hidden_states"][-1]
-        orig, erased, do_c0, do_c1 = self.compute_all_intervention_distribs(
+        p_x_mid_h, p_x_mid_hbot, q_x_mid_hbot, p_x_mid_do0, p_x_mid_do1 = self.compute_all_intervention_distribs(
             cxt_hidden_state, pkv_batch_hs, batch_tokens
         )
-        scores = self.score_interventions(y, orig, erased, do_c0, do_c1)
+        scores = self.score_interventions(
+            y, p_x_mid_h, p_x_mid_hbot, q_x_mid_hbot, 
+            p_x_mid_do0, p_x_mid_do1
+        )
         return scores
 
     #TODO: SAME AS MultiTokenDistribor move to utils
