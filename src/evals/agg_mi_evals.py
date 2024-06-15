@@ -24,15 +24,16 @@ warnings.filterwarnings("ignore")
 
 # %% MI RES
 
-def get_mi_file_paths(mt_eval_run_name):
-    mifolder = os.path.join(RESULTS, f"mis/{mt_eval_run_name}")
+def get_mi_file_paths(mi_dir, mt_eval_run_name):
+    mifolder = os.path.join(RESULTS, f"{mi_dir}/{mt_eval_run_name}")
     mifiles = os.listdir(mifolder)
     mifilepaths = [os.path.join(mifolder, x) for x in mifiles]
     return mifilepaths
 
-mifilepaths_1 = get_mi_file_paths("june2")
-#mifilepaths_2 = get_mi_file_paths("may22")
-mifilepaths = mifilepaths_1# + mifilepaths_2
+mifilepaths_1 = get_mi_file_paths("mis", "june2")
+mifilepaths_2 = get_mi_file_paths("mis", "june9_llamanumbers")
+
+mifilepaths = mifilepaths_1 + mifilepaths_2
 
 #%%
 res_records = []
@@ -53,9 +54,16 @@ df = pd.DataFrame(res_records)
 #df["perc_reconstructed"] = df["reconstructed"] / df["MIz_c_h"]
 
 #%%
-df.groupby(["concept", "model_name", "proj_source", "eval_source"]).count().to_csv(
+df.drop(
+    df[(df["model_name"]=="llama2") & 
+        (df["concept"]=="number") &
+        (df["eval_name"]=="june2")].index,
+    axis=0, inplace=True
+)
+df.groupby(["concept", "model_name", "proj_source", "eval_source", "eval_name"]).count().to_csv(
     os.path.join(RESULTS, "counts.csv")
 )
+
 
 #%%
 df["reconstructed"] = df["MIqbot_c_hbot"] + df["MIqpar_c_hpar"]
@@ -191,6 +199,62 @@ entropy_breakdown.columns = [entcols_name[x] for x in entropy_breakdown.columns]
 entropy_breakdown_grouped = entropy_breakdown.groupby(["Concept", "Model", "Train Source", "Test Source"])
 entropy_breakdown_grouped.mean().reset_index().to_csv(os.path.join(RESULTS, "leace_entropies_mean.csv"), index=False)
 entropy_breakdown_grouped.std().reset_index().to_csv(os.path.join(RESULTS, "leace_entropies_std.csv"), index=False)
+
+#%% CORRELATIONAL
+corrfilepaths = get_mi_file_paths("corr_mis", "corr_june15")
+
+corr_res_records = []
+for mifile in corrfilepaths:
+    with open(mifile, 'rb') as f:      
+        mires = pickle.load(f)
+    corr_res_records.append(mires)
+
+corr_df = pd.DataFrame(corr_res_records)
+
+#%%
+corr_df.groupby(["concept", "model_name", "proj_source", "eval_name"]).count().to_csv(
+    os.path.join(RESULTS, "corr_counts.csv")
+)
+
+#%%
+corr_table_df = corr_df[[
+    'model_name', 'concept', 'proj_source', 
+    #'mi_c_h', 'mi_c_hbot', 'mi_c_hpar', 
+    #'reconstructed', 'encapsulation',
+    #'perc_mi_c_hbot', 'perc_mi_c_hpar',
+    #'perc_encapsulation', 'perc_reconstructed',
+    #'cont_mi', 'stab_mi',  'ent_pxc',
+    #'train_all_Hz_C', 'train_all_Hz_c_mid_hbot', 
+    'train_all_MIz_c_h', 
+    'train_all_MIc_c_hbot', 
+    'train_concept_MIz_c_h',
+    'train_concept_MIc_c_hbot',
+    'test_all_MIz_c_h',
+    'test_all_MIc_c_hbot',
+    'test_concept_MIz_c_h',
+    'test_concept_MIc_c_hbot',
+]]
+
+corr_mi_renames = {
+    "model_name": "Model",
+    "concept": "Concept",
+    "proj_source": "Train Source",
+    'train_all_MIz_c_h': "Train All I(C;H)", 
+    'train_all_MIc_c_hbot': "Train All I(C;Hbot)", 
+    'train_concept_MIz_c_h': "Train Concept I(C;H)",
+    'train_concept_MIc_c_hbot': "Train Concept I(C;Hbot)", 
+    'test_all_MIz_c_h': "Test All I(C;H)", 
+    'test_all_MIc_c_hbot': "Test All I(C;Hbot)", 
+    'test_concept_MIz_c_h': "Test Concept I(C;H)", 
+    'test_concept_MIc_c_hbot': "Test Concept I(C;Hbot)",
+}
+
+
+corr_table_df.columns = [corr_mi_renames[x] for x in corr_table_df.columns]
+corr_table_df_grouped = corr_table_df.groupby(["Concept", "Model", "Train Source"])
+corr_table_df_grouped.mean().reset_index().to_csv(os.path.join(RESULTS, "corr_mis_mean.csv"), index=False)
+corr_table_df_grouped.std().reset_index().to_csv(os.path.join(RESULTS, "corr_mis_std.csv"), index=False)
+
 
 #%% 
 #ent_break_group = entropy_breakdown.groupby(["source", "concept", "model_name"])

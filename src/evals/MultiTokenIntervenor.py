@@ -47,7 +47,7 @@ from data.spacy_wordlists.embedder import load_concept_token_lists
 from utils.lm_loaders import get_model, get_tokenizer, get_V, GPT2_LIST
 from utils.cuda_loaders import get_device
 from utils.dataset_loaders import load_processed_data
-
+from evals.mi_distributor_utils import get_run_path_info
 
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
@@ -79,11 +79,9 @@ class MultiTokenIntervenor:
     def __init__(self, 
                  model_name, # name of AR model 
                  concept, # concept name
-                 int_source, # ["train_all", "train_concept", "test_all", "test_concept", "gen_ancestral_concept", "gen_nucleus_concept", "gen_ancestral_all", "gen_nucleus_all"]
+                 int_source, # ["test", "natural"]
                  nsamples, # number of test set samples
                  msamples, # number of dev set samples for each q computation
-                 nwords, # DEBUG ONLY: number of words to use from token lists
-                 n_other_words, # number of other words
                  run_path, # path of LEACE training run output
                  output_folder_name, # directory for exporting individual distributions
                  iteration, # iteration of the eval for this run
@@ -95,11 +93,13 @@ class MultiTokenIntervenor:
 
         self.model_name = model_name
         self.concept = concept
+        self.int_source = int_source
         self.nsamples = nsamples
         self.msamples = msamples
-        self.nwords = nwords
+        self.run_path = run_path
+        self.output_folder_name = output_folder_name
+        self.iteration = iteration
         self.batch_size = batch_size
-        self.n_other_words = n_other_words
         self.torch_dtype = torch_dtype
 
         # Exist ok
@@ -157,6 +157,7 @@ class MultiTokenIntervenor:
         self.hs_val, self.y_val = run["X_val"], run["y_val"]
 
         # Select samples to use 
+        # TODO: should probably remove "natural" as an option here and just do "test"
         self.test_samples, self.l0_hs, self.l1_hs = self.load_intervention_data(
             int_source
         )
@@ -550,6 +551,15 @@ class MultiTokenIntervenor:
         return cxt_pkv, cxt_hidden_state
 
     def compute_intervention_eval(self, pad_token=-1):
+        run_metadata = {
+            "model_name": self.model_name,
+            "concept": self.concept,
+            "proj_source": self.proj_source,
+            "int_source": self.int_source,
+            "eval_name": self.output_folder_name,
+            "run_path": self.run_path,
+            "iteration": self.iteration,
+        }
         scores = []
         for i, (cxt_pad, y, fact, foil) in enumerate(tqdm(self.test_samples)):
 
@@ -570,7 +580,156 @@ class MultiTokenIntervenor:
                     )
                     torch.cuda.empty_cache()
                     
-            scores.append(sample_score)
+            scores.append(run_metadata | sample_score)
 
         return scores
 
+# %%
+def compute_int(
+    model_name, concept, int_source, nsamples, msamples, 
+    run_path, output_folder_name, iteration, 
+    batch_size, p_new_word=True, exist_ok=False, 
+    torch_dtype=torch.float16):
+
+    # export directory creation
+    run_output_dir, run_id = get_run_path_info(run_path)
+
+    actual_outdir = os.path.join(RESULTS, f"int/{output_folder_name}")
+    os.makedirs(actual_outdir, exist_ok=exist_ok)
+
+    # intervention scoring
+    intervenor = MultiTokenIntervenor(
+        model_name,
+        concept,
+        int_source,
+        nsamples,
+        msamples,
+        run_path,
+        output_folder_name,
+        iteration,
+        batch_size,
+        p_new_word=p_new_word,
+        exist_ok=exist_ok,
+        torch_dtype=torch_dtype
+    )
+
+    scores = intervenor.compute_intervention_eval()
+    scores_df = pd.DataFrame(scores).groupby(
+        ["model_name", "concept", "proj_source", "int_source", "eval_name", "run_path", "iteration", "y"]
+    ).mean().reset_index()
+
+    # export
+    outpath = os.path.join(
+        actual_outdir, 
+        f"intres_{model_name}_{concept}_{intervenor.proj_source}_"
+        f"{run_output_dir}_{output_folder_name}_run_{run_id}_"
+        f"{int_source}_evaliter_{iteration}.csv"
+    )
+    scores_df.to_csv(outpath)
+    logging.info(f"Run intervention scores exported: {outpath}")
+        
+
+#%%#################
+# Main             #
+####################
+def get_args():
+    argparser = argparse.ArgumentParser(description='Formatting Results Tables')
+    argparser.add_argument(
+        "-concept",
+        type=str,
+        choices=["number", "gender", "food", "ambiance", "service", "noise"],
+        help="Concept to create embedded word lists for"
+    )
+    argparser.add_argument(
+        "-model",
+        type=str,
+        choices=SUPPORTED_AR_MODELS,
+        help="Models to create embedding files for"
+    )
+    argparser.add_argument(
+        "-int_source",
+        type=str,
+        choices=["test", "natural"],
+        help=("Which samples to use for eval."
+             "test: test set samples from LEACE train/val/test data, filtered to concept values"
+             "natural: natural data samples")
+    )
+    argparser.add_argument(
+        "-nsamples",
+        type=int,
+        help="Number of samples for outer loops"
+    )
+    argparser.add_argument(
+        "-msamples",
+        type=int,
+        help="Number of samples for inner loops"
+    )
+    argparser.add_argument(
+        "-run_path",
+        type=str,
+        default=None,
+        help="Run to evaluate"
+    )
+    argparser.add_argument(
+        "-out_folder",
+        type=str,
+        default="test",
+        help="Directory for exporting run eval"
+    )
+    argparser.add_argument(
+        "-batch_size",
+        type=int,
+        default=64,
+        help="Batch size for word probability computation"
+    )
+    argparser.add_argument(
+        "-torch_dtype",
+        type=str,
+        choices=["bfloat16", "float16", "float32"],
+        help="Data type to cast all tensors to during evaluation",
+        default="float16"
+    )
+    return argparser.parse_args()
+
+if __name__=="__main__":
+    args = get_args()
+    logging.info(args)
+
+    model_name = args.model
+    concept = args.concept
+    int_source = args.int_source
+    nsamples= args.nsamples
+    msamples = args.msamples
+    run_path = args.run_path
+    output_folder_name = args.out_folder
+    batch_size = args.batch_size
+    nruns = 3
+    p_new_word = True
+    exist_ok = False
+    torch_dtype = get_data_type(args.torch_dtype)
+
+    #model_name = "gpt2-large"
+    #concept = "number"
+    #int_source = "test"
+    #nsamples= 5
+    #msamples = 10
+    #run_path = os.path.join(
+    #    OUT,
+    #    "run_output/june2/number/gpt2-large/gen_ancestral_all/run_leace_number_gpt2-large_gen_ancestral_all_2024-06-02-15:54:03_0_3.pkl"
+    #)
+    #output_folder_name = "int_test"
+    #batch_size = 64
+    #nruns = 1
+    #p_new_word = True
+    #exist_ok = True
+    #torch_dtype = torch.float16
+
+    for i in range(nruns):
+        logging.info(f"Computing intervention eval number {i}")
+        compute_int(
+            model_name, concept, int_source, nsamples, msamples, 
+            run_path, output_folder_name, i, 
+            batch_size, p_new_word=p_new_word, exist_ok=exist_ok, 
+            torch_dtype=torch_dtype
+        )
+    logging.info("Finished exporting all corr eval results.")

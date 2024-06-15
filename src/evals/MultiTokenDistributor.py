@@ -160,10 +160,16 @@ class MultiTokenDistributor:
             nucleus = get_nucleus_arg(eval_source)
         else:
             raise NotImplementedError(f"eval_source {eval_source} not supported")
-        self.gen_all_hs, self.gen_cxt_toks = prep_generated_data(
-            model_name, concept, nucleus, eval_source, self.torch_dtype,
-            CXT_MAX_LENGTH_PCT, MAX_N_CXTS, MAX_N_ALL_HS
-        )
+        
+        # TODO:added if else for CorrMIComputer, should be removed
+        if msamples is not None: 
+            self.gen_all_hs, self.gen_cxt_toks = prep_generated_data(
+                model_name, concept, nucleus, eval_source, self.torch_dtype,
+                CXT_MAX_LENGTH_PCT, MAX_N_CXTS, MAX_N_ALL_HS
+            )
+        else:
+            self.gen_all_hs, self.gen_cxt_toks = None, None
+
 
         # Load test set samples
         self.cxt_toks_train, self.y_train = run["cxt_toks_train"], run["y_train"]
@@ -509,6 +515,7 @@ class MultiTokenDistributor:
         return q_x_mid_hpar, q_x_mid_hbot, p_x_mid_h
     
     def compute_corr_pxhbots(self):
+        #TODO: no longer in use should be deleted
         assert self.nsamples is not None
         n_cxts = self.sample_filtered_contexts()
         p_x_mid_hbot = self.compute_pxs("p_x_mid_hbot", n_cxts)
