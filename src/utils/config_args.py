@@ -176,7 +176,7 @@ def get_train_probes_args():
     argparser.add_argument(
         "-val_nsamples",
         type=int,
-        default=1000,
+        default=10000,
         help="Number of val obs"
     )
     argparser.add_argument(

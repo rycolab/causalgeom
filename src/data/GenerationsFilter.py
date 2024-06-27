@@ -22,7 +22,6 @@ from paths import DATASETS, OUT
 
 from utils.lm_loaders import GPT2_LIST, SUPPORTED_AR_MODELS
 from data.spacy_wordlists.embedder import load_concept_token_lists
-from data.data_utils import sample_filtered_hs
 from data.generation_filter_utils import process_sample
 
 coloredlogs.install(level=logging.INFO)

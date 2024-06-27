@@ -35,7 +35,7 @@ from paths import DATASETS, OUT, RESULTS, MODELS
 
 
 from evals.mi_distributor_utils import prep_generated_data, \
-    get_nucleus_arg, get_mt_eval_directory,\
+    get_nucleus_arg, get_eval_directory,\
         duplicate_pkv, pad_cxt_list, \
         intervene_first_h, compute_log_pxh_batch, compute_m_p_words,\
             compute_p_words, filter_cxt_toks_by_length
@@ -43,8 +43,6 @@ from evals.mi_distributor_utils import prep_generated_data, \
 from utils.lm_loaders import SUPPORTED_AR_MODELS, GPT2_LIST
 from evals.eval_utils import load_run_Ps, load_run_output, renormalize
 from data.spacy_wordlists.embedder import load_concept_token_lists
-#from data.filter_generations import load_generated_hs_wff
-#from data.data_utils import filter_hs_w_ys, sample_filtered_hs
 from utils.lm_loaders import get_model, get_tokenizer, get_V, GPT2_LIST
 from utils.cuda_loaders import get_device
 
@@ -112,9 +110,11 @@ class MultiTokenDistributor:
         assert run["config"]['concept'] == concept, "Run concept doesn't match"
 
         # directory handling
-        self.outdir = get_mt_eval_directory(
-            run_path, concept, model_name, self.proj_source,
-            output_folder_name, eval_source, iteration)
+        self.outdir = get_eval_directory(
+            "mt_eval", run_path, concept, model_name, 
+            self.proj_source, output_folder_name, 
+            eval_source, iteration
+        )
         os.makedirs(self.outdir, exist_ok=self.exist_ok)
         logging.info(f"Created outdir: {self.outdir}")
 
@@ -160,10 +160,16 @@ class MultiTokenDistributor:
             nucleus = get_nucleus_arg(eval_source)
         else:
             raise NotImplementedError(f"eval_source {eval_source} not supported")
-        self.gen_all_hs, self.gen_cxt_toks = prep_generated_data(
-            model_name, concept, nucleus, eval_source, self.torch_dtype,
-            CXT_MAX_LENGTH_PCT, MAX_N_CXTS, MAX_N_ALL_HS
-        )
+        
+        # TODO:added if else for CorrMIComputer, should be removed
+        if msamples is not None: 
+            self.gen_all_hs, self.gen_cxt_toks = prep_generated_data(
+                model_name, concept, nucleus, eval_source, self.torch_dtype,
+                CXT_MAX_LENGTH_PCT, MAX_N_CXTS, MAX_N_ALL_HS
+            )
+        else:
+            self.gen_all_hs, self.gen_cxt_toks = None, None
+
 
         # Load test set samples
         self.cxt_toks_train, self.y_train = run["cxt_toks_train"], run["y_train"]
@@ -509,6 +515,7 @@ class MultiTokenDistributor:
         return q_x_mid_hpar, q_x_mid_hbot, p_x_mid_h
     
     def compute_corr_pxhbots(self):
+        #TODO: no longer in use should be deleted
         assert self.nsamples is not None
         n_cxts = self.sample_filtered_contexts()
         p_x_mid_hbot = self.compute_pxs("p_x_mid_hbot", n_cxts)

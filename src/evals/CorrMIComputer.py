@@ -62,7 +62,7 @@ class CorrMIComputer:
         self.model_name = model_name
         self.concept = concept
         self.nsamples = nsamples
-        self.msamples = 1 # irrelevant
+        self.msamples = None # irrelevant, setting to None requires way less mem in MultiTokenDistributor
         self.nwords = None 
         self.n_other_words = 1 # other words not needed for corr I(C;Hbot)
         self.run_path = run_path
@@ -83,15 +83,15 @@ class CorrMIComputer:
         assert run["config"]['model_name'] == model_name, "Run model doesn't match"
         assert run["config"]['concept'] == concept, "Run concept doesn't match"
 
-        
+    #TODO:rename this function cuz now returns p(x|h), p(x|hbot)
     def get_p_x_mid_hbot(self, eval_source):
-        evaluator = MultiTokenDistributor(
+        distributor = MultiTokenDistributor(
             self.model_name, 
             self.concept, 
             eval_source, # eval_source 
             self.nsamples, #nsamples
             self.msamples, #msamples
-            self.nwords, #nwords
+            self.nwords, # nwords
             self.n_other_words, 
             self.run_path, #run_path
             self.output_folder_name,
@@ -101,18 +101,24 @@ class CorrMIComputer:
             exist_ok=self.exist_ok,
             torch_dtype=self.torch_dtype,
         )
-        p_x_mid_hbot_nostack = evaluator.compute_corr_pxhbots()
+        #TODO: this should be merged into regular distributor
+        n_cxts = distributor.sample_filtered_contexts()
+        # p(x|h) for baseline
+        p_x_mid_h_nostack = distributor.compute_pxs("p_x_mid_h", n_cxts)
+        p_x_mid_h = [np.vstack(x) for x in p_x_mid_h_nostack]
+        # p(x|hbot) for corr MI
+        p_x_mid_hbot_nostack = distributor.compute_pxs("p_x_mid_hbot", n_cxts)
         p_x_mid_hbot = [np.vstack(x) for x in p_x_mid_hbot_nostack]
+
         torch.cuda.empty_cache()
-        return p_x_mid_hbot
+        return p_x_mid_h, p_x_mid_hbot
     
     def get_all_p_x_mid_hbots(self):
-        train_all_p_x_mid_hbot = self.get_p_x_mid_hbot("train_all")
-        train_concept_p_x_mid_hbot = self.get_p_x_mid_hbot("train_concept")
-        test_all_p_x_mid_hbot = self.get_p_x_mid_hbot("test_all")
-        test_concept_p_x_mid_hbot = self.get_p_x_mid_hbot("test_concept")
-        return train_all_p_x_mid_hbot, train_concept_p_x_mid_hbot,\
-            test_all_p_x_mid_hbot, test_concept_p_x_mid_hbot
+        train_all_distribs = self.get_p_x_mid_hbot("train_all")
+        train_concept_distribs = self.get_p_x_mid_hbot("train_concept")
+        test_all_distribs = self.get_p_x_mid_hbot("test_all")
+        test_concept_distribs = self.get_p_x_mid_hbot("test_concept")
+        return train_all_distribs, train_concept_distribs, test_all_distribs, test_concept_distribs
 
     #########################################
     # Corr MI Computation                   #
@@ -128,26 +134,45 @@ class CorrMIComputer:
         return Hz_c, Hz_c_mid_hbot, MIz_c_hbot
 
     def compute_all_corr_MIs(self):
-        train_all_p_x_mid_hbot, train_concept_p_x_mid_hbot, test_all_p_x_mid_hbot, test_concept_p_x_mid_hbot = self.get_all_p_x_mid_hbots()
+        train_all_distribs, train_concept_distribs, test_all_distribs, test_concept_distribs = self.get_all_p_x_mid_hbots()
 
-        train_all_Hz_C, train_all_Hz_c_mid_hbot, train_all_MIz_c_hbot = self.compute_corr_MI(train_all_p_x_mid_hbot)
-        train_concept_Hz_C, train_concept_Hz_c_mid_hbot, train_concept_MIz_c_hbot = self.compute_corr_MI(train_concept_p_x_mid_hbot)
-        test_all_Hz_C, test_all_Hz_c_mid_hbot, test_all_MIz_c_hbot = self.compute_corr_MI(test_all_p_x_mid_hbot)
-        test_concept_Hz_C, test_concept_Hz_c_mid_hbot, test_concept_MIz_c_hbot = self.compute_corr_MI(test_concept_p_x_mid_hbot)
+        # base MIs
+        train_all_Hz_C, train_all_Hz_c_mid_h, train_all_MIz_c_h = self.compute_corr_MI(train_all_distribs[0])
+        train_concept_Hz_C, train_concept_Hz_c_mid_h, train_concept_MIz_c_h = self.compute_corr_MI(train_concept_distribs[0])
+        test_all_Hz_C, test_all_Hz_c_mid_h, test_all_MIz_c_h = self.compute_corr_MI(test_all_distribs[0])
+        test_concept_Hz_C, test_concept_Hz_c_mid_h, test_concept_MIz_c_h = self.compute_corr_MI(test_concept_distribs[0])
+        
+        # c distrib is correlational
+        train_all_Hc_C, train_all_Hc_c_mid_hbot, train_all_MIc_c_hbot = self.compute_corr_MI(train_all_distribs[1])
+        train_concept_Hc_C, train_concept_Hc_c_mid_hbot, train_concept_MIc_c_hbot = self.compute_corr_MI(train_concept_distribs[1])
+        test_all_Hc_C, test_all_Hc_c_mid_hbot, test_all_MIc_c_hbot = self.compute_corr_MI(test_all_distribs[1])
+        test_concept_Hc_C, test_concept_Hc_c_mid_hbot, test_concept_MIc_c_hbot = self.compute_corr_MI(test_concept_distribs[1])
 
         output = {
-            "train_all_Hz_C": train_all_Hz_C, 
-            "train_all_Hz_c_mid_hbot": train_all_Hz_c_mid_hbot, 
-            "train_all_MIz_c_hbot": train_all_MIz_c_hbot,
-            "train_concept_Hz_C": train_concept_Hz_C, 
-            "train_concept_Hz_c_mid_hbot": train_concept_Hz_c_mid_hbot, 
-            "train_concept_MIz_c_hbot": train_concept_MIz_c_hbot,
-            "test_all_Hz_C": test_all_Hz_C, 
-            "test_all_Hz_c_mid_hbot": test_all_Hz_c_mid_hbot, 
-            "test_all_MIz_c_hbot": test_all_MIz_c_hbot,
-            "test_concept_Hz_C": test_concept_Hz_C, 
-            "test_concept_Hz_c_mid_hbot": test_concept_Hz_c_mid_hbot, 
-            "test_concept_MIz_c_hbot": test_concept_MIz_c_hbot,
+            "train_all_Hz_C": train_all_Hz_C,
+            "train_all_Hz_c_mid_h": train_all_Hz_c_mid_h,
+            "train_all_MIz_c_h": train_all_MIz_c_h,
+            "train_concept_Hz_C": train_concept_Hz_C,
+            "train_concept_Hz_c_mid_h": train_concept_Hz_c_mid_h,
+            "train_concept_MIz_c_h": train_concept_MIz_c_h,
+            "test_all_Hz_C": test_all_Hz_C,
+            "test_all_Hz_c_mid_h": test_all_Hz_c_mid_h,
+            "test_all_MIz_c_h": test_all_MIz_c_h,
+            "test_concept_Hz_C": test_concept_Hz_C,
+            "test_concept_Hz_c_mid_h": test_concept_Hz_c_mid_h,
+            "test_concept_MIz_c_h": test_concept_MIz_c_h,
+            "train_all_Hc_C": train_all_Hc_C,
+            "train_all_Hc_c_mid_hbot": train_all_Hc_c_mid_hbot,
+            "train_all_MIc_c_hbot": train_all_MIc_c_hbot,
+            "train_concept_Hc_C": train_concept_Hc_C,
+            "train_concept_Hc_c_mid_hbot": train_concept_Hc_c_mid_hbot,
+            "train_concept_MIc_c_hbot": train_concept_MIc_c_hbot,
+            "test_all_Hc_C": test_all_Hc_C,
+            "test_all_Hc_c_mid_hbot": test_all_Hc_c_mid_hbot,
+            "test_all_MIc_c_hbot": test_all_MIc_c_hbot,
+            "test_concept_Hc_C": test_concept_Hc_C,
+            "test_concept_Hc_c_mid_hbot": test_concept_Hc_c_mid_hbot,
+            "test_concept_MIc_c_hbot": test_concept_MIc_c_hbot,
         }
         return output
 
@@ -156,6 +181,7 @@ class CorrMIComputer:
         run_metadata = {
             "model_name": self.model_name,
             "concept": self.concept,
+            "proj_source": self.proj_source,
             "eval_source": None,
             "eval_name": self.output_folder_name,
             "run_path": self.run_path,
@@ -298,7 +324,7 @@ if __name__=="__main__":
     #batch_size = 64
     #nruns=1
     #p_new_word=True
-    #exist_ok=False
+    #exist_ok=True
     #torch_dtype=torch.float16
 
     for i in range(nruns):

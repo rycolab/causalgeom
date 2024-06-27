@@ -30,7 +30,7 @@ from paths import DATASETS, OUT, RESULTS, MODELS
 
 
 from utils.lm_loaders import SUPPORTED_AR_MODELS
-from evals.mi_distributor_utils import get_mt_eval_directory, get_run_path_info
+from evals.mi_distributor_utils import get_eval_directory, get_run_path_info
 from evals.mi_computer_utils import compute_all_MIs
 from evals.eval_utils import load_run_output
 
@@ -55,8 +55,8 @@ class MIComputer:
         run = load_run_output(run_path)
         self.proj_source = run["proj_source"]
 
-        outdir = get_mt_eval_directory(
-            run_path, concept, model_name, self.proj_source,
+        outdir = get_eval_directory(
+            "mt_eval", run_path, concept, model_name, self.proj_source,
             output_folder_name, eval_source, iteration
         )
         self.h_distribs_dir = os.path.join(
@@ -208,23 +208,22 @@ if __name__=="__main__":
     args = get_args()
     logging.info(args)
 
-    model_name = args.model
-    concept = args.concept
-    source = args.source
-    output_folder = args.out_folder
-    run_path = args.run_path
-    nruns = 3
+    #model_name = args.model
+    #concept = args.concept
+    #source = args.source
+    #output_folder = args.out_folder
+    #run_path = args.run_path
+    #nruns = 3
     
-    #model_name = "gpt2-large"
-    #concept = "food"
-    #source = "gen_nucleus"
-    #k=1
-    #nsamples=3
-    #msamples=3
-    #nwords = None
-    #output_folder = "n100"
-    #nruns=3
-    #run_path="out/run_output/food/gpt2-large/leace28032024/run_leace_food_gpt2-large_2024-03-28-13:44:28_0_3.pkl"
+    model_name = "gpt2-large"
+    concept = "number"
+    source = "test_concept"
+    
+    output_folder = "june2"
+    nruns=1
+    run_path=os.path.join(
+        OUT, "run_output/june2/number/gpt2-large/gen_ancestral_all/run_leace_number_gpt2-large_gen_ancestral_all_2024-06-02-15:54:03_0_3.pkl"
+    )
     
 
     for i in range(nruns):
