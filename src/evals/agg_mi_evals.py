@@ -24,14 +24,14 @@ warnings.filterwarnings("ignore")
 
 # %% MI RES
 
-def get_mi_file_paths(mi_dir, mt_eval_run_name):
-    mifolder = os.path.join(RESULTS, f"{mi_dir}/{mt_eval_run_name}")
-    mifiles = os.listdir(mifolder)
-    mifilepaths = [os.path.join(mifolder, x) for x in mifiles]
-    return mifilepaths
+def get_res_file_paths(res_dir, eval_run_name):
+    resfolder = os.path.join(RESULTS, f"{res_dir}/{eval_run_name}")
+    resfiles = os.listdir(resfolder)
+    resfilepaths = [os.path.join(resfolder, x) for x in resfiles]
+    return resfilepaths
 
-mifilepaths_1 = get_mi_file_paths("mis", "june2")
-mifilepaths_2 = get_mi_file_paths("mis", "june9_llamanumbers")
+mifilepaths_1 = get_res_file_paths("mis", "june2")
+mifilepaths_2 = get_res_file_paths("mis", "june9_llamanumbers")
 
 mifilepaths = mifilepaths_1 + mifilepaths_2
 
@@ -201,7 +201,7 @@ entropy_breakdown_grouped.mean().reset_index().to_csv(os.path.join(RESULTS, "lea
 entropy_breakdown_grouped.std().reset_index().to_csv(os.path.join(RESULTS, "leace_entropies_std.csv"), index=False)
 
 #%% CORRELATIONAL
-corrfilepaths = get_mi_file_paths("corr_mis", "corr_june15")
+corrfilepaths = get_res_file_paths("corr_mis", "corr_june15")
 
 corr_res_records = []
 for mifile in corrfilepaths:

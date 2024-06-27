@@ -48,6 +48,7 @@ from utils.lm_loaders import get_model, get_tokenizer, get_V, GPT2_LIST
 from utils.cuda_loaders import get_device
 from utils.dataset_loaders import load_processed_data
 from evals.mi_distributor_utils import get_run_path_info
+from evals.mt_eval_runner import get_data_type
 
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
@@ -595,7 +596,7 @@ def compute_int(
     run_output_dir, run_id = get_run_path_info(run_path)
 
     actual_outdir = os.path.join(RESULTS, f"int/{output_folder_name}")
-    os.makedirs(actual_outdir, exist_ok=exist_ok)
+    os.makedirs(actual_outdir, exist_ok=True)
 
     # intervention scoring
     intervenor = MultiTokenIntervenor(

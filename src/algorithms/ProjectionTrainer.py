@@ -148,7 +148,7 @@ class ProjectionTrainer:
             test_lastind = val_lastind + test_obs
         elif concept == "gender":
             train_lastind = int(nobs*train_share)
-            val_lastind = int(nobs*(cfg["train_share"] + val_share))
+            val_lastind = int(nobs*(train_share + val_share))
             test_lastind = nobs
         else:
             raise ValueError("Concept value not supported.")
