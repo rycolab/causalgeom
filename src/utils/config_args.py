@@ -32,6 +32,7 @@ def get_train_probes_args():
     argparser.add_argument(
         "-proj_source",
         type=str,
+        default="natural_concept",
         choices=["natural_all", "natural_concept", 
                  "gen_ancestral_concept", "gen_nucleus_concept", 
                  "gen_ancestral_all", "gen_nucleus_all"],
