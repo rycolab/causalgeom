@@ -23,7 +23,8 @@ warnings.filterwarnings("ignore")
 #%%
 from evals.agg_mi_evals import get_res_file_paths
 
-int_file_paths = get_res_file_paths("int", "int_june15")
+int_run_name = "int_june27"
+int_file_paths = get_res_file_paths("int", int_run_name)
 
 #%%
 int_dfs = []
@@ -33,10 +34,11 @@ for intfile in int_file_paths:
     int_dfs.append(intres)
 
 df = pd.concat(int_dfs)
+df.to_csv(os.path.join(RESULTS, f"full_{int_run_name}.csv"))
 
 # %%
 df.groupby(["concept", "model_name", "proj_source", "int_source", "eval_name"]).count().to_csv(
-    os.path.join(RESULTS, "int_counts.csv")
+    
 )
 
 #%%
