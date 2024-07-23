@@ -5,7 +5,6 @@ OLD_*
 .vscode/
 data/
 !src/data/
-job_scripts/
 out/
 results/
 wandb/

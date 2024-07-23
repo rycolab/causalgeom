@@ -615,9 +615,10 @@ def compute_int(
     )
 
     scores = intervenor.compute_intervention_eval()
-    scores_df = pd.DataFrame(scores).groupby(
-        ["model_name", "concept", "proj_source", "int_source", "eval_name", "run_path", "iteration", "y"]
-    ).mean().reset_index()
+    scores_df = pd.DataFrame(scores)
+    #.groupby(
+    #    ["model_name", "concept", "proj_source", "int_source", "eval_name", "run_path", "iteration", "y"]
+    #).mean().reset_index()
 
     # export
     outpath = os.path.join(

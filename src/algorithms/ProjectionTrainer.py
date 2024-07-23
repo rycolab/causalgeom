@@ -37,6 +37,8 @@ class ProjectionTrainer:
         self.model_name = model_name
         self.concept = concept
         self.proj_source = proj_source
+        if self.concept in ["number", "gender"]:
+            assert self.proj_source == "natural_concept", "No n/a natural data exists"
         if proj_source in ["natural_all", "natural_concept"]:
             self.nucleus = None #not needed
         else:
@@ -199,7 +201,16 @@ class ProjectionTrainer:
                 X, U, y, facts, foils, cxt_toks, idx_train, idx_val, idx_test
             )
         elif self.concept in ["food", "ambiance", "service", "noise"]:
-            run_data = load_processed_data(self.concept, self.model_name)
+            if self.proj_source == "natural_concept":
+                run_data = load_processed_data(
+                    self.concept, self.model_name, binary=True
+                )
+            elif self.proj_source == "natural_all":
+                run_data = load_processed_data(
+                    self.concept, self.model_name, binary=False
+                )
+            else:
+                raise ValueError(f"Incorrect proj source: {self.proj_source}")
         else:
             raise NotImplementedError(f"Concept {self.concept} not supported")
         return run_data
@@ -233,13 +244,6 @@ class ProjectionTrainer:
             logging.info(
                 f"Loading natural samples, proj_source: {self.proj_source}"
             )
-            logging.warn(f"No distinction made between proj_source = "
-                         "natural_concept and natural_all at the moment")
-            # TODO: currently depends on the preprocess steps used, 
-            # should have some kind of flag in the processed data handling
-            # for whether to load _concept or _all
-            # NOTE: CEBaB is 3-class dataset by default now, i.e., "natural_all"
-            # NOTE: whereas number and gender are binary datasets
             return self.load_natural_data()
         else:
             raise ValueError(f"Incorrect proj_source parameter: {self.proj_source}")

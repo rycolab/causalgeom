@@ -208,7 +208,7 @@ def get_args():
     argparser.add_argument(
         "-dataset", 
         type=str,
-        choices=["linzen", "CEBaB"] + FR_DATASETS,
+        choices=["linzen", "CEBaB", "CEBaB_binary"] + FR_DATASETS,
         help="Dataset to process hidden states for"
     )
     argparser.add_argument(

@@ -407,7 +407,7 @@ if __name__=="__main__":
     concept = args.concept
     split = args.split
     batch_size = args.batch_size
-    #dataset_name = "CEBaB"
+    #dataset_name = "CEBaB_binary"
     #model_name = "gpt2-large"
     #concept = "food"
     #split = "train"
