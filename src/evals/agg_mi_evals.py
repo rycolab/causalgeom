@@ -30,10 +30,9 @@ def get_res_file_paths(res_dir, eval_run_name):
     resfilepaths = [os.path.join(resfolder, x) for x in resfiles]
     return resfilepaths
 
-mifilepaths_1 = get_res_file_paths("mis", "june2")
-mifilepaths_2 = get_res_file_paths("mis", "june9_llamanumbers")
+mifilepaths_1 = get_res_file_paths("mis", "june27")
 
-mifilepaths = mifilepaths_1 + mifilepaths_2
+mifilepaths = mifilepaths_1 # + mifilepaths_2
 
 #%%
 res_records = []
@@ -42,6 +41,7 @@ for mifile in mifilepaths:
         mires = pickle.load(f)
     res_records.append(mires)
 
+print(mifilepaths_1)
 df = pd.DataFrame(res_records)
 #%%
 # additional metrics
@@ -67,17 +67,22 @@ df.groupby(["concept", "model_name", "proj_source", "eval_source", "eval_name"])
 
 #%%
 df["reconstructed"] = df["MIqbot_c_hbot"] + df["MIqpar_c_hpar"]
-df["new_ratio_erasure"] = 1 - (df["MIqbot_c_hbot"] / df["MIz_c_h"])
-df["new_ratio_encapsulation"] = df["MIqpar_c_hpar"] / df["MIz_c_h"]
-df["new_ratio_reconstructed"] = df["reconstructed"] / df["MIz_c_h"]
-df["new_ratio_containment"] = 1 - (df["MIqpar_x_hpar_mid_c"]/df["MIz_x_h_mid_c"])
-df["new_ratio_stability"] = df["MIqbot_x_hbot_mid_c"]/df["MIz_x_h_mid_c"]
+df["no_na_reconstructed"] = df["no_na_MIqbot_c_hbot"] + df["no_na_MIqpar_c_hpar"]
+df["new_ratio_erasure"] = 1 - (df["no_na_MIqbot_c_hbot"] / df["no_na_MIz_c_h"])
+df["new_ratio_encapsulation"] = df["no_na_MIqpar_c_hpar"] / df["no_na_MIz_c_h"]
+df["new_ratio_reconstructed"] = df["no_na_reconstructed"] / df["no_na_MIz_c_h"]
+df["new_ratio_containment"] = 1 - (df["no_na_MIqpar_x_hpar_mid_c"]/df["no_na_MIz_x_h_mid_c"])
+df["new_ratio_stability"] = df["no_na_MIqbot_x_hbot_mid_c"]/df["no_na_MIz_x_h_mid_c"]
+
+for k in ["new_ratio_erasure", "new_ratio_encapsulation", "new_ratio_reconstructed", "new_ratio_containment", "new_ratio_stability"]:
+    print(k, np.mean(df[k]))
 
 #%%
 proj_source_renames = {
     "natural_all": "CEBaB",
     "gen_ancestral_all": "Gen (Ancestral)",
     "gen_nucleus_all": "Gen (Nucleus)",
+    "natural_concept": "Natural Concept"
 }
 df["proj_source"] = df["proj_source"].apply(lambda x: proj_source_renames[x])
 
@@ -201,7 +206,7 @@ entropy_breakdown_grouped.mean().reset_index().to_csv(os.path.join(RESULTS, "lea
 entropy_breakdown_grouped.std().reset_index().to_csv(os.path.join(RESULTS, "leace_entropies_std.csv"), index=False)
 
 #%% CORRELATIONAL
-corrfilepaths = get_res_file_paths("corr_mis", "corr_june15")
+corrfilepaths = get_res_file_paths("corr_mis", "corr_june27")
 
 corr_res_records = []
 for mifile in corrfilepaths:
@@ -234,6 +239,7 @@ corr_table_df = corr_df[[
     'test_concept_MIz_c_h',
     'test_concept_MIc_c_hbot',
 ]]
+print(corr_table_df)
 
 corr_mi_renames = {
     "model_name": "Model",
@@ -247,8 +253,10 @@ corr_mi_renames = {
     'test_all_MIc_c_hbot': "Test All I(C;Hbot)", 
     'test_concept_MIz_c_h': "Test Concept I(C;H)", 
     'test_concept_MIc_c_hbot': "Test Concept I(C;Hbot)",
+    'corr_erasure_ratio': "Correlational Erasure Ratio"
 }
 
+corr_table_df["corr_erasure_ratio"] = 1 - (corr_table_df["test_concept_MIc_c_hbot"] / corr_table_df["test_concept_MIz_c_h"])
 
 corr_table_df.columns = [corr_mi_renames[x] for x in corr_table_df.columns]
 corr_table_df_grouped = corr_table_df.groupby(["Concept", "Model", "Train Source"])

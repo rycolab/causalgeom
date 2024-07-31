@@ -23,7 +23,7 @@ warnings.filterwarnings("ignore")
 #%%
 from evals.agg_mi_evals import get_res_file_paths
 
-int_file_paths = get_res_file_paths("int", "int_june15")
+int_file_paths = get_res_file_paths("int", "int_june27")
 
 #%%
 int_dfs = []
