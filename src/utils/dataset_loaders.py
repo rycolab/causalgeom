@@ -278,15 +278,19 @@ def load_gender_processed(model_name):
     cxt_tok = np.array(list(zip_longest(*all_cxt_tok, fillvalue=-1))).T
     return X, U, y, fact, foil, cxt_tok
 
-def load_CEBaB_processed(concept_name, model_name):
+def load_CEBaB_processed(concept_name, model_name, binary):
+    if binary:
+        dataset_name = "CEBaB_binary"
+    else:
+        dataset_name = "CEBaB"
     X_train, U_train, y_train, facts_train, foils_train, cxt_toks_train = load_processed_dataset(
-        "CEBaB", model_name, concept_name, split="train"
+        dataset_name, model_name, concept_name, split="train"
     )
     X_dev, U_dev, y_dev, facts_dev, foils_dev, cxt_toks_dev = load_processed_dataset(
-        "CEBaB", model_name, concept_name, split="dev"
+        dataset_name, model_name, concept_name, split="dev"
     )
     X_test, U_test, y_test, facts_test, foils_test, cxt_toks_test = load_processed_dataset(
-        "CEBaB", model_name, concept_name, split="test"
+        dataset_name, model_name, concept_name, split="test"
     )
     return {
         "X_train": X_train, 
@@ -309,14 +313,14 @@ def load_CEBaB_processed(concept_name, model_name):
         "cxt_toks_test": cxt_toks_test,
     }
 
-def load_processed_data(concept_name, model_name):
+def load_processed_data(concept_name, model_name, binary=True):
     # TODO fix this trash this function returns different things depending on the args.
     if concept_name == "number":
         return load_processed_dataset("linzen", model_name, "number")
     elif concept_name == "gender":
         return load_gender_processed(model_name)
     elif concept_name in ["food", "ambiance", "service", "noise"]:
-        return load_CEBaB_processed(concept_name, model_name)
+        return load_CEBaB_processed(concept_name, model_name, binary)
     else: 
         raise ValueError("Concept name and model name pair not supported.")
 

@@ -33,10 +33,11 @@ for intfile in int_file_paths:
     int_dfs.append(intres)
 
 df = pd.concat(int_dfs)
+df.to_csv(os.path.join(RESULTS, f"full_{int_run_name}.csv"))
 
 # %%
 df.groupby(["concept", "model_name", "proj_source", "int_source", "eval_name"]).count().to_csv(
-    os.path.join(RESULTS, "int_counts.csv")
+    
 )
 
 #%%
