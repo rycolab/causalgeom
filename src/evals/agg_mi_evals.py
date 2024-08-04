@@ -17,20 +17,19 @@ import random
 sys.path.append('..')
 #sys.path.append('./src/')
 
-from paths import DATASETS, OUT, RESULTS, MODELS
+from paths import DATASETS, OUT, RESULTS, MODELS, TIANYU_RESULTS
 
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
 
 # %% MI RES
-
-def get_res_file_paths(res_dir, eval_run_name):
-    resfolder = os.path.join(RESULTS, f"{res_dir}/{eval_run_name}")
+def get_res_file_paths(root_dir, res_dir, eval_run_name):
+    resfolder = os.path.join(root_dir, f"{res_dir}/{eval_run_name}")
     resfiles = os.listdir(resfolder)
     resfilepaths = [os.path.join(resfolder, x) for x in resfiles]
     return resfilepaths
 
-mifilepaths_1 = get_res_file_paths("mis", "june27")
+mifilepaths_1 = get_res_file_paths(TIANYU_RESULTS, "mis", "june27")
 
 mifilepaths = mifilepaths_1 # + mifilepaths_2
 
@@ -43,27 +42,11 @@ for mifile in mifilepaths:
 
 print(mifilepaths_1)
 df = pd.DataFrame(res_records)
-#%%
-# additional metrics
-#df["encapsulation"] = df["MIz_c_h"] - df["MIqpar_c_hpar"]
-#df["mi_x_h_c"] = df["ent_pxc"] - df["stab_ent_xhc"]
-#percentages
-#df["perc_mi_c_hbot"] = df["MIqbot_c_hbot"] / df["MIz_c_h"]
-#df["perc_mi_c_hpar"] = df["MIqpar_c_hpar"] / df["MIz_c_h"]
-#df["perc_encapsulation"] = df["encapsulation"] / df["MIz_c_h"]
-#df["perc_reconstructed"] = df["reconstructed"] / df["MIz_c_h"]
 
-#%%
-df.drop(
-    df[(df["model_name"]=="llama2") & 
-        (df["concept"]=="number") &
-        (df["eval_name"]=="june2")].index,
-    axis=0, inplace=True
-)
+#%% Export counts to verify that all runs have been evaluated
 df.groupby(["concept", "model_name", "proj_source", "eval_source", "eval_name"]).count().to_csv(
     os.path.join(RESULTS, "counts.csv")
 )
-
 
 #%%
 df["reconstructed"] = df["MIqbot_c_hbot"] + df["MIqpar_c_hpar"]
@@ -94,11 +77,11 @@ eval_source_renames = {
 }
 df["eval_source"] = df["eval_source"].apply(lambda x: eval_source_renames[x])
 
-#df.to_csv(outfilepath)
-#logging.info(f"Exported agg output to: {outfilepath}")
+
 # %%
 #df["sampling_method"] = df["nucleus"].apply(lambda x: np.where(x, "Nucleus", "Ancestral"))
-table_df = df[['model_name', 'concept', 'proj_source', 'eval_source', 
+table_df = df[[
+    'model_name', 'concept', #'proj_source', 'eval_source', 
     #'mi_c_h', 'mi_c_hbot', 'mi_c_hpar', 
     #'reconstructed', 'encapsulation',
     #'perc_mi_c_hbot', 'perc_mi_c_hpar',
@@ -112,19 +95,6 @@ table_df = df[['model_name', 'concept', 'proj_source', 'eval_source',
     "new_ratio_containment",
     "new_ratio_stability",
 ]]
-
-#%%
-#containtest = df[
-#    ['model_name', 'concept', 'sampling_method', 
-#    "cont_l0_ent_qxhcs", "cont_l1_ent_qxhcs", "cont_ent_qxcs", 
-#    "l0_ent_pxc", "l1_ent_pxc", "ent_pxc", "cont_l0_mi", "cont_l1_mi",
-#    "cont_mi", 
-#    "stab_ent_xhc_l0", "stab_ent_xhc_l1", "stab_ent_xhc", 
-#    'ent_pxc', 'mi_x_h_c']
-#]
-#containtestmean = containtest.groupby(['model_name', 'concept', 'sampling_method']).mean()
-
-#containtestmean.reset_index().to_csv(os.path.join(RESULTS, "debug_containment.csv"), index=False)
 
 # %%
 mi_renames = {
@@ -152,13 +122,14 @@ mi_renames = {
     "new_ratio_stability": "Stability Ratio",
 }
 
-table_df.sort_values(by = ["concept", "model_name", "proj_source", "eval_source"], inplace=True)
+table_df.sort_values(by = ["concept", "model_name"], inplace=True)
 table_df.columns = [mi_renames[x] for x in table_df.columns]
-table_df_grouped = table_df.groupby(["Concept", "Model", "Train Source", "Test Source"])
-table_df_grouped.mean().reset_index().to_csv(os.path.join(RESULTS, "leace_mis_mean.csv"), index=False)
-table_df_grouped.std().reset_index().to_csv(os.path.join(RESULTS, "leace_mis_std.csv"), index=False)
+counterfactual_mi_grouped = table_df.groupby(["Concept", "Model"])
+counterfactual_mi_grouped_mean = counterfactual_mi_grouped.mean().reset_index()#.to_csv(os.path.join(RESULTS, "leace_mis_mean.csv"), index=False)
+counterfactual_mi_grouped_std = counterfactual_mi_grouped.std().reset_index()#.to_csv(os.path.join(RESULTS, "leace_mis_std.csv"), index=False)
 
 #%%
+"""
 entropy_cols = [
     'Hz_c', 'Hz_c_mid_h', 'MIz_c_h', 
     'Hqbot_c', 'Hqbot_c_mid_hbot','MIqbot_c_hbot', 
@@ -204,9 +175,9 @@ entropy_breakdown.columns = [entcols_name[x] for x in entropy_breakdown.columns]
 entropy_breakdown_grouped = entropy_breakdown.groupby(["Concept", "Model", "Train Source", "Test Source"])
 entropy_breakdown_grouped.mean().reset_index().to_csv(os.path.join(RESULTS, "leace_entropies_mean.csv"), index=False)
 entropy_breakdown_grouped.std().reset_index().to_csv(os.path.join(RESULTS, "leace_entropies_std.csv"), index=False)
-
+"""
 #%% CORRELATIONAL
-corrfilepaths = get_res_file_paths("corr_mis", "corr_june27")
+corrfilepaths = get_res_file_paths(TIANYU_RESULTS, "corr_mis", "corr_june27")
 
 corr_res_records = []
 for mifile in corrfilepaths:
@@ -216,6 +187,10 @@ for mifile in corrfilepaths:
 
 corr_df = pd.DataFrame(corr_res_records)
 
+corr_df["corr_erasure_ratio"] = (
+    1 - (corr_df["test_concept_MIc_c_hbot"] / corr_df["test_concept_MIz_c_h"])
+)
+
 #%%
 corr_df.groupby(["concept", "model_name", "proj_source", "eval_name"]).count().to_csv(
     os.path.join(RESULTS, "corr_counts.csv")
@@ -223,23 +198,24 @@ corr_df.groupby(["concept", "model_name", "proj_source", "eval_name"]).count().t
 
 #%%
 corr_table_df = corr_df[[
-    'model_name', 'concept', 'proj_source', 
+    'model_name', 'concept', #'proj_source', 
     #'mi_c_h', 'mi_c_hbot', 'mi_c_hpar', 
     #'reconstructed', 'encapsulation',
     #'perc_mi_c_hbot', 'perc_mi_c_hpar',
     #'perc_encapsulation', 'perc_reconstructed',
     #'cont_mi', 'stab_mi',  'ent_pxc',
     #'train_all_Hz_C', 'train_all_Hz_c_mid_hbot', 
-    'train_all_MIz_c_h', 
-    'train_all_MIc_c_hbot', 
-    'train_concept_MIz_c_h',
-    'train_concept_MIc_c_hbot',
-    'test_all_MIz_c_h',
-    'test_all_MIc_c_hbot',
-    'test_concept_MIz_c_h',
-    'test_concept_MIc_c_hbot',
+    #'train_all_MIz_c_h', 
+    #'train_all_MIc_c_hbot', 
+    #'train_concept_MIz_c_h',
+    #'train_concept_MIc_c_hbot',
+    #'test_all_MIz_c_h',
+    #'test_all_MIc_c_hbot',
+    #'test_concept_MIz_c_h',
+    #'test_concept_MIc_c_hbot',
+    'corr_erasure_ratio'
 ]]
-print(corr_table_df)
+#print(corr_table_df)
 
 corr_mi_renames = {
     "model_name": "Model",
@@ -256,35 +232,33 @@ corr_mi_renames = {
     'corr_erasure_ratio': "Correlational Erasure Ratio"
 }
 
-corr_table_df["corr_erasure_ratio"] = 1 - (corr_table_df["test_concept_MIc_c_hbot"] / corr_table_df["test_concept_MIz_c_h"])
-
 corr_table_df.columns = [corr_mi_renames[x] for x in corr_table_df.columns]
-corr_table_df_grouped = corr_table_df.groupby(["Concept", "Model", "Train Source"])
-corr_table_df_grouped.mean().reset_index().to_csv(os.path.join(RESULTS, "corr_mis_mean.csv"), index=False)
-corr_table_df_grouped.std().reset_index().to_csv(os.path.join(RESULTS, "corr_mis_std.csv"), index=False)
+corr_table_df_grouped = corr_table_df.groupby(["Concept", "Model"])
+corr_table_df_grouped_mean = corr_table_df_grouped.mean().reset_index()#.to_csv(os.path.join(RESULTS, "corr_mis_mean.csv"), index=False)
+corr_table_df_grouped_std = corr_table_df_grouped.std().reset_index()#.to_csv(os.path.join(RESULTS, "corr_mis_std.csv"), index=False)
 
+#%%
+combined_mi_table_mean = pd.merge(
+    left = counterfactual_mi_grouped_mean, 
+    right = corr_table_df_grouped_mean,
+    on = ["Concept", "Model"],
+    how = "outer"
+)
+combined_mi_table_std = pd.merge(
+    left = counterfactual_mi_grouped_std, 
+    right = corr_table_df_grouped_std,
+    on = ["Concept", "Model"],
+    how = "outer"
+)
 
-#%% 
-#ent_break_group = entropy_breakdown.groupby(["source", "concept", "model_name"])
+column_order = ['Concept', 'Model', 'I(C;H)', 'Correlational Erasure Ratio',
+    'Erasure Ratio', 'Encapsulation Ratio', 'Reconstructed Ratio',
+    'I(X;H|C)', 'Containment Ratio', 'Stability Ratio',
+]
+combined_mi_table_mean = combined_mi_table_mean[column_order]
+combined_mi_table_std = combined_mi_table_std[column_order]
 
-#ent_mean = ent_break_group.mean().reset_index()
-#ent_mean["index"] = ent_mean["concept"] + "_" + ent_mean["model_name"]
-#ent_mean.drop(["source", "concept", "model_name"], axis=1, inplace=True)
-#ent_mean = ent_mean[["index"] + entropy_cols]
-#ent_mean["metric"] = "mean"
-
-#ent_std = ent_break_group.std().reset_index()
-#ent_std["index"] = ent_std["concept"] + "_" + ent_std["model_name"]
-#ent_std.drop(["source", "concept", "model_name"], axis=1, inplace=True)
-#ent_std = ent_std[["index"] + entropy_cols]
-#ent_std["metric"] = "std"
-#ent_final = pd.concat([ent_mean, ent_std], axis=0)
-#ent_final["newindex"] = ent_final["index"] + "_" + ent_final["metric"]
-#ent_final = ent_final[["newindex"] + entropy_cols]
-
-#ent_final.columns = [entcols_name[x] for x in ent_final.columns]
-#ent_final.T.to_csv(os.path.join(RESULTS, "leace_entropies.csv"), index=True)
-#.reset_index().to_csv(os.path.join(RESULTS, "leace_entropies_std.csv"), index=False)
-
-#.reset_index().to_csv(os.path.join(RESULTS, "leace_entropies_mean.csv"), index=False)
-# %%
+#%%
+combined_mi_table_mean.to_csv(os.path.join(RESULTS, "combined_mis_mean.csv"), index=False)
+combined_mi_table_std.to_csv(os.path.join(RESULTS, "combined_mis_std.csv"), index=False)
+#%%

@@ -1,10 +1,11 @@
 import os
 
 MAIN = "/cluster/work/cotterell/cguerner/usagebasedprobing/"
-
+TIANYU_SHARED = "/cluster/work/cotterell/tianyu_shared/"
 OUT = os.path.join(MAIN, "out")
 DATASETS = os.path.join(MAIN, "data")
 RESULTS = os.path.join(MAIN, "results")
+TIANYU_RESULTS = os.path.join(TIANYU_SHARED, "results")
 MODELS = os.path.join(MAIN, "models")
 HF_CACHE = "../hf_cache"
 AUTH_TOKEN_PATH = os.path.join(MAIN, "auth_token.txt")
