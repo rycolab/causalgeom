@@ -17,7 +17,7 @@ import pickle
 import time
 import random 
 from scipy.special import softmax
-#from scipy.stats import entropy
+
 from tqdm import trange
 from transformers import TopPLogitsWarper, LogitsProcessorList
 import torch 
@@ -25,7 +25,7 @@ from torch.utils.data import DataLoader, Dataset
 from abc import ABC
 from itertools import zip_longest
 from scipy.special import softmax
-from scipy.stats import entropy
+# from scipy.stats import entropy
 import math
 
 #sys.path.append('..')
@@ -169,7 +169,6 @@ class MultiTokenDistributor:
             )
         else:
             self.gen_all_hs, self.gen_cxt_toks = None, None
-
 
         # Load test set samples
         self.cxt_toks_train, self.y_train = run["cxt_toks_train"], run["y_train"]

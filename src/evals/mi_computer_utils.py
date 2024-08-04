@@ -7,6 +7,8 @@ import coloredlogs
 import argparse
 
 from scipy.stats import entropy
+from scipy.special import entr
+
 import numpy as np
 
 sys.path.append('..')
@@ -24,6 +26,7 @@ def compute_p_c(pxhs):
     p_c = np.array([x.sum() for x in pxhs])
     assert np.allclose(p_c.sum(), 1), p_c.sum()
     return p_c
+
 
 def compute_p_h_c(pxhs):
     """ works for both z and q distributions, i.e.
@@ -100,7 +103,12 @@ def compute_p_x_mid_c(pxhs):
     # marginalizing over h dim
     p_x_c_l0, p_x_c_l1, p_x_c_other = [x.sum(0) for x in pxhs]
     # p(x|c), shape: (cdim x (l0_nwords + l1_nwords + na_nwords))
-    p_x_mid_c = stack_p_x_mid_c(p_x_c_l0, p_x_c_l1, p_x_c_other)
+    eps = 1e-6
+    p_x_mid_c = stack_p_x_mid_c(
+        p_x_c_l0 / (eps+p_x_c_l0.sum(0)),
+        p_x_c_l1 / (eps+p_x_c_l1.sum(0)),
+        p_x_c_other / (eps+p_x_c_other.sum(0))
+    )
     return p_x_mid_c
 
 
@@ -131,7 +139,7 @@ def compute_p_x_mid_h_c(pxhs):
     """
     # x.sum(1) = p(h, c)
     p_x_mid_c_l0_h, p_x_mid_c_l1_h, p_x_mid_c_other_h = (
-        x / x.sum(1).reshape(-1, 1) for x in pxhs)
+        x / (np.finfo(float).eps + x.sum(1).reshape(-1, 1)) for x in pxhs)
 
     # p(x|c, h), shape: (cdim x hdim x (l0_nwords + l1_nwords + na_nwords))
     p_x_mid_c_h = stack_p_x_mid_h_c(p_x_mid_c_l0_h, p_x_mid_c_l1_h, p_x_mid_c_other_h)
@@ -140,7 +148,7 @@ def compute_p_x_mid_h_c(pxhs):
 #%%######################################
 # Normalize distributions               #
 #########################################
-def pxhs_to_p_x_c_h(all_pxhs, weight_na=1.):
+def pxhs_to_p_x_c_h(all_pxhs, weight_na=0.):
     # all_pxhs: tuple(hdim x l0_xdim, hdim x l1_xdim, hdim x other_xdim)
     # renormalize all_pxhs to:
     # all_pxhs: p(x, c | h), p(h) that is uniform
@@ -164,13 +172,11 @@ def pxhs_to_p_x_c_h(all_pxhs, weight_na=1.):
     # Now, we compute p(x, c, h) = p(x, c | h) * p(h),
     # where p(h) = 1 / hdim is uniform, h_normalizer.sum() = hdim
     p_x_c_h = [(x / h_normalizer.sum()) for x in p_x_c_mid_h]
-    assert np.allclose(sum([x.sum() for x in p_x_c_h]),
-                       1), f"{sum([x.sum() for x in all_pxhs])} should be 1"
 
     return p_x_c_h
 
 
-def qxhs_to_q_x_c_h(all_qxhs, weight_na=1.):
+def qxhs_to_q_x_c_h(all_qxhs, weight_na=0.):
     # all_qxhs: tuple(hdim x m x l0_xdim, hdim x m x l1_xdim, hdim x m x other_xdim)
     # renormalize all_pxhs to:
     # all_qxhs: p(x, c | h, m)
@@ -198,9 +204,9 @@ def qxhs_to_q_x_c_h(all_qxhs, weight_na=1.):
 #%%#####################################################
 # Compute all distributions                            #
 ########################################################
-def compute_all_z_distributions(all_pxhs):
+def compute_all_z_distributions(all_pxhs, weight_na=0.):
     # all_pxhs: tuple(hdim x l0_xdim, hdim x l1_xdim, hdim x other_xdim)
-    all_pxhs = pxhs_to_p_x_c_h(all_pxhs, weight_na=1)
+    all_pxhs = pxhs_to_p_x_c_h(all_pxhs, weight_na=weight_na)
 
     z_c = compute_p_c(all_pxhs)
     z_h = compute_p_h(all_pxhs)
@@ -211,9 +217,9 @@ def compute_all_z_distributions(all_pxhs):
 
     return z_c, z_h, z_h_c, z_c_mid_h, z_x_mid_c, z_x_mid_h_c
 
-def compute_all_q_distributions(all_qxhs):
+def compute_all_q_distributions(all_qxhs, weight_na=0.):
     # all_qxhs: tuple(hdim x m x l0_xdim, hdim x m x l1_xdim, hdim x m x other_xdim)
-    all_qxhs = qxhs_to_q_x_c_h(all_qxhs, weight_na=1)
+    all_qxhs = qxhs_to_q_x_c_h(all_qxhs, weight_na=weight_na)
     all_qxhs = [x.sum(1) for x in all_qxhs]
 
     q_c = compute_p_c(all_qxhs)
@@ -235,11 +241,12 @@ def compute_I_C_H(p_c, p_c_mid_h, p_h):
     - p_c_mid_h: (hdim x cdim)
     out: H(C), H(C|H), I(C;H)
     """
+    print(p_c)
     # H(C)
-    H_c = entropy(p_c)
+    H_c = entr(p_c).sum()
     
     # H(C | H)
-    H_c_mid_h = (entropy(p_c_mid_h, axis=1) * p_h).sum()
+    H_c_mid_h = (entr(p_c_mid_h).sum(axis=1) * p_h).sum()
 
     MI_c_h = H_c - H_c_mid_h
     return H_c, H_c_mid_h, MI_c_h
@@ -255,20 +262,24 @@ def compute_I_X_H_mid_C(p_c, p_x_mid_c, p_c_mid_h, p_x_mid_h_c, p_h_c):
     - p(h, c): (hdim x cdim)
     out: H(X|C), H(X|H, C), I(X;H|C)
     """
-
     # H(X | H, C)
-    H_x_mid_h_c = (entropy(p_x_mid_h_c, axis=2) * p_h_c).sum()
+    H_x_mid_h_c = (entr(p_x_mid_h_c).sum(axis=2) * p_h_c).sum()
 
     # H(X | C)
-    H_x_mid_c =  (entropy(p_x_mid_c, axis=1) * p_c).sum()
+    H_x_mid_c =  (entr(p_x_mid_c).sum(axis=1) * p_c).sum()
     MI_x_h_mid_c = H_x_mid_c - H_x_mid_h_c
 
     return H_x_mid_c, H_x_mid_h_c, MI_x_h_mid_c
 
 def compute_all_MIs(all_pxhs, all_qxhbots, all_qxhpars):
-    z_c, z_h, z_h_c, z_c_mid_h, z_x_mid_c, z_x_mid_h_c = compute_all_z_distributions(all_pxhs)
-    qbot_c, qbot_h, qbot_c_hbot, qbot_c_mid_hbot, qbot_x_mid_c, qbot_x_mid_hbot_c = compute_all_q_distributions(all_qxhbots)
-    qpar_c, qpar_h, qpar_c_hpar, qpar_c_mid_hpar, qpar_x_mid_c, qpar_x_mid_hpar_c = compute_all_q_distributions(all_qxhpars)
+    res_no_na = compute_all_MIs_with_na_weight(all_pxhs, all_qxhbots, all_qxhpars, weight_na=0., prefix="no_na_")
+    res_with_na = compute_all_MIs_with_na_weight(all_pxhs, all_qxhbots, all_qxhpars, weight_na=1., prefix="")
+    return (res_no_na | res_with_na)
+
+def compute_all_MIs_with_na_weight(all_pxhs, all_qxhbots, all_qxhpars, weight_na=0., prefix=""):
+    z_c, z_h, z_h_c, z_c_mid_h, z_x_mid_c, z_x_mid_h_c = compute_all_z_distributions(all_pxhs, weight_na=weight_na)
+    qbot_c, qbot_h, qbot_c_hbot, qbot_c_mid_hbot, qbot_x_mid_c, qbot_x_mid_hbot_c = compute_all_q_distributions(all_qxhbots, weight_na=weight_na)
+    qpar_c, qpar_h, qpar_c_hpar, qpar_c_mid_hpar, qpar_x_mid_c, qpar_x_mid_hpar_c = compute_all_q_distributions(all_qxhpars, weight_na=weight_na)
 
     # I(C;H)
     print("estimating I(C, H) MIz_c_h")
@@ -298,7 +309,7 @@ def compute_all_MIs(all_pxhs, all_qxhbots, all_qxhpars):
         qpar_c, qpar_x_mid_c, qpar_c_mid_hpar, qpar_x_mid_hpar_c, qpar_c_hpar
     )
 
-    res = {
+    computed_res = {
         "Hz_c":Hz_c, 
         "Hz_c_mid_h":Hz_c_mid_h, 
         "MIz_c_h":MIz_c_h, 
@@ -318,4 +329,9 @@ def compute_all_MIs(all_pxhs, all_qxhbots, all_qxhpars):
         "Hqpar_x_mid_hpar_c":Hqpar_x_mid_hpar_c, 
         "MIqpar_x_hpar_mid_c":MIqpar_x_hpar_mid_c,
     }
+
+    res = {}
+    for k in computed_res:
+        res[prefix+k] = computed_res[k]
+
     return res
