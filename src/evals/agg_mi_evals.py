@@ -49,15 +49,15 @@ df.groupby(["concept", "model_name", "proj_source", "eval_source", "eval_name"])
 )
 
 #%%
-df["reconstructed"] = df["MIqbot_c_hbot"] + df["MIqpar_c_hpar"]
+#df["reconstructed"] = df["MIqbot_c_hbot"] + df["MIqpar_c_hpar"]
+df["ratio_erasure"] = 1 - (df["no_na_MIqbot_c_hbot"] / df["no_na_MIz_c_h"])
+df["ratio_encapsulation"] = df["no_na_MIqpar_c_hpar"] / df["no_na_MIz_c_h"]
 df["no_na_reconstructed"] = df["no_na_MIqbot_c_hbot"] + df["no_na_MIqpar_c_hpar"]
-df["new_ratio_erasure"] = 1 - (df["no_na_MIqbot_c_hbot"] / df["no_na_MIz_c_h"])
-df["new_ratio_encapsulation"] = df["no_na_MIqpar_c_hpar"] / df["no_na_MIz_c_h"]
-df["new_ratio_reconstructed"] = df["no_na_reconstructed"] / df["no_na_MIz_c_h"]
-df["new_ratio_containment"] = 1 - (df["no_na_MIqpar_x_hpar_mid_c"]/df["no_na_MIz_x_h_mid_c"])
-df["new_ratio_stability"] = df["no_na_MIqbot_x_hbot_mid_c"]/df["no_na_MIz_x_h_mid_c"]
+df["ratio_reconstructed"] = df["no_na_reconstructed"] / df["no_na_MIz_c_h"]
+df["ratio_containment"] = 1 - (df["no_na_MIqpar_x_hpar_mid_c"]/df["no_na_MIz_x_h_mid_c"])
+df["ratio_stability"] = df["no_na_MIqbot_x_hbot_mid_c"]/df["no_na_MIz_x_h_mid_c"]
 
-for k in ["new_ratio_erasure", "new_ratio_encapsulation", "new_ratio_reconstructed", "new_ratio_containment", "new_ratio_stability"]:
+for k in ["ratio_erasure", "ratio_encapsulation", "ratio_reconstructed", "ratio_containment", "ratio_stability"]:
     print(k, np.mean(df[k]))
 
 #%%
@@ -87,13 +87,13 @@ table_df = df[[
     #'perc_mi_c_hbot', 'perc_mi_c_hpar',
     #'perc_encapsulation', 'perc_reconstructed',
     #'cont_mi', 'stab_mi',  'ent_pxc',
-    'MIz_c_h',
-    "new_ratio_erasure",
-    "new_ratio_encapsulation",
-    "new_ratio_reconstructed",
-    'MIz_x_h_mid_c',
-    "new_ratio_containment",
-    "new_ratio_stability",
+    'no_na_MIz_c_h',
+    "ratio_erasure",
+    "ratio_encapsulation",
+    "ratio_reconstructed",
+    'no_na_MIz_x_h_mid_c',
+    "ratio_containment",
+    "ratio_stability",
 ]]
 
 # %%
@@ -113,13 +113,13 @@ mi_renames = {
     'perc_mi_c_hpar': "Subspace Info %",
     'perc_encapsulation': "Encapsulated %",
     'perc_reconstructed': "Reconstructed %",
-    'MIz_c_h': "I(C;H)",
-    'MIz_x_h_mid_c': "I(X;H|C)", 
-    "new_ratio_erasure": "Erasure Ratio",
-    "new_ratio_encapsulation": "Encapsulation Ratio",
-    "new_ratio_reconstructed": "Reconstructed Ratio",
-    "new_ratio_containment": "Containment Ratio",
-    "new_ratio_stability": "Stability Ratio",
+    'no_na_MIz_c_h': "I(C;H)",
+    'no_na_MIz_x_h_mid_c': "I(X;H|C)", 
+    "ratio_erasure": "Erasure Ratio",
+    "ratio_encapsulation": "Encapsulation Ratio",
+    "ratio_reconstructed": "Reconstructed Ratio",
+    "ratio_containment": "Containment Ratio",
+    "ratio_stability": "Stability Ratio",
 }
 
 table_df.sort_values(by = ["concept", "model_name"], inplace=True)
@@ -129,15 +129,14 @@ counterfactual_mi_grouped_mean = counterfactual_mi_grouped.mean().reset_index()#
 counterfactual_mi_grouped_std = counterfactual_mi_grouped.std().reset_index()#.to_csv(os.path.join(RESULTS, "leace_mis_std.csv"), index=False)
 
 #%%
-"""
 entropy_cols = [
-    'Hz_c', 'Hz_c_mid_h', 'MIz_c_h', 
-    'Hqbot_c', 'Hqbot_c_mid_hbot','MIqbot_c_hbot', 
-    'Hqpar_c', 'Hqpar_c_mid_hpar', 'MIqpar_c_hpar',
-    'Hz_x_c', 'Hz_x_mid_h_c', 'MIz_x_h_mid_c', 'Hqbot_x_c',
-    'Hqbot_x_mid_hbot_c', 'MIqbot_x_hbot_mid_c', 
-    'Hqpar_x_c',
-    'Hqpar_x_mid_hpar_c', 'MIqpar_x_hpar_mid_c'
+    'no_na_Hz_c', 'no_na_Hz_c_mid_h', 'no_na_MIz_c_h', 
+    'no_na_Hqbot_c', 'no_na_Hqbot_c_mid_hbot','no_na_MIqbot_c_hbot', 
+    'no_na_Hqpar_c', 'no_na_Hqpar_c_mid_hpar', 'no_na_MIqpar_c_hpar',
+    'no_na_Hz_x_c', 'no_na_Hz_x_mid_h_c', 'no_na_MIz_x_h_mid_c', 'no_na_Hqbot_x_c',
+    'no_na_Hqbot_x_mid_hbot_c', 'no_na_MIqbot_x_hbot_mid_c', 
+    'no_na_Hqpar_x_c',
+    'no_na_Hqpar_x_mid_hpar_c', 'no_na_MIqpar_x_hpar_mid_c',
 ]
 entropy_breakdown = df[['model_name', 'concept', 'proj_source', 'eval_source'] + entropy_cols]
 
@@ -149,24 +148,24 @@ entcols_name = {
     #"index": "Concept + Model",
     #"newindex": "Concept + Model + Metric",
     "metric": "Metric",
-    'Hz_c': "Hz(C)", 
-    'Hz_c_mid_h': "Hz(C | H)", 
-    'MIz_c_h': "MIz(C; H)", 
-    'Hqbot_c': "Hqbot(C)", 
-    'Hqbot_c_mid_hbot': "Hqbot(C | Hbot)",
-    'MIqbot_c_hbot': "MIqbot(C; Hbot)", 
-    'Hqpar_c': "Hqpar(C)", 
-    'Hqpar_c_mid_hpar': "Hqpar(C | Hpar)", 
-    'MIqpar_c_hpar': "MIqpar(C; Hpar)", 
-    'Hz_x_c': "Hz(X | C)",  
-    'Hz_x_mid_h_c': "Hz(X | H, C)",  
-    'MIz_x_h_mid_c': "MIz(X; H | C)", 
-    'Hqbot_x_c': "Hqbot(X | C)",  
-    'Hqbot_x_mid_hbot_c': "Hqbot(X | Hbot, C)",
-    'MIqbot_x_hbot_mid_c': "MIqbot(X; Hbot | C)",
-    'Hqpar_x_c': "Hqpar(X | C)",  
-    'Hqpar_x_mid_hpar_c': "Hqpar(X | Hpar, C)",
-    'MIqpar_x_hpar_mid_c': "MIqpar(X; Hpar | C)",
+    'no_na_Hz_c': "Hz(C)", 
+    'no_na_Hz_c_mid_h': "Hz(C | H)", 
+    'no_na_MIz_c_h': "MIz(C; H)", 
+    'no_na_Hqbot_c': "Hqbot(C)", 
+    'no_na_Hqbot_c_mid_hbot': "Hqbot(C | Hbot)",
+    'no_na_MIqbot_c_hbot': "MIqbot(C; Hbot)", 
+    'no_na_Hqpar_c': "Hqpar(C)", 
+    'no_na_Hqpar_c_mid_hpar': "Hqpar(C | Hpar)", 
+    'no_na_MIqpar_c_hpar': "MIqpar(C; Hpar)", 
+    'no_na_Hz_x_c': "Hz(X | C)",  
+    'no_na_Hz_x_mid_h_c': "Hz(X | H, C)",  
+    'no_na_MIz_x_h_mid_c': "MIz(X; H | C)", 
+    'no_na_Hqbot_x_c': "Hqbot(X | C)",  
+    'no_na_Hqbot_x_mid_hbot_c': "Hqbot(X | Hbot, C)",
+    'no_na_MIqbot_x_hbot_mid_c': "MIqbot(X; Hbot | C)",
+    'no_na_Hqpar_x_c': "Hqpar(X | C)",  
+    'no_na_Hqpar_x_mid_hpar_c': "Hqpar(X | Hpar, C)",
+    'no_na_MIqpar_x_hpar_mid_c': "MIqpar(X; Hpar | C)",
 }
 
 
@@ -175,7 +174,7 @@ entropy_breakdown.columns = [entcols_name[x] for x in entropy_breakdown.columns]
 entropy_breakdown_grouped = entropy_breakdown.groupby(["Concept", "Model", "Train Source", "Test Source"])
 entropy_breakdown_grouped.mean().reset_index().to_csv(os.path.join(RESULTS, "leace_entropies_mean.csv"), index=False)
 entropy_breakdown_grouped.std().reset_index().to_csv(os.path.join(RESULTS, "leace_entropies_std.csv"), index=False)
-"""
+
 #%% CORRELATIONAL
 corrfilepaths = get_res_file_paths(TIANYU_RESULTS, "corr_mis", "corr_june27")
 
