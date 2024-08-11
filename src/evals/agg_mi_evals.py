@@ -54,8 +54,8 @@ df["ratio_erasure"] = 1 - (df["no_na_MIqbot_c_hbot"] / df["no_na_MIz_c_h"])
 df["ratio_encapsulation"] = df["no_na_MIqpar_c_hpar"] / df["no_na_MIz_c_h"]
 df["no_na_reconstructed"] = df["no_na_MIqbot_c_hbot"] + df["no_na_MIqpar_c_hpar"]
 df["ratio_reconstructed"] = df["no_na_reconstructed"] / df["no_na_MIz_c_h"]
-df["ratio_containment"] = 1 - (df["no_na_MIqpar_x_hpar_mid_c"]/df["no_na_MIz_x_h_mid_c"])
-df["ratio_stability"] = df["no_na_MIqbot_x_hbot_mid_c"]/df["no_na_MIz_x_h_mid_c"]
+df["ratio_containment"] = 1 - (df["MIqpar_x_hpar_mid_c"]/df["MIz_x_h_mid_c"])
+df["ratio_stability"] = df["MIqbot_x_hbot_mid_c"]/df["MIz_x_h_mid_c"]
 
 for k in ["ratio_erasure", "ratio_encapsulation", "ratio_reconstructed", "ratio_containment", "ratio_stability"]:
     print(k, np.mean(df[k]))
@@ -91,7 +91,7 @@ table_df = df[[
     "ratio_erasure",
     "ratio_encapsulation",
     "ratio_reconstructed",
-    'no_na_MIz_x_h_mid_c',
+    'MIz_x_h_mid_c',
     "ratio_containment",
     "ratio_stability",
 ]]
@@ -114,7 +114,7 @@ mi_renames = {
     'perc_encapsulation': "Encapsulated %",
     'perc_reconstructed': "Reconstructed %",
     'no_na_MIz_c_h': "I(C;H)",
-    'no_na_MIz_x_h_mid_c': "I(X;H|C)", 
+    'MIz_x_h_mid_c': "I(X;H|C)", 
     "ratio_erasure": "Erasure Ratio",
     "ratio_encapsulation": "Encapsulation Ratio",
     "ratio_reconstructed": "Reconstructed Ratio",
@@ -133,10 +133,10 @@ entropy_cols = [
     'no_na_Hz_c', 'no_na_Hz_c_mid_h', 'no_na_MIz_c_h', 
     'no_na_Hqbot_c', 'no_na_Hqbot_c_mid_hbot','no_na_MIqbot_c_hbot', 
     'no_na_Hqpar_c', 'no_na_Hqpar_c_mid_hpar', 'no_na_MIqpar_c_hpar',
-    'no_na_Hz_x_c', 'no_na_Hz_x_mid_h_c', 'no_na_MIz_x_h_mid_c', 'no_na_Hqbot_x_c',
-    'no_na_Hqbot_x_mid_hbot_c', 'no_na_MIqbot_x_hbot_mid_c', 
-    'no_na_Hqpar_x_c',
-    'no_na_Hqpar_x_mid_hpar_c', 'no_na_MIqpar_x_hpar_mid_c',
+    'Hz_x_c', 'Hz_x_mid_h_c', 'MIz_x_h_mid_c', 'Hqbot_x_c',
+    'Hqbot_x_mid_hbot_c', 'MIqbot_x_hbot_mid_c', 
+    'Hqpar_x_c',
+    'Hqpar_x_mid_hpar_c', 'MIqpar_x_hpar_mid_c',
 ]
 entropy_breakdown = df[['model_name', 'concept', 'proj_source', 'eval_source'] + entropy_cols]
 
@@ -157,15 +157,15 @@ entcols_name = {
     'no_na_Hqpar_c': "Hqpar(C)", 
     'no_na_Hqpar_c_mid_hpar': "Hqpar(C | Hpar)", 
     'no_na_MIqpar_c_hpar': "MIqpar(C; Hpar)", 
-    'no_na_Hz_x_c': "Hz(X | C)",  
-    'no_na_Hz_x_mid_h_c': "Hz(X | H, C)",  
-    'no_na_MIz_x_h_mid_c': "MIz(X; H | C)", 
-    'no_na_Hqbot_x_c': "Hqbot(X | C)",  
-    'no_na_Hqbot_x_mid_hbot_c': "Hqbot(X | Hbot, C)",
-    'no_na_MIqbot_x_hbot_mid_c': "MIqbot(X; Hbot | C)",
-    'no_na_Hqpar_x_c': "Hqpar(X | C)",  
-    'no_na_Hqpar_x_mid_hpar_c': "Hqpar(X | Hpar, C)",
-    'no_na_MIqpar_x_hpar_mid_c': "MIqpar(X; Hpar | C)",
+    'Hz_x_c': "Hz(X | C)",  
+    'Hz_x_mid_h_c': "Hz(X | H, C)",  
+    'MIz_x_h_mid_c': "MIz(X; H | C)", 
+    'Hqbot_x_c': "Hqbot(X | C)",  
+    'Hqbot_x_mid_hbot_c': "Hqbot(X | Hbot, C)",
+    'MIqbot_x_hbot_mid_c': "MIqbot(X; Hbot | C)",
+    'Hqpar_x_c': "Hqpar(X | C)",  
+    'Hqpar_x_mid_hpar_c': "Hqpar(X | Hpar, C)",
+    'MIqpar_x_hpar_mid_c': "MIqpar(X; Hpar | C)",
 }
 
 
