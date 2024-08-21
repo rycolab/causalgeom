@@ -250,8 +250,9 @@ combined_mi_table_std = pd.merge(
     how = "outer"
 )
 
-column_order = ['Concept', 'Model', 'I(C;H)', 'Correlational Erasure Ratio',
-    'Erasure Ratio', 'Encapsulation Ratio', 'Reconstructed Ratio',
+column_order = ['Concept', 'Model', 'I(C;H)', 'Erasure Ratio', 
+    'Correlational Erasure Ratio',
+    'Encapsulation Ratio', 'Reconstructed Ratio',
     'I(X;H|C)', 'Containment Ratio', 'Stability Ratio',
 ]
 combined_mi_table_mean = combined_mi_table_mean[column_order]
