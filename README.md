@@ -19,7 +19,10 @@ Clone the following three UD french treebank repositories:
 - https://github.com/UniversalDependencies/UD_French-GSD
 - https://github.com/UniversalDependencies/UD_French-ParTUT
 - https://github.com/UniversalDependencies/UD_French-Rhapsodie
-Then set the path variables in ```src/paths.py``` accordingly.
+
+## Setting Paths
+
+Set the path variables in ```src/paths.py``` to match your folder structure, including where the data sources have been cloned.
 
 ## Data Preprocessing
 
@@ -39,10 +42,14 @@ Execute the following bash scripts and Python files in the order given:
 - job_scripts/process_hidden_states_fr.sh
 
 ## Generation to obtain (x, h, c) pairs
+
+Execute the following bash scripts and Python files in the order given:
 - job_scripts/generate.sh OR array_generate_gpts.sh and array_generate_llama.sh
 - job_scripts/filter_generations.sh
 
 ## Training and Evaluating LEACE
+
+Execute the following bash scripts and Python files in the order given:
 - job_scripts/train_leace.sh
 - job_scripts/multitoken_eval*.sh (three total)
 - job_scripts/corr_multitoken_eval*.sh (three total)
