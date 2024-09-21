@@ -15,7 +15,7 @@ import pandas as pd
 sys.path.append('..')
 #sys.path.append('./src/')
 
-from paths import DATASETS, OUT, RESULTS, MODELS, TIANYU_RESULTS
+from paths import DATASETS, OUT, RESULTS, MODELS
 
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")

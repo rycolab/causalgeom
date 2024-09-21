@@ -17,7 +17,7 @@ import random
 sys.path.append('..')
 #sys.path.append('./src/')
 
-from paths import DATASETS, OUT, RESULTS, MODELS, TIANYU_RESULTS
+from paths import DATASETS, OUT, RESULTS, MODELS
 
 coloredlogs.install(level=logging.INFO)
 warnings.filterwarnings("ignore")
@@ -29,7 +29,7 @@ def get_res_file_paths(root_dir, res_dir, eval_run_name):
     resfilepaths = [os.path.join(resfolder, x) for x in resfiles]
     return resfilepaths
 
-mifilepaths_1 = get_res_file_paths(TIANYU_RESULTS, "mis", "june27")
+mifilepaths_1 = get_res_file_paths(RESULTS, "mis", "june27")
 
 mifilepaths = mifilepaths_1 # + mifilepaths_2
 
@@ -176,7 +176,7 @@ entropy_breakdown_grouped.mean().reset_index().to_csv(os.path.join(RESULTS, "lea
 entropy_breakdown_grouped.std().reset_index().to_csv(os.path.join(RESULTS, "leace_entropies_std.csv"), index=False)
 
 #%% CORRELATIONAL
-corrfilepaths = get_res_file_paths(TIANYU_RESULTS, "corr_mis", "corr_june27")
+corrfilepaths = get_res_file_paths(RESULTS, "corr_mis", "corr_june27")
 
 corr_res_records = []
 for mifile in corrfilepaths:
