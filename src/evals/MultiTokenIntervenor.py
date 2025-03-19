@@ -21,11 +21,9 @@ from scipy.special import softmax
 from tqdm import trange
 from transformers import TopPLogitsWarper, LogitsProcessorList
 import torch 
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import Dataset
 from abc import ABC
 from itertools import zip_longest
-from scipy.special import softmax
-from scipy.stats import entropy
 import math
 
 #sys.path.append('..')
@@ -47,7 +45,8 @@ from data.spacy_wordlists.embedder import load_concept_token_lists
 from utils.lm_loaders import get_model, get_tokenizer, get_V, GPT2_LIST
 from utils.cuda_loaders import get_device
 from utils.dataset_loaders import load_processed_data
-from evals.mi_distributor_utils import get_run_path_info
+from evals.mi_distributor_utils import get_run_path_info, \
+    get_new_word_tokens
 from evals.mt_eval_runner import get_data_type
 
 coloredlogs.install(level=logging.INFO)
@@ -129,7 +128,7 @@ class MultiTokenIntervenor:
         self.model.eval()
         self.tokenizer = get_tokenizer(model_name)
         if p_new_word:
-            self.new_word_tokens = self.get_new_word_tokens(model_name)
+            self.new_word_tokens = get_new_word_tokens(model_name, self.tokenizer.vocab)
         else:
             self.new_word_tokens = None
             logging.warn("Not computing p(new_word | h)")
@@ -167,57 +166,6 @@ class MultiTokenIntervenor:
         self.cxt_toks_test, self.ys_test = None, None
         self.facts_test, self.foils_test = None, None
         self.hs_val, self.y_val = None, None
-        
-
-    #########################################
-    # Tokenizer specific new word tokens    #
-    #########################################
-    #TODO: ALL OF THIS SHOULD BE MOVED TO UTILS SAME AS MT DISTRIB
-    def get_gpt2_new_word_tokens(self):
-        pattern = re.compile("^[\W][^a-zA-Z]*")
-
-        new_word_tokens = []
-        new_word_token_pairs = []
-        other_tokens = []
-        other_token_pairs = []
-        for token, token_id in self.tokenizer.vocab.items():
-            if token.startswith("Ġ"):
-                new_word_tokens.append(token_id)
-                new_word_token_pairs.append((token, token_id))
-            elif pattern.match(token):
-                new_word_tokens.append(token_id)
-                new_word_token_pairs.append((token, token_id))
-            else:
-                other_tokens.append(token_id)
-                other_token_pairs.append((token, token_id))
-        return new_word_tokens
-
-    def get_llama2_new_word_tokens(self):
-        pattern = re.compile("^[\W][^a-zA-Z]*")
-
-        new_word_tokens = []
-        new_word_token_pairs = []
-        other_tokens = []
-        other_token_pairs = []
-        for token, token_id in self.tokenizer.vocab.items():
-            if token.startswith("▁"):
-                new_word_tokens.append(token_id)
-                new_word_token_pairs.append((token, token_id))
-            elif pattern.match(token):
-                new_word_tokens.append(token_id)
-                new_word_token_pairs.append((token, token_id))
-            else:
-                other_tokens.append(token_id)
-                other_token_pairs.append((token, token_id))
-        return new_word_tokens
-
-    def get_new_word_tokens(self, model_name):
-        if model_name in GPT2_LIST:
-            return self.get_gpt2_new_word_tokens()
-        elif model_name == "llama2":
-            return self.get_llama2_new_word_tokens()
-        else:
-            return NotImplementedError(f"Model not yet implemented")
     
     #########################################
     # Data handling                         #
@@ -369,7 +317,8 @@ class MultiTokenIntervenor:
         )
         return batch_word_probs
 
-    #TODO: SAME AS IN DISTRIBUTOR, SHOULD MOVE TO SHARED UTILS
+    #TODO: SAME AS IN DISTRIBUTOR, SHOULD MAKE A SUPER CLASS
+    # W THIS FUNCTION
     def compute_qxhs(self,
         cxt_hidden_state, n_ntok_H, method, batch_tokens):
         """ input dimensions:

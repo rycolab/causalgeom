@@ -4,27 +4,18 @@ import logging
 import os
 import sys
 import coloredlogs
-import argparse
-from datetime import datetime
-import csv
 
-import re
 import numpy as np
 from tqdm import tqdm
-import pandas as pd
 import pickle
 #import torch
-import time
 import random 
-from scipy.special import softmax
 
-from tqdm import trange
-from transformers import TopPLogitsWarper, LogitsProcessorList
+
 import torch 
 from torch.utils.data import DataLoader, Dataset
 from abc import ABC
 from itertools import zip_longest
-from scipy.special import softmax
 # from scipy.stats import entropy
 import math
 
@@ -38,7 +29,8 @@ from evals.mi_distributor_utils import prep_generated_data, \
     get_nucleus_arg, get_eval_directory,\
         duplicate_pkv, pad_cxt_list, \
         intervene_first_h, compute_log_pxh_batch, compute_m_p_words,\
-            compute_p_words, filter_cxt_toks_by_length
+            compute_p_words, filter_cxt_toks_by_length, \
+                get_new_word_tokens
 
 from utils.lm_loaders import SUPPORTED_AR_MODELS, GPT2_LIST
 from evals.eval_utils import load_run_Ps, load_run_output, renormalize
@@ -124,7 +116,9 @@ class MultiTokenDistributor:
         self.model.eval()
         self.tokenizer = get_tokenizer(model_name)
         if p_new_word:
-            self.new_word_tokens = self.get_new_word_tokens(model_name)
+            self.new_word_tokens = get_new_word_tokens(
+                model_name, self.tokenizer.vocab
+            )
         else:
             self.new_word_tokens = None
             logging.warn("Not computing p(new_word | h)")
@@ -185,55 +179,6 @@ class MultiTokenDistributor:
         self.y_test = None
 
     #########################################
-    # Tokenizer specific new word tokens    #
-    #########################################
-    def get_gpt2_new_word_tokens(self):
-        pattern = re.compile("^[\W][^a-zA-Z]*")
-
-        new_word_tokens = []
-        new_word_token_pairs = []
-        other_tokens = []
-        other_token_pairs = []
-        for token, token_id in self.tokenizer.vocab.items():
-            if token.startswith("Ġ"):
-                new_word_tokens.append(token_id)
-                new_word_token_pairs.append((token, token_id))
-            elif pattern.match(token):
-                new_word_tokens.append(token_id)
-                new_word_token_pairs.append((token, token_id))
-            else:
-                other_tokens.append(token_id)
-                other_token_pairs.append((token, token_id))
-        return new_word_tokens
-
-    def get_llama2_new_word_tokens(self):
-        pattern = re.compile("^[\W][^a-zA-Z]*")
-
-        new_word_tokens = []
-        new_word_token_pairs = []
-        other_tokens = []
-        other_token_pairs = []
-        for token, token_id in self.tokenizer.vocab.items():
-            if token.startswith("▁"):
-                new_word_tokens.append(token_id)
-                new_word_token_pairs.append((token, token_id))
-            elif pattern.match(token):
-                new_word_tokens.append(token_id)
-                new_word_token_pairs.append((token, token_id))
-            else:
-                other_tokens.append(token_id)
-                other_token_pairs.append((token, token_id))
-        return new_word_tokens
-
-    def get_new_word_tokens(self, model_name):
-        if model_name in GPT2_LIST:
-            return self.get_gpt2_new_word_tokens()
-        elif model_name == "llama2":
-            return self.get_llama2_new_word_tokens()
-        else:
-            return NotImplementedError(f"Model not yet implemented")
-    
-    #########################################
     # Data handling                         #
     #########################################
     def get_eval_contexts(self, model_name, eval_source, max_nsamples=MAX_N_CXTS):
@@ -281,6 +226,8 @@ class MultiTokenDistributor:
     #########################################
     # Probability computations              #
     #########################################
+    #TODO: SAME AS IN INTERVENOR, SHOULD MAKE A SUPER CLASS
+    # W THIS FUNCTION
     def compute_qxhs(self,
         cxt_hidden_state, n_ntok_H, method, batch_tokens):
         """ input dimensions:
