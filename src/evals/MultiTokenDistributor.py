@@ -141,19 +141,25 @@ class MultiTokenDistributor:
         self.other_tl = other_tl_full[:self.n_other_words]
 
         if self.nwords is not None:
-            logging.warn(f"Applied nwords={self.nwords}, intended for DEBUGGING ONLY")
+            logging.warn(
+                f"Applied nwords={self.nwords}, intended for DEBUGGING ONLY"
+            )
             random_start = random.randint(0, len(self.l0_tl)-self.nwords)
             self.l0_tl = self.l0_tl[random_start:random_start+self.nwords]
             self.l1_tl = self.l1_tl[random_start:random_start+self.nwords]
 
         # Load generated samples
         #TODO: this is a bit messy, figure it out
-        if eval_source in ["train_all", "train_concept", "test_all", "test_concept"]:
+        if eval_source in ["train_all", "train_concept", 
+                           "test_all", "test_concept"]:
             nucleus = get_nucleus_arg(self.proj_source)
-        elif eval_source in ["gen_ancestral_all", "gen_ancestral_concept", "gen_nucleus_all", "gen_nucleus_concept"]:
+        elif eval_source in ["gen_ancestral_all", "gen_ancestral_concept", 
+                             "gen_nucleus_all", "gen_nucleus_concept"]:
             nucleus = get_nucleus_arg(eval_source)
         else:
-            raise NotImplementedError(f"eval_source {eval_source} not supported")
+            raise NotImplementedError(
+                f"eval_source {eval_source} not supported"
+            )
         
         # TODO:added if else for CorrMIComputer, should be removed
         if msamples is not None: 
@@ -181,7 +187,10 @@ class MultiTokenDistributor:
     #########################################
     # Data handling                         #
     #########################################
-    def get_eval_contexts(self, model_name, eval_source, max_nsamples=MAX_N_CXTS):
+    def get_eval_contexts(self, 
+                          model_name, 
+                          eval_source, 
+                          max_nsamples=MAX_N_CXTS):
         if eval_source in ["gen_ancestral_concept", "gen_nucleus_concept", 
                       "gen_ancestral_all", "gen_nucleus_all"]:
             padded_cxt_toks = pad_cxt_list(self.gen_cxt_toks, max_nsamples)
@@ -212,7 +221,9 @@ class MultiTokenDistributor:
             )
             padded_cxt_toks = torch.from_numpy(sub_concept_cxt_toks)
         else: 
-            raise ValueError(f"Evaluation context eval_source {eval_source} invalid")
+            raise ValueError(
+                f"Evaluation context eval_source {eval_source} invalid"
+            )
         logging.info(
             f"Total contexts to sample from: {padded_cxt_toks.shape[0]}"
         )
@@ -228,8 +239,11 @@ class MultiTokenDistributor:
     #########################################
     #TODO: SAME AS IN INTERVENOR, SHOULD MAKE A SUPER CLASS
     # W THIS FUNCTION
-    def compute_qxhs(self,
-        cxt_hidden_state, n_ntok_H, method, batch_tokens):
+    def compute_qxhs(self, 
+                     cxt_hidden_state, 
+                     n_ntok_H, 
+                     method, 
+                     batch_tokens):
         """ input dimensions:
         - cxt_hidden_state: 1 x d 
         - n_ntok_H: bs x max_ntokens x d
@@ -259,7 +273,10 @@ class MultiTokenDistributor:
         )
         return batch_word_probs
     
-    def compute_pxhs(self, cxt_hidden_state, batch_hidden_states, batch_tokens):
+    def compute_pxhs(self, 
+                     cxt_hidden_state, 
+                     batch_hidden_states, 
+                     batch_tokens):
         """ In:
         - batch_tokens: bs x max_ntok
         - cxt_hidden_state: 1 x d
@@ -286,8 +303,12 @@ class MultiTokenDistributor:
         )
         return batch_word_probs
 
-    def compute_pxh_batch_handler(self, method, batch_tokens, 
-        cxt_hidden_state, batch_hidden_states):
+    def compute_pxh_batch_handler(
+            self, 
+            method, 
+            batch_tokens, 
+            cxt_hidden_state, 
+            batch_hidden_states):
         """ In:
         - batch_tokens: bs x max_ntok
         - cxt_hidden_state: 1 x d
@@ -395,21 +416,27 @@ class MultiTokenDistributor:
         for i, cxt_pad in enumerate(tqdm(lemma_samples)):
             cxt = cxt_pad[cxt_pad != pad_token]
 
-            logging.info(f"---New eval context: {self.tokenizer.decode(cxt)}---")
+            logging.info(
+                f"---New eval context: {self.tokenizer.decode(cxt)}---"
+            )
 
             #start = time.time()
             with torch.no_grad():
-                with torch.autocast(device_type="cuda", dtype=self.torch_dtype, enabled=True):
+                with torch.autocast(
+                    device_type="cuda", dtype=self.torch_dtype, enabled=True):
                     cxt_pkv, cxt_hidden_state = self.compute_cxt_pkv_h(cxt)
 
-                    l0_word_probs = self.compute_token_list_word_probs(self.l0_tl, 
-                        cxt_hidden_state, cxt_pkv, method)
+                    l0_word_probs = self.compute_token_list_word_probs(
+                        self.l0_tl, cxt_hidden_state, cxt_pkv, method
+                    )
                     torch.cuda.empty_cache()
-                    l1_word_probs = self.compute_token_list_word_probs(self.l1_tl, 
-                        cxt_hidden_state, cxt_pkv, method)
+                    l1_word_probs = self.compute_token_list_word_probs(
+                        self.l1_tl, cxt_hidden_state, cxt_pkv, method
+                    )
                     torch.cuda.empty_cache()
-                    other_word_probs = self.compute_token_list_word_probs(self.other_tl, 
-                        cxt_hidden_state, cxt_pkv, method)
+                    other_word_probs = self.compute_token_list_word_probs(
+                        self.other_tl, cxt_hidden_state, cxt_pkv, method
+                    )
                     torch.cuda.empty_cache()
             #end = time.time()
             #pkv_time = end - start
