@@ -10,6 +10,7 @@ import torch
 import random 
 from scipy.special import softmax, log_softmax
 from pathlib import Path
+import re
 
 sys.path.append('..')
 
@@ -207,7 +208,59 @@ def duplicate_pkv(pkv, num_repeats):
         return pkv
 
 #########################################
-# Distribution Computation              #
+# Model Next Word Token Handling        #
+#########################################
+def get_gpt2_new_word_tokens(tokenizer_vocab):
+    pattern = re.compile("^[\W][^a-zA-Z]*")
+
+    new_word_tokens = []
+    new_word_token_pairs = []
+    other_tokens = []
+    other_token_pairs = []
+    for token, token_id in tokenizer_vocab.items():
+        if token.startswith("Ġ"):
+            new_word_tokens.append(token_id)
+            new_word_token_pairs.append((token, token_id))
+        elif pattern.match(token):
+            new_word_tokens.append(token_id)
+            new_word_token_pairs.append((token, token_id))
+        else:
+            other_tokens.append(token_id)
+            other_token_pairs.append((token, token_id))
+    return new_word_tokens
+
+def get_llama2_new_word_tokens(tokenizer_vocab):
+    pattern = re.compile("^[\W][^a-zA-Z]*")
+
+    new_word_tokens = []
+    new_word_token_pairs = []
+    other_tokens = []
+    other_token_pairs = []
+    for token, token_id in tokenizer_vocab.items():
+        if token.startswith("▁"):
+            new_word_tokens.append(token_id)
+            new_word_token_pairs.append((token, token_id))
+        elif pattern.match(token):
+            new_word_tokens.append(token_id)
+            new_word_token_pairs.append((token, token_id))
+        else:
+            other_tokens.append(token_id)
+            other_token_pairs.append((token, token_id))
+    return new_word_tokens
+
+def get_new_word_tokens(model_name, tokenizer_vocab):
+    """ Identifies tokens in the vocabulary that constitute
+    a new word (punctuation, space, etc.)
+    """
+    if model_name in GPT2_LIST:
+        return get_gpt2_new_word_tokens(tokenizer_vocab)
+    elif model_name == "llama2":
+        return get_llama2_new_word_tokens(tokenizer_vocab)
+    else:
+        return NotImplementedError(f"Model not yet implemented")
+
+#########################################
+#  Low Level Distribution Computation   #
 #########################################
 def compute_log_pxh_batch(nntokH, V):
     logits = nntokH @ V.T
@@ -355,5 +408,3 @@ def intervene_first_h(cxt_hidden_state, method, msamples, gen_all_hs, P, I_P, de
         first_hs, sampled_hs, method, P, I_P
     )
     return first_hs_int
-
-

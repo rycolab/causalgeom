@@ -4,27 +4,18 @@ import logging
 import os
 import sys
 import coloredlogs
-import argparse
-from datetime import datetime
-import csv
 
-import re
 import numpy as np
 from tqdm import tqdm
-import pandas as pd
 import pickle
 #import torch
-import time
 import random 
-from scipy.special import softmax
 
-from tqdm import trange
-from transformers import TopPLogitsWarper, LogitsProcessorList
+
 import torch 
 from torch.utils.data import DataLoader, Dataset
 from abc import ABC
 from itertools import zip_longest
-from scipy.special import softmax
 # from scipy.stats import entropy
 import math
 
@@ -38,7 +29,8 @@ from evals.mi_distributor_utils import prep_generated_data, \
     get_nucleus_arg, get_eval_directory,\
         duplicate_pkv, pad_cxt_list, \
         intervene_first_h, compute_log_pxh_batch, compute_m_p_words,\
-            compute_p_words, filter_cxt_toks_by_length
+            compute_p_words, filter_cxt_toks_by_length, \
+                get_new_word_tokens
 
 from utils.lm_loaders import SUPPORTED_AR_MODELS, GPT2_LIST
 from evals.eval_utils import load_run_Ps, load_run_output, renormalize
@@ -124,7 +116,9 @@ class MultiTokenDistributor:
         self.model.eval()
         self.tokenizer = get_tokenizer(model_name)
         if p_new_word:
-            self.new_word_tokens = self.get_new_word_tokens(model_name)
+            self.new_word_tokens = get_new_word_tokens(
+                model_name, self.tokenizer.vocab
+            )
         else:
             self.new_word_tokens = None
             logging.warn("Not computing p(new_word | h)")
@@ -147,19 +141,25 @@ class MultiTokenDistributor:
         self.other_tl = other_tl_full[:self.n_other_words]
 
         if self.nwords is not None:
-            logging.warn(f"Applied nwords={self.nwords}, intended for DEBUGGING ONLY")
+            logging.warn(
+                f"Applied nwords={self.nwords}, intended for DEBUGGING ONLY"
+            )
             random_start = random.randint(0, len(self.l0_tl)-self.nwords)
             self.l0_tl = self.l0_tl[random_start:random_start+self.nwords]
             self.l1_tl = self.l1_tl[random_start:random_start+self.nwords]
 
         # Load generated samples
         #TODO: this is a bit messy, figure it out
-        if eval_source in ["train_all", "train_concept", "test_all", "test_concept"]:
+        if eval_source in ["train_all", "train_concept", 
+                           "test_all", "test_concept"]:
             nucleus = get_nucleus_arg(self.proj_source)
-        elif eval_source in ["gen_ancestral_all", "gen_ancestral_concept", "gen_nucleus_all", "gen_nucleus_concept"]:
+        elif eval_source in ["gen_ancestral_all", "gen_ancestral_concept", 
+                             "gen_nucleus_all", "gen_nucleus_concept"]:
             nucleus = get_nucleus_arg(eval_source)
         else:
-            raise NotImplementedError(f"eval_source {eval_source} not supported")
+            raise NotImplementedError(
+                f"eval_source {eval_source} not supported"
+            )
         
         # TODO:added if else for CorrMIComputer, should be removed
         if msamples is not None: 
@@ -185,58 +185,12 @@ class MultiTokenDistributor:
         self.y_test = None
 
     #########################################
-    # Tokenizer specific new word tokens    #
-    #########################################
-    def get_gpt2_new_word_tokens(self):
-        pattern = re.compile("^[\W][^a-zA-Z]*")
-
-        new_word_tokens = []
-        new_word_token_pairs = []
-        other_tokens = []
-        other_token_pairs = []
-        for token, token_id in self.tokenizer.vocab.items():
-            if token.startswith("Ġ"):
-                new_word_tokens.append(token_id)
-                new_word_token_pairs.append((token, token_id))
-            elif pattern.match(token):
-                new_word_tokens.append(token_id)
-                new_word_token_pairs.append((token, token_id))
-            else:
-                other_tokens.append(token_id)
-                other_token_pairs.append((token, token_id))
-        return new_word_tokens
-
-    def get_llama2_new_word_tokens(self):
-        pattern = re.compile("^[\W][^a-zA-Z]*")
-
-        new_word_tokens = []
-        new_word_token_pairs = []
-        other_tokens = []
-        other_token_pairs = []
-        for token, token_id in self.tokenizer.vocab.items():
-            if token.startswith("▁"):
-                new_word_tokens.append(token_id)
-                new_word_token_pairs.append((token, token_id))
-            elif pattern.match(token):
-                new_word_tokens.append(token_id)
-                new_word_token_pairs.append((token, token_id))
-            else:
-                other_tokens.append(token_id)
-                other_token_pairs.append((token, token_id))
-        return new_word_tokens
-
-    def get_new_word_tokens(self, model_name):
-        if model_name in GPT2_LIST:
-            return self.get_gpt2_new_word_tokens()
-        elif model_name == "llama2":
-            return self.get_llama2_new_word_tokens()
-        else:
-            return NotImplementedError(f"Model not yet implemented")
-    
-    #########################################
     # Data handling                         #
     #########################################
-    def get_eval_contexts(self, model_name, eval_source, max_nsamples=MAX_N_CXTS):
+    def get_eval_contexts(self, 
+                          model_name, 
+                          eval_source, 
+                          max_nsamples=MAX_N_CXTS):
         if eval_source in ["gen_ancestral_concept", "gen_nucleus_concept", 
                       "gen_ancestral_all", "gen_nucleus_all"]:
             padded_cxt_toks = pad_cxt_list(self.gen_cxt_toks, max_nsamples)
@@ -267,7 +221,9 @@ class MultiTokenDistributor:
             )
             padded_cxt_toks = torch.from_numpy(sub_concept_cxt_toks)
         else: 
-            raise ValueError(f"Evaluation context eval_source {eval_source} invalid")
+            raise ValueError(
+                f"Evaluation context eval_source {eval_source} invalid"
+            )
         logging.info(
             f"Total contexts to sample from: {padded_cxt_toks.shape[0]}"
         )
@@ -281,8 +237,13 @@ class MultiTokenDistributor:
     #########################################
     # Probability computations              #
     #########################################
-    def compute_qxhs(self,
-        cxt_hidden_state, n_ntok_H, method, batch_tokens):
+    #TODO: SAME AS IN INTERVENOR, SHOULD MAKE A SUPER CLASS
+    # W THIS FUNCTION
+    def compute_qxhs(self, 
+                     cxt_hidden_state, 
+                     n_ntok_H, 
+                     method, 
+                     batch_tokens):
         """ input dimensions:
         - cxt_hidden_state: 1 x d 
         - n_ntok_H: bs x max_ntokens x d
@@ -312,7 +273,10 @@ class MultiTokenDistributor:
         )
         return batch_word_probs
     
-    def compute_pxhs(self, cxt_hidden_state, batch_hidden_states, batch_tokens):
+    def compute_pxhs(self, 
+                     cxt_hidden_state, 
+                     batch_hidden_states, 
+                     batch_tokens):
         """ In:
         - batch_tokens: bs x max_ntok
         - cxt_hidden_state: 1 x d
@@ -339,8 +303,12 @@ class MultiTokenDistributor:
         )
         return batch_word_probs
 
-    def compute_pxh_batch_handler(self, method, batch_tokens, 
-        cxt_hidden_state, batch_hidden_states):
+    def compute_pxh_batch_handler(
+            self, 
+            method, 
+            batch_tokens, 
+            cxt_hidden_state, 
+            batch_hidden_states):
         """ In:
         - batch_tokens: bs x max_ntok
         - cxt_hidden_state: 1 x d
@@ -448,21 +416,27 @@ class MultiTokenDistributor:
         for i, cxt_pad in enumerate(tqdm(lemma_samples)):
             cxt = cxt_pad[cxt_pad != pad_token]
 
-            logging.info(f"---New eval context: {self.tokenizer.decode(cxt)}---")
+            logging.info(
+                f"---New eval context: {self.tokenizer.decode(cxt)}---"
+            )
 
             #start = time.time()
             with torch.no_grad():
-                with torch.autocast(device_type="cuda", dtype=self.torch_dtype, enabled=True):
+                with torch.autocast(
+                    device_type="cuda", dtype=self.torch_dtype, enabled=True):
                     cxt_pkv, cxt_hidden_state = self.compute_cxt_pkv_h(cxt)
 
-                    l0_word_probs = self.compute_token_list_word_probs(self.l0_tl, 
-                        cxt_hidden_state, cxt_pkv, method)
+                    l0_word_probs = self.compute_token_list_word_probs(
+                        self.l0_tl, cxt_hidden_state, cxt_pkv, method
+                    )
                     torch.cuda.empty_cache()
-                    l1_word_probs = self.compute_token_list_word_probs(self.l1_tl, 
-                        cxt_hidden_state, cxt_pkv, method)
+                    l1_word_probs = self.compute_token_list_word_probs(
+                        self.l1_tl, cxt_hidden_state, cxt_pkv, method
+                    )
                     torch.cuda.empty_cache()
-                    other_word_probs = self.compute_token_list_word_probs(self.other_tl, 
-                        cxt_hidden_state, cxt_pkv, method)
+                    other_word_probs = self.compute_token_list_word_probs(
+                        self.other_tl, cxt_hidden_state, cxt_pkv, method
+                    )
                     torch.cuda.empty_cache()
             #end = time.time()
             #pkv_time = end - start
